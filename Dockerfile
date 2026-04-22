@@ -1,5 +1,7 @@
-# Stage 1: Build
-FROM node:20-slim AS builder
+# Dockerfile for AgencyFlow CRM (Full-Stack Vite + Express)
+
+# Stage 1: Build Frontend
+FROM node:22-slim AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -7,15 +9,19 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Runtime
-FROM node:20-slim
+FROM node:22-slim
 WORKDIR /app
-COPY --from=builder /app/package*.json ./
+COPY package*.json ./
+RUN npm install --production
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.ts ./
-COPY --from=builder /app/node_modules ./node_modules
-# Instalar tsx para rodar o entrypoint
+COPY --from=builder /app/tsconfig.json ./
+
+# Install tsx for running typescript server in production if needed, 
+# or pre-compile it. We will use tsx as per package.json.
 RUN npm install -g tsx
 
 EXPOSE 3000
+
 ENV NODE_ENV=production
 CMD ["tsx", "server.ts"]

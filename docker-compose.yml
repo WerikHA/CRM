@@ -1,21 +1,53 @@
-version: '3.8'
-
+# AgencyFlow CRM - Docker Compose for ZimaOS
 services:
-  agencyflow-app:
+  app:
     build: .
+    container_name: agencyflow-app
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=development
-      - PORT=3000
-    volumes:
-      - .:/app
-      - /app/node_modules
+      - NODE_ENV=production
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-agency_admin}
+      - DB_PASSWORD=${DB_PASSWORD:-agency_secure_password}
+      - DB_NAME=${DB_NAME:-agencyflow_db}
+      - DATABASE_URL=postgresql://${DB_USER:-agency_admin}:${DB_PASSWORD:-agency_secure_password}@${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME:-agencyflow_db}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - VITE_COMPANY_NAME=${VITE_COMPANY_NAME:-AgencyFlow}
+    depends_on:
+      db:
+        condition: service_healthy
     restart: always
 
-# Futuramente você pode adicionar um serviço de banco de dados aqui
-# db:
-#   image: postgres:15
-#   environment:
-#     POSTGRES_PASSWORD: sua_senha_forte
-#     POSTGRES_DB: agencyflow_db
+  db:
+    image: postgres:15-alpine
+    container_name: agencyflow-db
+    environment:
+      - POSTGRES_USER=${DB_USER:-agency_admin}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-agency_secure_password}
+      - POSTGRES_DB=${DB_NAME:-agencyflow_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-agency_admin} -d ${DB_NAME:-agencyflow_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: agencyflow-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@agency.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    restart: always
+
+volumes:
+  postgres_data:
