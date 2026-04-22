@@ -1,6 +1,6 @@
 {
   "name": "AgencyFlow CRM",
-  "description": "CRM especializado para agências de marketing: gestão de leads, clientes, financeiro e fluxo de design.",
+  "description": "CRM full-stack especializado para agências de marketing com gestão de leads, banco de dados Postgres externo, fluxos de design e integração WhatsApp/n8n.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

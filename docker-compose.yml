@@ -7,14 +7,16 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DB_HOST=${DB_HOST:-db}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_USER=${DB_USER:-agency_admin}
-      - DB_PASSWORD=${DB_PASSWORD:-agency_secure_password}
-      - DB_NAME=${DB_NAME:-agencyflow_db}
-      - DATABASE_URL=postgresql://${DB_USER:-agency_admin}:${DB_PASSWORD:-agency_secure_password}@${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME:-agencyflow_db}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - VITE_COMPANY_NAME=${VITE_COMPANY_NAME:-AgencyFlow}
+      - DB_HOST=45.167.187.80
+      - DB_PORT=5432
+      - DB_USER=agency_admin
+      - DB_PASSWORD=agency_secure_password
+      - DB_NAME=agencyflow_db
+      - DATABASE_URL=postgresql://agency_admin:agency_secure_password@45.167.187.80:5432/agencyflow_db
+      - GEMINI_API_KEY=
+      - VITE_COMPANY_NAME=AgencyFlow CRM
+      - VITE_SERVER_INTERNAL_IP=192.168.3.6
+      - VITE_SERVER_EXTERNAL_IP=45.167.187.80
     depends_on:
       db:
         condition: service_healthy

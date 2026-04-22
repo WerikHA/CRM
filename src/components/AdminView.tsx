@@ -375,14 +375,24 @@ export default function AdminView({
 
           {activeSubTab === 'database' && (
             <div className="space-y-6">
-              <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center">
-                 <div className="w-16 h-16 rounded-3xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto mb-4">
+              <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center text-gray-900 transition-colors duration-300">
+                 <div className="w-16 h-16 rounded-3xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto mb-4 transition-colors">
                     <Database size={32} />
                  </div>
-                 <h3 className="font-bold text-gray-900 text-xl mb-2">Monitoramento de Postgres</h3>
-                 <p className="text-gray-500 text-sm max-w-sm mx-auto mb-8">
-                    Seu banco de dados está sincronizado e operando em um container Docker isolado. Backups automáticos ocorrem a cada 24 horas.
+                 <h3 className="font-bold text-xl mb-2">Monitoramento de Postgres</h3>
+                 <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
+                    Seu banco de dados está sincronizado e operando no servidor externo.
                  </p>
+                 <div className="flex flex-col gap-2 mb-8 items-center">
+                    <div className="flex items-center gap-2 text-[10px] font-mono bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
+                       <span className="text-gray-400">IP Interno:</span>
+                       <span className="text-indigo-600 font-bold">{import.meta.env.VITE_SERVER_INTERNAL_IP || '192.168.3.6'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] font-mono bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
+                       <span className="text-gray-400">IP Externo:</span>
+                       <span className="text-indigo-600 font-bold">{import.meta.env.VITE_SERVER_EXTERNAL_IP || '45.167.187.80'}</span>
+                    </div>
+                 </div>
                  <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
                     <button className="px-6 py-3 bg-white border border-gray-100 rounded-2xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all flex items-center justify-center gap-2">
                        <Download size={16} /> Exportar SQL

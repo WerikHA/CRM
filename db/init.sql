@@ -98,9 +98,35 @@ CREATE TABLE IF NOT EXISTS partner_requests (
 INSERT INTO users (id, name, email, role) VALUES 
 ('u1', 'Werik Admin', 'admin@agency.com', 'ADMIN'),
 ('u2', 'Lucas Andrade', 'lucas@design.com', 'DESIGNER'),
-('u3', 'Mariana Costa', 'mariana@design.com', 'DESIGNER')
+('u3', 'Mariana Costa', 'mariana@design.com', 'DESIGNER'),
+('u4', 'Roberto Financeiro', 'finance@agency.com', 'ADMIN'),
+('u5', 'Agência Video Pro', 'parceiro@videopro.com', 'PARTNER')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO partners (id, name, agency_name, email, commission_type, commission_value) VALUES
-('part1', 'Rodrigo Maker', 'Video Maker Pro', 'rodrigo@maker.com', 'fixed', 500)
+('part1', 'Rodrigo Maker', 'Video Maker Pro', 'rodrigo@maker.com', 'fixed', 500),
+('part2', 'Juliana Tráfego', 'Ads Experts', 'juliana@ads.com', 'percentage', 10)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO leads (id, company, contact_name, email, status, estimated_value, last_contact) VALUES
+('l1', 'TechFlow Solutions', 'Ana Silva', 'ana@techflow.com', 'negotiation', 5000, '15/04/2026'),
+('l2', 'Padaria Central', 'João Santos', 'joao@padaria.com', 'prospect', 1200, '18/04/2026'),
+('l3', 'Academia Muscle', 'Carlos Perez', 'carlos@muscle.com', 'converted', 3000, '20/04/2026')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO clients (id, name, status, monthly_value, renewal_date, contact_email, assigned_designer_id, partner_id, designer_payout) VALUES
+('c1', 'Global Fitness', 'active', 3500, '10/05/2026', 'mkt@globalfitness.com', 'u2', 'part1', 450),
+('c2', 'Eco Vida', 'active', 2800, '01/06/2026', 'contato@ecovida.org', 'u3', 'part2', 380)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO receivables (id, client_id, description, amount, due_date, status, designer_id, payout_amount) VALUES
+('r1', 'c1', 'Mensalidade Abril', 3500, '25/04/2026', 'pending', 'u2', 450),
+('r2', 'c2', 'Campanha Orgânica', 1500, '10/04/2026', 'paid', 'u3', 380),
+('r3', 'c1', 'Extra Social Media', 800, '05/05/2026', 'pending', 'u2', 100)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO art_orders (id, title, client_id, designer_id, deadline, priority, progress, status, approval_status) VALUES
+('a1', 'Post Instagram - Promoção Maio', 'c1', 'u2', '22/04/2026', 'high', 65, 'production', 'pending'),
+('a2', 'Banner Site - Verão', 'c2', 'u3', '25/04/2026', 'medium', 20, 'queue', 'pending'),
+('a3', 'Logo Refresh', 'c1', 'u2', '30/04/2026', 'low', 100, 'done', 'approved')
 ON CONFLICT (id) DO NOTHING;

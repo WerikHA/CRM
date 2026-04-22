@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
+import fs from "fs";
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -10,9 +11,40 @@ const __dirname = path.dirname(__filename);
 
 // Database Pool Configuration
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://user:password@localhost:5432/agencyflow",
-  ssl: process.env.NODE_ENV === "production" ? false : false, // Adjust if using managed postgres (e.g. RDS)
+  connectionString: process.env.DATABASE_URL || "postgresql://agency_admin:agency_secure_password@45.167.187.80:5432/agencyflow_db",
+  connectionTimeoutMillis: 10000, // Increased timeout for external server
 });
+
+// Mock database fallback for environments without Postgres (like AI Studio preview)
+let useFallback = false;
+const mockData: any = {
+  users: [],
+  partners: [],
+  clients: [],
+  leads: [],
+  art_orders: [],
+  receivables: [],
+  partner_requests: []
+};
+
+async function initDb() {
+  try {
+    const client = await pool.connect();
+    console.log("✅ Conectado ao banco de datos PostgreSQL");
+    const initSql = fs.readFileSync(path.join(__dirname, "db", "init.sql"), "utf-8");
+    await client.query(initSql);
+    client.release();
+    console.log("✅ Banco de dados inicializado com sucesso");
+  } catch (err) {
+    console.error("❌ Erro ao conectar ou inicializar banco de dados:", (err as Error).message);
+    console.warn("⚠️ Usando fallback em memória para desenvolvimento...");
+    useFallback = true;
+    
+    // Tenta carregar dados iniciais básicos do SQL para o mock (opcional/simplificado)
+    // Para simplificar, vamos deixar os arrays vazios ou carregar do constants.ts se fosse possível importar aqui
+    // Mas como o server.ts é executado de forma independente, vamos apenas garantir que não quebre.
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -20,21 +52,101 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Test Database Connection
-  try {
-    const client = await pool.connect();
-    console.log("✅ Conectado ao banco de dados PostgreSQL");
-    client.release();
-  } catch (err) {
-    console.error("❌ Erro ao conectar ao banco de dados:", err);
-  }
+  // Initialize Database
+  await initDb();
 
-  // API placeholders - logic can be expanded here
+  // --- API ROUTES ---
+
+  // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", message: "AgencyFlow API is active" });
   });
 
-  // Vite middleware for development
+  // Users
+  app.get("/api/users", async (req, res) => {
+    try {
+      if (useFallback) return res.json(mockData.users);
+      const result = await pool.query("SELECT * FROM users ORDER BY created_at DESC");
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // Leads
+  app.get("/api/leads", async (req, res) => {
+    try {
+      if (useFallback) return res.json(mockData.leads);
+      const result = await pool.query("SELECT * FROM leads ORDER BY created_at DESC");
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  app.post("/api/leads", async (req, res) => {
+    const { id, company, contact_name, email, phone, source, notes, status, estimated_value, last_contact } = req.body;
+    try {
+      if (useFallback) {
+        const newLead = { id, company, contact_name, email, phone, source, notes, status, estimated_value, last_contact, created_at: new Date() };
+        mockData.leads.push(newLead);
+        return res.json(newLead);
+      }
+      const result = await pool.query(
+        "INSERT INTO leads (id, company, contact_name, email, phone, source, notes, status, estimated_value, last_contact) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
+        [id, company, contact_name, email, phone, source, notes, status, estimated_value, last_contact]
+      );
+      res.json(result.rows[0]);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // Clients
+  app.get("/api/clients", async (req, res) => {
+    try {
+      if (useFallback) return res.json(mockData.clients);
+      const result = await pool.query("SELECT * FROM clients ORDER BY created_at DESC");
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // Finance / Receivables
+  app.get("/api/receivables", async (req, res) => {
+    try {
+      if (useFallback) return res.json(mockData.receivables);
+      const result = await pool.query("SELECT * FROM receivables ORDER BY due_date ASC");
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // Art Orders
+  app.get("/api/art-orders", async (req, res) => {
+    try {
+      if (useFallback) return res.json(mockData.art_orders);
+      const result = await pool.query("SELECT * FROM art_orders ORDER BY deadline ASC");
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // Partners
+  app.get("/api/partners", async (req, res) => {
+    try {
+      if (useFallback) return res.json(mockData.partners);
+      const result = await pool.query("SELECT * FROM partners ORDER BY name ASC");
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // --- Vite / Frontend Serving ---
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -42,7 +154,6 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    // Production serving
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {

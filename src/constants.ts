@@ -36,6 +36,27 @@ export const INITIAL_PARTNER_REQUESTS: PartnerRequest[] = [
 ];
 
 export const INITIAL_INTEGRATIONS: IntegrationConfig[] = [
-  { id: 'i1', service: 'n8n Automações', isActive: false, webhookUrl: '', apiKey: '', accessUrl: 'http://localhost:5678', type: 'generic' },
-  { id: 'i2', service: 'WhatsApp API Oficial', isActive: false, webhookUrl: '', apiKey: '', accessUrl: 'https://developers.facebook.com', type: 'whatsapp', whatsappConfig: { phoneNumberId: '', accessToken: '', businessAccountId: '' } },
+  { 
+    id: 'i1', 
+    service: 'n8n Automações', 
+    isActive: true, 
+    webhookUrl: 'https://n8n.seu-servidor.com/webhook/agencyflow-leads', 
+    apiKey: 'sk_live_n8n_prod_agency_config', 
+    accessUrl: 'http://45.167.187.80:5678', 
+    type: 'generic' 
+  },
+  { 
+    id: 'i2', 
+    service: 'WhatsApp API Oficial', 
+    isActive: true, 
+    webhookUrl: 'https://graph.facebook.com/v17.0/', 
+    apiKey: '', 
+    accessUrl: 'https://developers.facebook.com', 
+    type: 'whatsapp', 
+    whatsappConfig: { 
+      phoneNumberId: '10928374650192', 
+      accessToken: 'EAAG...ZW0Z', 
+      businessAccountId: '2938475601928' 
+    } 
+  },
 ];
