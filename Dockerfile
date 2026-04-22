@@ -16,6 +16,7 @@ RUN npm install --production
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.ts ./
 COPY --from=builder /app/tsconfig.json ./
+COPY --from=builder /app/db ./db
 
 # Install tsx for running typescript server in production if needed, 
 # or pre-compile it. We will use tsx as per package.json.

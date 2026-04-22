@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
@@ -27,22 +26,27 @@ const mockData: any = {
   partner_requests: []
 };
 
-async function initDb() {
-  try {
-    const client = await pool.connect();
-    console.log("✅ Conectado ao banco de datos PostgreSQL");
-    const initSql = fs.readFileSync(path.join(__dirname, "db", "init.sql"), "utf-8");
-    await client.query(initSql);
-    client.release();
-    console.log("✅ Banco de dados inicializado com sucesso");
-  } catch (err) {
-    console.error("❌ Erro ao conectar ou inicializar banco de dados:", (err as Error).message);
-    console.warn("⚠️ Usando fallback em memória para desenvolvimento...");
-    useFallback = true;
-    
-    // Tenta carregar dados iniciais básicos do SQL para o mock (opcional/simplificado)
-    // Para simplificar, vamos deixar os arrays vazios ou carregar do constants.ts se fosse possível importar aqui
-    // Mas como o server.ts é executado de forma independente, vamos apenas garantir que não quebre.
+async function initDb(retries = 5) {
+  while (retries > 0) {
+    try {
+      const client = await pool.connect();
+      console.log("✅ Conectado ao banco de dados PostgreSQL");
+      const initSql = fs.readFileSync(path.join(__dirname, "db", "init.sql"), "utf-8");
+      await client.query(initSql);
+      client.release();
+      console.log("✅ Banco de dados inicializado com sucesso");
+      return;
+    } catch (err) {
+      retries--;
+      console.error(`❌ Erro ao conectar ao banco de dados (${5 - retries}/5):`, (err as Error).message);
+      if (retries === 0) {
+        console.warn("⚠️ Usando fallback em memória para desenvolvimento...");
+        useFallback = true;
+      } else {
+        console.log("Retentando em 3 segundos...");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
   }
 }
 
@@ -146,8 +150,9 @@ async function startServer() {
     }
   });
 
-  // --- Vite / Frontend Serving ---
+  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
