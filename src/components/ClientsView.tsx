@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { Search, Plus, Filter, MoreVertical, LayoutGrid, List, MessageSquare, ExternalLink, Trash2, Phone } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Client, ClientStatus } from '../types';
+import { Client, ClientStatus, User, Partner } from '../types';
 import Modal from './Modal';
 
 interface ClientsViewProps {
   clients: Client[];
   setClients: React.Dispatch<React.SetStateAction<Client[]>>;
+  users: User[];
+  partners: Partner[];
 }
 
-export default function ClientsView({ clients, setClients }: ClientsViewProps) {
+export default function ClientsView({ clients, setClients, users, partners }: ClientsViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [formData, setFormData] = useState<Partial<Client>>({
@@ -17,9 +19,14 @@ export default function ClientsView({ clients, setClients }: ClientsViewProps) {
     contactEmail: '',
     phone: '',
     monthlyValue: 0,
-    renewalDate: '',
-    status: 'active'
+    renewlDate: '',
+    status: 'active',
+    assignedDesignerId: '',
+    partnerId: '',
+    designerPayout: 0
   });
+
+  const designers = users.filter(u => u.role === 'DESIGNER');
 
   const handleAddClient = () => {
     setEditingClient(null);
@@ -29,7 +36,10 @@ export default function ClientsView({ clients, setClients }: ClientsViewProps) {
       phone: '',
       monthlyValue: 0,
       renewalDate: new Date().toLocaleDateString('pt-BR'),
-      status: 'active'
+      status: 'active',
+      assignedDesignerId: '',
+      partnerId: '',
+      designerPayout: 0
     });
     setIsModalOpen(true);
   };
@@ -228,6 +238,44 @@ export default function ClientsView({ clients, setClients }: ClientsViewProps) {
                 <option value="paused">Pausado</option>
                 <option value="former">Encerrado</option>
               </select>
+            </div>
+
+            <div className="col-span-2 pt-4 border-t border-gray-100">
+              <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-4">Atribuições e Parcerias</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Designer Responsável</label>
+                  <select 
+                    value={formData.assignedDesignerId}
+                    onChange={e => setFormData({...formData, assignedDesignerId: e.target.value})}
+                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+                  >
+                    <option value="">Nenhum</option>
+                    {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Payout do Designer (R$)</label>
+                  <input 
+                    type="number" 
+                    value={formData.designerPayout}
+                    onChange={e => setFormData({...formData, designerPayout: Number(e.target.value)})}
+                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+                    placeholder="Valor fixo por mês"
+                  />
+                </div>
+                <div className="col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Agência Parceira (Referência)</label>
+                  <select 
+                    value={formData.partnerId}
+                    onChange={e => setFormData({...formData, partnerId: e.target.value})}
+                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+                  >
+                    <option value="">Venda Direta (Sem Parceiro)</option>
+                    {partners.map(p => <option key={p.id} value={p.id}>{p.agencyName} ({p.name})</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
         </form>

@@ -1,3 +1,13 @@
+export type UserRole = 'ADMIN' | 'DESIGNER' | 'PARTNER';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  avatar?: string;
+}
+
 export type LeadStatus = 'prospect' | 'negotiation' | 'converted' | 'lost';
 export type ClientStatus = 'active' | 'paused' | 'former';
 export type PaymentStatus = 'pending' | 'paid' | 'overdue';
@@ -26,6 +36,9 @@ export interface Client {
   renewalDate: string; // dd/mm/aaaa
   contactEmail: string;
   phone?: string;
+  assignedDesignerId?: string; // Designer responsável
+  partnerId?: string; // Parceiro que trouxe o cliente
+  designerPayout?: number; // Quanto o designer ganha por este cliente
 }
 
 export interface Receivable {
@@ -35,13 +48,16 @@ export interface Receivable {
   amount: number;
   dueDate: string; // dd/mm/aaaa
   status: PaymentStatus;
+  designerId?: string; // Designer que receberá parte deste valor
+  payoutAmount?: number; // Valor do payout específico
 }
 
 export interface ArtOrder {
   id: string;
   title: string;
   clientId: string;
-  designer: string;
+  designerId: string; // ID do designer atribuído
+  designerName?: string; // Nome cacheado para facilidade
   deadline: string; // dd/mm/aaaa
   priority: 'low' | 'medium' | 'high';
   progress: number; // 0-100
@@ -52,10 +68,23 @@ export interface ArtOrder {
 
 export type PartnerRequestStatus = 'pending' | 'ongoing' | 'completed' | 'requested' | 'delivered';
 
+export interface Partner {
+  id: string;
+  name: string;
+  agencyName: string;
+  email: string;
+  phone?: string;
+  whatsapp?: string;
+  commissionType: 'fixed' | 'percentage';
+  commissionValue: number;
+}
+
 export interface PartnerRequest {
   id: string;
-  partnerName: string;
+  partnerId: string;
+  partnerName?: string;
   serviceType: string;
+  clientName: string;
   cost: number;
   status: PartnerRequestStatus;
   relatedOrderId?: string;

@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  agencyflow-app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    volumes:
+      - .:/app
+      - /app/node_modules
+    restart: always
+
+# Futuramente você pode adicionar um serviço de banco de dados aqui
+# db:
+#   image: postgres:15
+#   environment:
+#     POSTGRES_PASSWORD: sua_senha_forte
+#     POSTGRES_DB: agencyflow_db

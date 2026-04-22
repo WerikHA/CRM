@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Palette, Clock, CheckCircle2, AlertCircle, Plus, Send, User, Trash2, ArrowUpCircle, Filter, MessageSquare, Check, X as XIcon, RefreshCcw } from 'lucide-react';
+import { Palette, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, ArrowUpCircle, Filter, MessageSquare, Check, X as XIcon, RefreshCcw } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { ArtOrder, Client, WorkStatus, IntegrationConfig, ApprovalStatus } from '../types';
+import { ArtOrder, Client, WorkStatus, IntegrationConfig, ApprovalStatus, User } from '../types';
 import Modal from './Modal';
 
 interface DesignViewProps {
@@ -10,21 +10,33 @@ interface DesignViewProps {
   clients: Client[];
   holidays: { date: string; name: string }[];
   integrations: IntegrationConfig[];
+  users: User[];
+  currentUser: any; // User type
 }
 
-export default function DesignView({ artOrders, setArtOrders, clients, holidays, integrations }: DesignViewProps) {
+export default function DesignView({ artOrders, setArtOrders, clients, holidays, integrations, users, currentUser }: DesignViewProps) {
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<ArtOrder | null>(null);
   const [formData, setFormData] = useState<Partial<ArtOrder>>({
     title: '',
     clientId: '',
-    designer: '',
+    designerId: '',
+    designerName: '',
     deadline: '',
     priority: 'medium',
     progress: 0,
     status: 'queue'
   });
+
+  const isDesigner = currentUser.role === 'DESIGNER';
+  const isAdmin = currentUser.role === 'ADMIN';
+
+  const designers = users.filter(u => u.role === 'DESIGNER');
+
+  const filteredOrders = isDesigner 
+    ? artOrders.filter(o => o.designerId === currentUser.id)
+    : artOrders;
 
   const whatsappIntegration = integrations.find(i => i.type === 'whatsapp' && i.isActive);
 
@@ -63,7 +75,8 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
     setFormData({
       title: '',
       clientId: clients[0].id,
-      designer: 'Designer Principal',
+      designerId: designers[0]?.id || '',
+      designerName: designers[0]?.name || '',
       deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
       priority: 'medium',
       progress: 0,
@@ -169,7 +182,7 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {['queue', 'production', 'review', 'done'].map((status) => {
-          const count = artOrders.filter(o => o.status === status).length;
+          const count = filteredOrders.filter(o => o.status === status).length;
           return (
             <div key={status} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between transition-all duration-300">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">{getStatusLabel(status)}</span>
@@ -196,7 +209,7 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 grid grid-cols-1 gap-6">
-          {artOrders.map((order) => {
+          {filteredOrders.map((order) => {
             const client = clients.find(c => c.id === order.clientId);
           return (
             <div 
@@ -238,8 +251,8 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
 
               <div className="flex flex-wrap items-center gap-4 py-4 border-y border-gray-50 mb-4 transition-colors">
                 <div className="flex items-center gap-2 text-gray-500">
-                  <User size={14} />
-                  <span className="text-xs font-semibold">{order.designer}</span>
+                  <UserIcon size={14} />
+                  <span className="text-xs font-semibold">{order.designerName || 'Sem Responsável'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-gray-400">
                   <Clock size={14} />
@@ -376,13 +389,17 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Responsável</label>
-                  <input 
-                    type="text" 
-                    value={formData.designer}
-                    onChange={e => setFormData({...formData, designer: e.target.value})}
-                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 shadow-sm"
-                    placeholder="Nome do designer"
-                  />
+                  <select 
+                    value={formData.designerId}
+                    onChange={e => {
+                      const d = designers.find(u => u.id === e.target.value);
+                      setFormData({...formData, designerId: e.target.value, designerName: d?.name || ''});
+                    }}
+                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm"
+                  >
+                    <option value="">Selecione um designer...</option>
+                    {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Prazo</label>
@@ -459,12 +476,12 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
           </div>
           <div>
             <h4 className="text-indigo-600 text-xs font-bold uppercase tracking-widest mb-2">Capacidade Atual</h4>
-            <p className="text-3xl font-bold tracking-tight text-gray-900">{Math.round((artOrders.filter(o => o.status !== 'done').length / (artOrders.length || 1)) * 100)}%</p>
+            <p className="text-3xl font-bold tracking-tight text-gray-900">{Math.round((filteredOrders.filter(o => o.status !== 'done').length / (filteredOrders.length || 1)) * 100)}%</p>
             <p className="text-gray-500 text-xs mt-1 font-medium italic">Fluxo de trabalho baseado em pedidos ativos</p>
           </div>
           <div>
             <h4 className="text-indigo-600 text-xs font-bold uppercase tracking-widest mb-2">Pendência de Aprovação</h4>
-            <p className="text-3xl font-bold tracking-tight text-gray-900">{artOrders.filter(o => o.status === 'review').length} Artes</p>
+            <p className="text-3xl font-bold tracking-tight text-gray-900">{filteredOrders.filter(o => o.status === 'review').length} Artes</p>
             <p className="text-gray-500 text-xs mt-1 font-medium italic">Aguardando feedback do cliente (WPP)</p>
           </div>
         </div>

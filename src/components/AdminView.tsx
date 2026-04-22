@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { IntegrationConfig, Lead, Client, ArtOrder, Receivable } from '../types';
+import { IntegrationConfig, Lead, Client, ArtOrder, Receivable, User } from '../types';
 
 interface AdminViewProps {
   integrations: IntegrationConfig[];
@@ -10,6 +10,7 @@ interface AdminViewProps {
   clients?: Client[];
   artOrders?: ArtOrder[];
   receivables?: Receivable[];
+  users: User[];
 }
 
 export default function AdminView({ 
@@ -18,8 +19,10 @@ export default function AdminView({
   leads = [],
   clients = [],
   artOrders = [],
-  receivables = []
+  receivables = [],
+  users
 }: AdminViewProps) {
+  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database'>('integrations');
   const [copied, setCopied] = useState<string | null>(null);
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditResults, setAuditResults] = useState<any>(null);
@@ -159,24 +162,43 @@ export default function AdminView({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Sidebar Mini-nav */}
         <div className="space-y-2">
-          <button className="w-full flex items-center gap-3 p-3 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-sm text-left transition-colors">
+          <button 
+            onClick={() => setActiveSubTab('integrations')}
+            className={cn(
+              "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-colors",
+              activeSubTab === 'integrations' ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-50"
+            )}
+          >
             <Link size={18} /> Integrações n8n / Zapier
           </button>
-          <button className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-600 hover:bg-gray-50 font-semibold text-sm text-left transition-colors">
-            <Shield size={18} /> Permissões de Usuário
+          <button 
+            onClick={() => setActiveSubTab('users')}
+            className={cn(
+              "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-colors",
+              activeSubTab === 'users' ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-50"
+            )}
+          >
+            <Shield size={18} /> Membros da Equipe
           </button>
-          <button className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-600 hover:bg-gray-50 font-semibold text-sm text-left transition-colors">
+          <button 
+            onClick={() => setActiveSubTab('database')}
+            className={cn(
+              "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-colors",
+              activeSubTab === 'database' ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-50"
+            )}
+          >
             <Database size={18} /> Backup & Banco de Dados
           </button>
-          <button className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-600 hover:bg-gray-50 font-semibold text-sm text-left transition-colors">
+          <button className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-600 hover:bg-gray-50 font-semibold text-sm text-left transition-colors opacity-50 cursor-not-allowed">
             <Globe size={18} /> White-label & Domínio
           </button>
         </div>
 
         {/* Content Area */}
         <div className="lg:col-span-2 space-y-6">
-          {integrations.map((integration) => (
+          {activeSubTab === 'integrations' && integrations.map((integration) => (
             <div key={integration.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden transition-colors duration-300">
+               {/* ... rest of integration card ... */}
               <div className="p-6 border-b border-gray-50 bg-gray-50/30 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center text-gray-900 shadow-sm transition-colors duration-300">
@@ -314,16 +336,75 @@ export default function AdminView({
             </div>
           ))}
 
-          <div className="bg-amber-50 rounded-3xl p-6 border border-amber-100 flex items-start gap-4 transition-colors">
-             <div className="p-2 bg-white rounded-xl text-amber-600 shadow-sm transition-colors"><Database size={20} /></div>
-             <div className="space-y-1">
-                <h4 className="font-bold text-amber-900">Auto-Hospedagem Docker</h4>
-                <p className="text-sm text-amber-800/70 leading-relaxed">
-                  Seu banco de dados PostgreSQL está sendo executado em modo persistente. 
-                  Para exportar seus dados, utilize o comando <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-xs">docker exec crm-db pg_dump</code>.
-                </p>
-             </div>
-          </div>
+          {activeSubTab === 'users' && (
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-gray-50 flex items-center justify-between">
+                <h3 className="font-bold text-gray-900">Usuários Ativos</h3>
+                <button className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-colors">
+                   <Plus size={14} /> Convidar Membro
+                </button>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {users.map(user => (
+                  <div key={user.id} className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                        {user.name.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900">{user.name}</p>
+                        <p className="text-xs text-gray-400">{user.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                       <span className={cn(
+                         "px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border",
+                         user.role === 'ADMIN' ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
+                         user.role === 'DESIGNER' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                         "bg-emerald-50 text-emerald-600 border-emerald-100"
+                       )}>
+                         {user.role}
+                       </span>
+                       <button className="p-2 text-gray-300 hover:text-gray-500 transition-colors"><MoreHorizontal size={16} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeSubTab === 'database' && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center">
+                 <div className="w-16 h-16 rounded-3xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto mb-4">
+                    <Database size={32} />
+                 </div>
+                 <h3 className="font-bold text-gray-900 text-xl mb-2">Monitoramento de Postgres</h3>
+                 <p className="text-gray-500 text-sm max-w-sm mx-auto mb-8">
+                    Seu banco de dados está sincronizado e operando em um container Docker isolado. Backups automáticos ocorrem a cada 24 horas.
+                 </p>
+                 <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
+                    <button className="px-6 py-3 bg-white border border-gray-100 rounded-2xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all flex items-center justify-center gap-2">
+                       <Download size={16} /> Exportar SQL
+                    </button>
+                    <button className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm">
+                       Forçar Snapshot
+                    </button>
+                 </div>
+              </div>
+
+              <div className="bg-amber-50 rounded-3xl p-6 border border-amber-100 flex items-start gap-4 transition-colors">
+                <div className="p-2 bg-white rounded-xl text-amber-600 shadow-sm transition-colors"><Database size={20} /></div>
+                <div className="space-y-1">
+                    <h4 className="font-bold text-amber-900">Auto-Hospedagem Docker</h4>
+                    <p className="text-sm text-amber-800/70 leading-relaxed">
+                      Seu banco de dados PostgreSQL está sendo executado em modo persistente. 
+                      Para exportar seus dados, utilize o comando <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-xs">docker exec crm-db pg_dump</code>.
+                    </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

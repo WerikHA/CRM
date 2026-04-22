@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { DollarSign, Download, Printer, Filter, ArrowDownToLine, MoreHorizontal, AlertCircle, CheckCircle2, Plus, Trash2, Edit } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Client, Receivable, ReceivableStatus } from '../types';
+import { Client, Receivable, ReceivableStatus, User } from '../types';
 import Modal from './Modal';
 
 interface FinanceViewProps {
   receivables: Receivable[];
   setReceivables: React.Dispatch<React.SetStateAction<Receivable[]>>;
   clients: Client[];
+  currentUser: User;
 }
 
-export default function FinanceView({ receivables, setReceivables, clients }: FinanceViewProps) {
+export default function FinanceView({ receivables, setReceivables, clients, currentUser }: FinanceViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingReceivable, setEditingReceivable] = useState<Receivable | null>(null);
   const [formData, setFormData] = useState<Partial<Receivable>>({
@@ -20,10 +21,17 @@ export default function FinanceView({ receivables, setReceivables, clients }: Fi
     dueDate: '',
     status: 'pending'
   });
+  
+  const isDesigner = currentUser.role === 'DESIGNER';
+  const isAdmin = currentUser.role === 'ADMIN';
 
-  const received = receivables.filter(r => r.status === 'paid').reduce((acc, r) => acc + r.amount, 0);
-  const toReceive = receivables.filter(r => r.status === 'pending').reduce((acc, r) => acc + r.amount, 0);
-  const overdue = receivables.filter(r => r.status === 'overdue').reduce((acc, r) => acc + r.amount, 0);
+  const filteredReceivables = isDesigner 
+    ? receivables.filter(r => r.designerId === currentUser.id)
+    : receivables;
+
+  const totalAmount = filteredReceivables.filter(r => r.status === 'paid').reduce((acc, r) => acc + (isDesigner ? (r.payoutAmount || 0) : r.amount), 0);
+  const totalPending = filteredReceivables.filter(r => r.status === 'pending').reduce((acc, r) => acc + (isDesigner ? (r.payoutAmount || 0) : r.amount), 0);
+  const totalOverdue = filteredReceivables.filter(r => r.status === 'overdue').reduce((acc, r) => acc + (isDesigner ? (r.payoutAmount || 0) : r.amount), 0);
 
   const handleAddReceivable = () => {
     setEditingReceivable(null);
@@ -86,23 +94,23 @@ export default function FinanceView({ receivables, setReceivables, clients }: Fi
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CheckCircle2 size={18} /></div>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Recebido (Mês)</span>
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner ? 'Recebido' : 'Receita Total'}</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900">R$ {received.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-gray-900">R$ {totalAmount.toLocaleString()}</p>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><DollarSign size={18} /></div>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">A Receber</span>
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner ? 'A Receber' : 'Pendentes'}</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900">R$ {toReceive.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-gray-900">R$ {totalPending.toLocaleString()}</p>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-rose-50 text-rose-600 rounded-lg"><AlertCircle size={18} /></div>
             <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Em Atraso</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900">R$ {overdue.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-gray-900">R$ {totalOverdue.toLocaleString()}</p>
         </div>
       </div>
 
@@ -128,10 +136,11 @@ export default function FinanceView({ receivables, setReceivables, clients }: Fi
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {receivables.map((r) => {
+              {filteredReceivables.map((r) => {
                 const client = clients.find(c => c.id === r.clientId);
+                const displayAmount = isDesigner ? (r.payoutAmount || 0) : r.amount;
                 return (
-                  <tr key={r.id} className="hover:bg-gray-50/80 transition-colors group cursor-pointer" onClick={() => handleEditReceivable(r)}>
+                  <tr key={r.id} className="hover:bg-gray-50/80 transition-colors group cursor-pointer" onClick={() => isAdmin && handleEditReceivable(r)}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 font-bold text-[10px] transition-colors">
@@ -142,33 +151,46 @@ export default function FinanceView({ receivables, setReceivables, clients }: Fi
                     </td>
                     <td className="px-6 py-4 text-xs font-medium text-gray-500">{r.description}</td>
                     <td className="px-6 py-4 text-xs font-medium text-gray-500">{r.dueDate}</td>
-                    <td className="px-6 py-4 text-sm font-bold text-gray-900">R$ {r.amount.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-gray-900">R$ {displayAmount.toLocaleString()}</td>
                     <td className="px-6 py-4">
-                      <select 
-                        value={r.status}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          setReceivables(prev => prev.map(item => item.id === r.id ? { ...item, status: e.target.value as any } : item));
-                        }}
-                        className={cn(
-                          "inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-colors bg-transparent border focus:outline-none",
-                          r.status === 'paid' ? "border-emerald-100 text-emerald-600" : 
-                          r.status === 'overdue' ? "border-rose-100 text-rose-600" : 
-                          "border-amber-100 text-amber-600"
-                        )}
-                      >
-                        <option value="paid">Pago</option>
-                        <option value="pending">Pendente</option>
-                        <option value="overdue">Atrasado</option>
-                      </select>
+                      {isAdmin ? (
+                        <select 
+                          value={r.status}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            setReceivables(prev => prev.map(item => item.id === r.id ? { ...item, status: e.target.value as any } : item));
+                          }}
+                          className={cn(
+                            "inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-colors bg-transparent border focus:outline-none",
+                            r.status === 'paid' ? "border-emerald-100 text-emerald-600" : 
+                            r.status === 'overdue' ? "border-rose-100 text-rose-600" : 
+                            "border-amber-100 text-amber-600"
+                          )}
+                        >
+                          <option value="paid">Pago</option>
+                          <option value="pending">Pendente</option>
+                          <option value="overdue">Atrasado</option>
+                        </select>
+                      ) : (
+                        <span className={cn(
+                          "inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider border",
+                          r.status === 'paid' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
+                          r.status === 'overdue' ? "bg-rose-50 text-rose-600 border-rose-100" : 
+                          "bg-amber-50 text-amber-600 border-amber-100"
+                        )}>
+                          {r.status === 'paid' ? 'Recebido' : r.status === 'overdue' ? 'Atrasado' : 'A Receber'}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeleteReceivable(r.id); }}
-                        className="p-1.5 hover:bg-rose-50 rounded-lg text-gray-300 hover:text-rose-500 transition-all font-bold"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                       {isAdmin && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeleteReceivable(r.id); }}
+                          className="p-1.5 hover:bg-rose-50 rounded-lg text-gray-300 hover:text-rose-500 transition-all font-bold"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                       )}
                     </td>
                   </tr>
                 );

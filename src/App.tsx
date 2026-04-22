@@ -29,10 +29,12 @@ import {
   INITIAL_CLIENTS, 
   INITIAL_RECEIVABLES, 
   INITIAL_ART_ORDERS, 
-  INITIAL_PARTNERS, 
-  INITIAL_INTEGRATIONS 
+  INITIAL_PARTNER_REQUESTS, 
+  INITIAL_INTEGRATIONS,
+  INITIAL_USERS,
+  INITIAL_PARTNERS_LIST
 } from './constants';
-import { Lead, Client, Receivable, ArtOrder, PartnerRequest, IntegrationConfig, Theme } from './types';
+import { Lead, Client, Receivable, ArtOrder, PartnerRequest, IntegrationConfig, User, Partner } from './types';
 
 // Views
 import DashboardView from './components/DashboardView';
@@ -58,31 +60,28 @@ const VIEW_LABELS: Record<ViewType, string> = {
 export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]); // Padrão: Admin
 
   // Global State
   const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
   const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
   const [receivables, setReceivables] = useState<Receivable[]>(INITIAL_RECEIVABLES);
   const [artOrders, setArtOrders] = useState<ArtOrder[]>(INITIAL_ART_ORDERS);
-  const [partners, setPartners] = useState<PartnerRequest[]>(INITIAL_PARTNERS);
+  const [partnerRequests, setPartnerRequests] = useState<PartnerRequest[]>(INITIAL_PARTNER_REQUESTS);
+  const [partners, setPartners] = useState<Partner[]>(INITIAL_PARTNERS_LIST);
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>(INITIAL_INTEGRATIONS);
+  const [holidays] = useState([{ date: '21/04/2026', name: 'Tiradentes' }]);
 
-  // Holidays (April 2026) - dd/mm/aaaa
-  const holidays = useMemo(() => [
-    { date: '03/04/2026', name: 'Sexta-feira Santa' },
-    { date: '05/04/2026', name: 'Páscoa' },
-    { date: '21/04/2026', name: 'Tiradentes' },
-  ], []);
-
+  // Filtro de Menu baseado no cargo
   const menuItems = [
-    { id: 'dashboard', label: 'Painel', icon: LineChart },
-    { id: 'leads', label: 'Leads', icon: TrendingUp },
-    { id: 'clients', label: 'Clientes', icon: Users },
-    { id: 'finance', label: 'Financeiro', icon: DollarSign },
-    { id: 'design', label: 'Design', icon: Palette },
-    { id: 'partners', label: 'Parceiros', icon: Handshake },
-    { id: 'admin', label: 'Configurações', icon: Settings },
-  ];
+    { id: 'dashboard', label: 'Painel', icon: LineChart, roles: ['ADMIN', 'DESIGNER', 'PARTNER'] },
+    { id: 'leads', label: 'Leads', icon: TrendingUp, roles: ['ADMIN'] },
+    { id: 'clients', label: 'Clientes', icon: Users, roles: ['ADMIN'] },
+    { id: 'finance', label: 'Financeiro', icon: DollarSign, roles: ['ADMIN', 'DESIGNER'] },
+    { id: 'design', label: 'Design', icon: Palette, roles: ['ADMIN', 'DESIGNER'] },
+    { id: 'partners', label: 'Parceiros', icon: Handshake, roles: ['ADMIN', 'PARTNER'] },
+    { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN'] },
+  ].filter(item => item.roles.includes(currentUser.role));
 
   const renderView = () => {
     switch (activeView) {
@@ -93,6 +92,7 @@ export default function App() {
           receivables={receivables} 
           artOrders={artOrders} 
           onViewChange={setActiveView}
+          currentUser={currentUser}
         />;
       case 'leads': 
         return <LeadsView 
@@ -103,12 +103,15 @@ export default function App() {
         return <ClientsView 
           clients={clients} 
           setClients={setClients} 
+          users={INITIAL_USERS}
+          partners={partners}
         />;
       case 'finance': 
         return <FinanceView 
           receivables={receivables} 
           setReceivables={setReceivables} 
           clients={clients}
+          currentUser={currentUser}
         />;
       case 'design': 
         return <DesignView 
@@ -117,11 +120,16 @@ export default function App() {
           clients={clients}
           holidays={holidays}
           integrations={integrations}
+          currentUser={currentUser}
+          users={INITIAL_USERS}
         />;
       case 'partners': 
         return <PartnersView 
-          partners={partners} 
-          setPartners={setPartners} 
+          partnerRequests={partnerRequests} 
+          setPartnerRequests={setPartnerRequests}
+          partners={partners}
+          setPartners={setPartners}
+          currentUser={currentUser}
         />;
       case 'admin': 
         return <AdminView 
@@ -131,8 +139,9 @@ export default function App() {
           clients={clients}
           artOrders={artOrders}
           receivables={receivables}
+          users={INITIAL_USERS}
         />;
-      default: return <DashboardView leads={leads} clients={clients} receivables={receivables} artOrders={artOrders} />;
+      default: return <DashboardView leads={leads} clients={clients} receivables={receivables} artOrders={artOrders} currentUser={currentUser} />;
     }
   };
 
@@ -192,15 +201,31 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-gray-100">
+        <div className="p-4 border-t border-gray-100 space-y-3">
+          <select 
+            value={currentUser.id}
+            onChange={(e) => {
+              const user = INITIAL_USERS.find(u => u.id === e.target.value);
+              if (user) {
+                setCurrentUser(user);
+                setActiveView('dashboard');
+              }
+            }}
+            className="w-full text-[10px] font-bold text-indigo-600 bg-indigo-50 border-none rounded-lg p-1 px-2 focus:ring-0 cursor-pointer mb-2"
+          >
+            {INITIAL_USERS.map(u => (
+              <option key={u.id} value={u.id}>Simular: {u.name} ({u.role})</option>
+            ))}
+          </select>
+
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-indigo-100 text-indigo-700 border border-indigo-200">
-              AD
+            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 uppercase">
+              {currentUser.name.substring(0, 2)}
             </div>
             {isSidebarOpen && (
               <div className="flex flex-col">
-                <span className="text-sm font-semibold text-gray-900">Admin Silva</span>
-                <span className="text-[10px] text-gray-400 uppercase tracking-wider">Diretoria</span>
+                <span className="text-sm font-semibold text-gray-900">{currentUser.name}</span>
+                <span className="text-[10px] text-gray-400 uppercase tracking-wider">{currentUser.role}</span>
               </div>
             )}
           </div>
