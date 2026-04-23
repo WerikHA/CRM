@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Palette, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, ArrowUpCircle, Filter, MessageSquare, Check, X as XIcon, RefreshCcw } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Palette, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, ArrowUpCircle, Filter, MessageSquare, Check, X as XIcon, RefreshCcw, Eye, Download, Copy } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { ArtOrder, Client, WorkStatus, IntegrationConfig, ApprovalStatus, User } from '../types';
 import Modal from './Modal';
@@ -16,8 +16,13 @@ interface DesignViewProps {
 
 export default function DesignView({ artOrders, setArtOrders, clients, holidays, integrations, users, currentUser }: DesignViewProps) {
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [designerFilter, setDesignerFilter] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
+  const [selectedBrandClient, setSelectedBrandClient] = useState<Client | null>(null);
   const [editingOrder, setEditingOrder] = useState<ArtOrder | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  
   const [formData, setFormData] = useState<Partial<ArtOrder>>({
     title: '',
     clientId: '',
@@ -31,12 +36,40 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
 
   const isDesigner = currentUser.role === 'DESIGNER';
   const isAdmin = currentUser.role === 'ADMIN';
+  const isPartner = currentUser.role === 'PARTNER';
 
   const designers = users.filter(u => u.role === 'DESIGNER');
 
-  const filteredOrders = isDesigner 
-    ? artOrders.filter(o => o.designerId === currentUser.id)
-    : artOrders;
+  const getDesignerWithLowestLoad = () => {
+    if (designers.length === 0) return { id: '', name: '' };
+    const loadMap = designers.map(d => ({
+      id: d.id,
+      name: d.name,
+      taskCount: artOrders.filter(o => o.designerId === d.id && o.status !== 'done').length
+    }));
+    const best = loadMap.sort((a, b) => a.taskCount - b.taskCount)[0];
+    return { id: best.id, name: best.name };
+  };
+
+  const filteredOrders = useMemo(() => {
+    let orders = artOrders;
+    
+    if (isDesigner) {
+      orders = orders.filter(o => o.designerId === currentUser.id);
+    } else if (isPartner) {
+      // Partners only see orders for clients they brought
+      const partnerClientIds = clients.filter(c => c.partnerId === currentUser.id).map(c => c.id);
+      orders = orders.filter(o => partnerClientIds.includes(o.clientId));
+    }
+
+    return orders.filter(o => designerFilter === 'all' ? true : o.designerId === designerFilter);
+  }, [artOrders, isDesigner, isPartner, currentUser.id, clients, designerFilter]);
+
+  const partnerClients = useMemo(() => {
+    if (isAdmin) return clients;
+    if (isPartner) return clients.filter(c => c.partnerId === currentUser.id);
+    return [];
+  }, [clients, isAdmin, isPartner, currentUser.id]);
 
   const whatsappIntegration = integrations.find(i => i.type === 'whatsapp' && i.isActive);
 
@@ -70,13 +103,19 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
   };
 
   const handleAddOrder = () => {
-    if (clients.length === 0) return;
+    if (partnerClients.length === 0) {
+      alert("Você precisa ter pelo menos um cliente vinculado para solicitar um pedido.");
+      return;
+    }
+
+    const assigned = (isPartner || isAdmin) ? getDesignerWithLowestLoad() : { id: designers[0]?.id || '', name: designers[0]?.name || '' };
+
     setEditingOrder(null);
     setFormData({
       title: '',
-      clientId: clients[0].id,
-      designerId: designers[0]?.id || '',
-      designerName: designers[0]?.name || '',
+      clientId: partnerClients[0].id,
+      designerId: assigned.id,
+      designerName: assigned.name,
       deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
       priority: 'medium',
       progress: 0,
@@ -89,6 +128,20 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
     setEditingOrder(order);
     setFormData(order);
     setIsModalOpen(true);
+  };
+
+  const handleShowBranding = (e: React.MouseEvent, client: Client | undefined) => {
+    e.stopPropagation();
+    if (client) {
+      setSelectedBrandClient(client);
+      setIsBrandModalOpen(true);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopyFeedback(text);
+    setTimeout(() => setCopyFeedback(null), 2000);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -123,7 +176,9 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
 
   const handleDeleteOrder = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setArtOrders(orders => orders.filter(o => o.id !== id));
+    if (window.confirm('Deseja excluir este pedido de arte?')) {
+      setArtOrders(orders => orders.filter(o => o.id !== id));
+    }
   };
 
   const handleSendToWhatsapp = (e: React.MouseEvent, id: string) => {
@@ -171,13 +226,15 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight transition-all duration-300">Workflow de Design</h1>
           <p className="text-sm text-gray-500 font-medium">Acompanhe a produção de artes e aprovações via WhatsApp.</p>
         </div>
-        <button 
-          onClick={handleAddOrder}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-semibold hover:bg-indigo-600 transition-all shadow-[0_4px_12px_rgba(99,102,241,0.15)]"
-        >
-          <Plus size={16} />
-          Novo Pedido
-        </button>
+        {(isPartner || isAdmin) && (
+          <button 
+            onClick={handleAddOrder}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-semibold hover:bg-indigo-600 transition-all shadow-[0_4px_12px_rgba(99,102,241,0.15)]"
+          >
+            <Plus size={16} />
+            Novo Pedido
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -199,10 +256,13 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
         <h2 className="font-bold text-gray-900 transition-colors duration-300">Lista de Tarefas</h2>
         <div className="flex items-center gap-2">
            <Filter size={14} className="text-gray-400" />
-           <select className="bg-transparent text-xs font-bold text-gray-500 border-none focus:ring-0 cursor-pointer transition-colors duration-300">
-              <option>Todos os Designers</option>
-              <option>Ana Silva</option>
-              <option>Marcos Designer</option>
+           <select 
+             value={designerFilter}
+             onChange={(e) => setDesignerFilter(e.target.value)}
+             className="bg-transparent text-xs font-bold text-gray-500 border-none focus:ring-0 cursor-pointer transition-colors duration-300"
+           >
+              <option value="all">Todos os Designers</option>
+              {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
            </select>
         </div>
       </div>
@@ -229,6 +289,13 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                   <p className="text-xs font-medium text-gray-400 italic">Cliente: {client?.name}</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button 
+                    onClick={(e) => handleShowBranding(e, client)}
+                    title="Ver Branding do Cliente"
+                    className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all"
+                  >
+                    <Eye size={16} />
+                  </button>
                   <select 
                     value={order.status}
                     onClick={(e) => e.stopPropagation()}
@@ -384,23 +451,29 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                     onChange={e => setFormData({...formData, clientId: e.target.value})}
                     className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
                   >
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {partnerClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Responsável</label>
-                  <select 
-                    value={formData.designerId}
-                    onChange={e => {
-                      const d = designers.find(u => u.id === e.target.value);
-                      setFormData({...formData, designerId: e.target.value, designerName: d?.name || ''});
-                    }}
-                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm"
-                  >
-                    <option value="">Selecione um designer...</option>
-                    {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
+                 <div className="space-y-1">
+                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Responsável</label>
+                   {isPartner ? (
+                     <div className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 text-sm text-gray-500 font-medium">
+                       Atribuição Automática
+                     </div>
+                   ) : (
+                     <select 
+                       value={formData.designerId}
+                       onChange={e => {
+                         const d = designers.find(u => u.id === e.target.value);
+                         setFormData({...formData, designerId: e.target.value, designerName: d?.name || ''});
+                       }}
+                       className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm"
+                     >
+                       <option value="">Selecione um designer...</option>
+                       {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                     </select>
+                   )}
+                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Prazo</label>
                   <input 
@@ -486,6 +559,84 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
           </div>
         </div>
       </div>
+
+      {/* Brand Modal */}
+      <Modal
+        isOpen={isBrandModalOpen}
+        onClose={() => setIsBrandModalOpen(false)}
+        title={`Identidade Visual: ${selectedBrandClient?.name || 'Cliente'}`}
+        footer={
+          <div className="flex justify-end">
+            <button 
+              onClick={() => setIsBrandModalOpen(false)}
+              className="px-6 py-2 text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl transition-colors shadow-sm"
+            >
+              Fechar Guia
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-8 py-4">
+          {/* Logo Section */}
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+              <Palette size={12} className="text-indigo-500" />
+              Logotipo Principal
+            </h4>
+            <div className="bg-gray-50 rounded-2xl p-8 flex flex-col items-center justify-center border border-dashed border-gray-200 group relative">
+              {selectedBrandClient?.branding?.logo ? (
+                <>
+                  <img src={selectedBrandClient.branding.logo} className="max-h-32 object-contain transition-transform group-hover:scale-105" alt="Logo" />
+                  <a 
+                    href={selectedBrandClient.branding.logo} 
+                    download 
+                    target="_blank"
+                    rel="noreferrer"
+                    className="absolute top-4 right-4 p-2 bg-white rounded-xl shadow-sm text-gray-400 hover:text-indigo-500 transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <Download size={18} />
+                  </a>
+                </>
+              ) : (
+                <p className="text-sm text-gray-400 italic">Nenhuma logo cadastrada para este cliente.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Colors Section */}
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+              <CheckCircle2 size={12} className="text-emerald-500" />
+              Paleta de Cores
+            </h4>
+            <div className="grid grid-cols-5 gap-3">
+              {selectedBrandClient?.branding?.colors?.map((color, idx) => (
+                <button 
+                  key={idx}
+                  onClick={() => copyToClipboard(color)}
+                  className="group flex flex-col gap-2 items-center focus:outline-none"
+                >
+                  <div 
+                    className="w-full aspect-square rounded-2xl border border-gray-100 shadow-sm transition-transform active:scale-95 group-hover:shadow-md relative"
+                    style={{ backgroundColor: color }}
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl">
+                      <Copy size={20} className="text-white" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <span className="text-[9px] font-mono font-bold text-gray-900 uppercase">{color}</span>
+                    {copyFeedback === color && (
+                      <span className="text-[8px] font-bold text-emerald-500 uppercase animate-bounce mt-1">Copiado!</span>
+                    )}
+                  </div>
+                </button>
+              )) || <p className="col-span-5 text-sm text-gray-400 italic text-center">Nenhuma cor definida.</p>}
+            </div>
+            <p className="text-[10px] text-gray-400 text-center italic">Clique no card da cor para copiar o código HEX.</p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

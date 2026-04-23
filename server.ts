@@ -3,6 +3,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
 import fs from "fs";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -17,7 +20,13 @@ const pool = new Pool({
 // Mock database fallback for environments without Postgres (like AI Studio preview)
 let useFallback = false;
 const mockData: any = {
-  users: [],
+  users: [
+    { id: 'u1', name: 'Werik Admin', email: 'admin@agency.com', password: 'admin123', role: 'ADMIN' },
+    { id: 'u2', name: 'Lucas Andrade', email: 'lucas@design.com', password: 'design123', role: 'DESIGNER' },
+    { id: 'u3', name: 'Mariana Costa', email: 'mariana@design.com', password: 'design123', role: 'DESIGNER' },
+    { id: 'u4', name: 'Roberto Financeiro', email: 'finance@agency.com', password: 'finance123', role: 'ADMIN' },
+    { id: 'u5', name: 'Agência Video Pro', email: 'parceiro@videopro.com', password: 'partner123', role: 'PARTNER' }
+  ],
   partners: [],
   clients: [],
   leads: [],
@@ -26,7 +35,7 @@ const mockData: any = {
   partner_requests: []
 };
 
-async function initDb(retries = 5) {
+async function initDb(retries = 2) {
   while (retries > 0) {
     try {
       const client = await pool.connect();
@@ -38,13 +47,13 @@ async function initDb(retries = 5) {
       return;
     } catch (err) {
       retries--;
-      console.error(`❌ Erro ao conectar ao banco de dados (${5 - retries}/5):`, (err as Error).message);
+      console.error(`❌ Erro ao conectar ao banco de dados (${2 - retries}/2):`, (err as Error).message);
       if (retries === 0) {
         console.warn("⚠️ Usando fallback em memória para desenvolvimento...");
         useFallback = true;
       } else {
-        console.log("Retentando em 3 segundos...");
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log("Retentando em 2 segundos...");
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
   }
@@ -66,12 +75,67 @@ async function startServer() {
     res.json({ status: "ok", message: "AgencyFlow API is active" });
   });
 
+  // Authentication
+  app.post("/api/login", async (req, res) => {
+    let { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "E-mail e senha são obrigatórios" });
+    }
+    
+    email = email.trim().toLowerCase();
+    password = password.trim();
+    
+    console.log(`[AUTH] Tentativa de login para: ${email}`);
+    
+    try {
+      if (useFallback) {
+        const user = mockData.users.find((u: any) => u.email.toLowerCase() === email && u.password === password);
+        if (user) {
+          console.log(`[AUTH] Login bem-sucedido (Fallback): ${email}`);
+          const { password: _, ...userWithoutPassword } = user;
+          return res.json({ success: true, user: userWithoutPassword });
+        }
+        console.log(`[AUTH] Falha no login (Fallback): ${email}`);
+        return res.status(401).json({ error: "E-mail ou senha incorretos" });
+      }
+      const result = await pool.query("SELECT id, name, email, role, avatar FROM users WHERE LOWER(email) = $1 AND password = $2", [email, password]);
+      if (result.rows.length > 0) {
+        console.log(`[AUTH] Login bem-sucedido (DB): ${email}`);
+        res.json({ success: true, user: result.rows[0] });
+      } else {
+        console.log(`[AUTH] Falha no login (DB): ${email}`);
+        res.status(401).json({ error: "E-mail ou senha incorretos" });
+      }
+    } catch (err) {
+      console.error(`[AUTH] Erro interno no login:`, err);
+      res.status(500).json({ error: "Erro interno no servidor de autenticação" });
+    }
+  });
+
   // Users
   app.get("/api/users", async (req, res) => {
     try {
       if (useFallback) return res.json(mockData.users);
-      const result = await pool.query("SELECT * FROM users ORDER BY created_at DESC");
+      const result = await pool.query("SELECT id, name, email, role, avatar, created_at FROM users ORDER BY created_at DESC");
       res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  app.post("/api/users", async (req, res) => {
+    const { id, name, email, password, role } = req.body;
+    try {
+      if (useFallback) {
+        const newUser = { id, name, email, password, role, created_at: new Date() };
+        mockData.users.push(newUser);
+        return res.json(newUser);
+      }
+      const result = await pool.query(
+        "INSERT INTO users (id, name, email, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, role, created_at",
+        [id, name, email, password, role]
+      );
+      res.json(result.rows[0]);
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

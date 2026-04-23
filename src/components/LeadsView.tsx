@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Plus, Filter, MoreHorizontal, Mail, LayoutGrid, List, ChevronRight, Info, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Lead, LeadStatus } from '../types';
+import { Lead, LeadStatus, Client } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   DndContext, 
@@ -36,6 +36,7 @@ const statusConfig: Record<LeadStatus, { label: string; color: string; dot: stri
 interface LeadsViewProps {
   leads: Lead[];
   setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
+  setClients: React.Dispatch<React.SetStateAction<Client[]>>;
 }
 
 interface KanbanCardProps {
@@ -107,6 +108,17 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ lead, status, onDelete, onChang
           )}
           <button 
               onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if(lead.phone) window.open(`https://wa.me/${lead.phone.replace(/\D/g, '')}`, '_blank');
+                else if(lead.email) window.open(`mailto:${lead.email}`, '_blank');
+              }}
+              className="p-1 hover:bg-gray-100 text-gray-300 hover:text-indigo-500 rounded transition-colors"
+            >
+              <Mail size={12} />
+          </button>
+          <button 
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); onDelete(lead.id); }}
               className="p-1 hover:bg-rose-50 text-gray-300 hover:text-rose-500 rounded transition-colors"
             >
@@ -176,7 +188,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, onDeleteLead
   );
 };
 
-export default function LeadsView({ leads, setLeads }: LeadsViewProps) {
+export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProps) {
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
@@ -252,11 +264,29 @@ export default function LeadsView({ leads, setLeads }: LeadsViewProps) {
   };
 
   const handleChangeStatus = (id: string, newStatus: LeadStatus) => {
+    const lead = leads.find(l => l.id === id);
+    if (newStatus === 'converted' && lead) {
+      if (window.confirm(`Deseja converter o lead "${lead.company}" em um Cliente ativo automaticamente?`)) {
+        const newClient: Client = {
+          id: 'c-' + Math.random().toString(36).substr(2, 5),
+          name: lead.company,
+          contactEmail: lead.email,
+          phone: lead.phone || '',
+          monthlyValue: lead.estimatedValue,
+          status: 'active',
+          renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
+        };
+        setClients(prev => [...prev, newClient]);
+        alert('Cliente criado com sucesso! Verifique a aba de Clientes.');
+      }
+    }
     setLeads(leads.map(l => l.id === id ? { ...l, status: newStatus } : l));
   };
 
   const handleDeleteLead = (id: string) => {
-    setLeads(leads.filter(l => l.id !== id));
+    if (confirm('Tem certeza que deseja excluir este lead?')) {
+      setLeads(leads.filter(l => l.id !== id));
+    }
   };
 
   function handleDragStart(event: DragStartEvent) {
@@ -417,7 +447,11 @@ export default function LeadsView({ leads, setLeads }: LeadsViewProps) {
                   </td>
                   <td className="px-6 py-4 text-right space-x-2">
                     <button 
-                      onClick={(e) => { e.stopPropagation(); }}
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        if(lead.phone) window.open(`https://wa.me/${lead.phone.replace(/\D/g, '')}`, '_blank');
+                        else if(lead.email) window.open(`mailto:${lead.email}`, '_blank');
+                      }}
                       className="p-2 hover:bg-white rounded-lg text-gray-400 hover:text-indigo-600 transition-colors"
                     >
                       <Mail size={16} />

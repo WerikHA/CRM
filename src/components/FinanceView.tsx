@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { DollarSign, Download, Printer, Filter, ArrowDownToLine, MoreHorizontal, AlertCircle, CheckCircle2, Plus, Trash2, Edit } from 'lucide-react';
+import { DollarSign, Download, Printer, Filter, ArrowDownToLine, MoreHorizontal, AlertCircle, CheckCircle2, Plus, Trash2, Edit, PieChart as PieChartIcon, BarChart3, Users } from 'lucide-react';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { cn } from '../lib/utils';
 import { Client, Receivable, ReceivableStatus, User } from '../types';
 import Modal from './Modal';
@@ -22,16 +23,51 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     status: 'pending'
   });
   
+  const [filter, setFilter] = useState<ReceivableStatus | 'all'>('all');
+  
   const isDesigner = currentUser.role === 'DESIGNER';
   const isAdmin = currentUser.role === 'ADMIN';
 
-  const filteredReceivables = isDesigner 
+  const filteredReceivables = (isDesigner 
     ? receivables.filter(r => r.designerId === currentUser.id)
-    : receivables;
+    : receivables).filter(r => filter === 'all' ? true : r.status === filter);
 
   const totalAmount = filteredReceivables.filter(r => r.status === 'paid').reduce((acc, r) => acc + (isDesigner ? (r.payoutAmount || 0) : r.amount), 0);
   const totalPending = filteredReceivables.filter(r => r.status === 'pending').reduce((acc, r) => acc + (isDesigner ? (r.payoutAmount || 0) : r.amount), 0);
   const totalOverdue = filteredReceivables.filter(r => r.status === 'overdue').reduce((acc, r) => acc + (isDesigner ? (r.payoutAmount || 0) : r.amount), 0);
+
+  const chartData = [
+    { name: 'Pago', value: totalAmount, color: '#10b981' },
+    { name: 'Pendente', value: totalPending, color: '#f59e0b' },
+    { name: 'Em Atraso', value: totalOverdue, color: '#f43f5e' },
+  ].filter(d => d.value > 0);
+
+  // Group by month for additional chart
+  const monthlyDataMap = receivables.reduce((acc: any, r) => {
+    const month = r.dueDate.split('/')[1] || '01';
+    const monthNames: any = { '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr', '05': 'Mai', '06': 'Jun', '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez' };
+    const monthName = monthNames[month] || month;
+    if (!acc[monthName]) acc[monthName] = { name: monthName, total: 0, count: 0 };
+    acc[monthName].total += isDesigner ? (r.payoutAmount || 0) : r.amount;
+    acc[monthName].count += 1;
+    return acc;
+  }, {});
+
+  const monthlyData = Object.values(monthlyDataMap);
+
+  // Top clients by revenue
+  const clientRevenueMap = receivables.reduce((acc: any, r) => {
+    const client = clients.find(c => c.id === r.clientId);
+    if (!client) return acc;
+    const clientName = client.name;
+    if (!acc[clientName]) acc[clientName] = { name: clientName, total: 0 };
+    acc[clientName].total += isDesigner ? (r.payoutAmount || 0) : r.amount;
+    return acc;
+  }, {});
+
+  const clientRevenueData = Object.values(clientRevenueMap)
+    .sort((a: any, b: any) => b.total - a.total)
+    .slice(0, 5);
 
   const handleAddReceivable = () => {
     setEditingReceivable(null);
@@ -66,7 +102,9 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
   };
 
   const handleDeleteReceivable = (id: string) => {
-    setReceivables(receivables.filter(r => r.id !== id));
+    if (window.confirm('Deseja excluir este lançamento financeiro?')) {
+      setReceivables(receivables.filter(r => r.id !== id));
+    }
   };
 
   return (
@@ -90,27 +128,138 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CheckCircle2 size={18} /></div>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner ? 'Recebido' : 'Receita Total'}</span>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CheckCircle2 size={18} /></div>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner ? 'Recebido' : 'Receita Total'}</span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">R$ {totalAmount.toLocaleString()}</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">R$ {totalAmount.toLocaleString()}</p>
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><DollarSign size={18} /></div>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner ? 'A Receber' : 'Pendentes'}</span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">R$ {totalPending.toLocaleString()}</p>
+          </div>
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-rose-50 text-rose-600 rounded-lg"><AlertCircle size={18} /></div>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Em Atraso</span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">R$ {totalOverdue.toLocaleString()}</p>
+          </div>
         </div>
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><DollarSign size={18} /></div>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner ? 'A Receber' : 'Pendentes'}</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">R$ {totalPending.toLocaleString()}</p>
+
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm transition-colors flex flex-col items-center justify-center min-h-[160px]">
+           {chartData.length > 0 ? (
+             <div className="w-full h-full">
+                <ResponsiveContainer width="100%" height={100}>
+                  <PieChart>
+                    <Pie
+                      data={chartData}
+                      innerRadius={30}
+                      outerRadius={45}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '10px' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex flex-wrap justify-center gap-2 mt-1">
+                   {chartData.map(d => (
+                     <div key={d.name} className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: d.color }} />
+                        <span className="text-[9px] font-bold text-gray-500 uppercase">{d.name}</span>
+                     </div>
+                   ))}
+                </div>
+             </div>
+           ) : (
+             <div className="text-gray-300 text-[10px] italic">Sem dados financeiros</div>
+           )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-rose-50 text-rose-600 rounded-lg"><AlertCircle size={18} /></div>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Em Atraso</span>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="font-bold text-gray-900 flex items-center gap-2">
+              <BarChart3 size={18} className="text-indigo-500" />
+              Volume Mensal
+            </h2>
           </div>
-          <p className="text-2xl font-bold text-gray-900">R$ {totalOverdue.toLocaleString()}</p>
+          <div className="h-48 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }}
+                  tickFormatter={(value) => `R$ ${value}`}
+                />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '10px' }}
+                />
+                <Bar 
+                  dataKey="total" 
+                  fill="#6366f1" 
+                  radius={[4, 4, 0, 0]}
+                  barSize={30}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="font-bold text-gray-900 flex items-center gap-2">
+              <Users size={18} className="text-emerald-500" />
+              Top Clientes (Receita)
+            </h2>
+          </div>
+          <div className="h-48 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={clientRevenueData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                <XAxis type="number" hide />
+                <YAxis 
+                  dataKey="name" 
+                  type="category" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }}
+                  width={80}
+                />
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '10px' }}
+                />
+                <Bar 
+                  dataKey="total" 
+                  fill="#10b981" 
+                  radius={[0, 4, 4, 0]} 
+                  barSize={20}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 
@@ -118,9 +267,33 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
         <div className="p-6 border-b border-gray-50 flex items-center justify-between">
           <h2 className="font-bold text-gray-900">Transações Recentes</h2>
           <div className="flex items-center gap-2">
-            <button className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">Tudo</button>
-            <button className="text-xs font-bold text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-lg transition-colors">Pagos</button>
-            <button className="text-xs font-bold text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-lg transition-colors">Pendentes</button>
+            <button 
+              onClick={() => setFilter('all')}
+              className={cn(
+                "text-xs font-bold px-3 py-1.5 rounded-lg transition-colors",
+                filter === 'all' ? "text-indigo-600 bg-indigo-50" : "text-gray-400 hover:text-gray-600"
+              )}
+            >
+              Tudo
+            </button>
+            <button 
+              onClick={() => setFilter('paid')}
+              className={cn(
+                "text-xs font-bold px-3 py-1.5 rounded-lg transition-colors",
+                filter === 'paid' ? "text-emerald-600 bg-emerald-50" : "text-gray-400 hover:text-gray-600"
+              )}
+            >
+              Pagos
+            </button>
+            <button 
+              onClick={() => setFilter('pending')}
+              className={cn(
+                "text-xs font-bold px-3 py-1.5 rounded-lg transition-colors",
+                filter === 'pending' ? "text-amber-600 bg-amber-50" : "text-gray-400 hover:text-gray-600"
+              )}
+            >
+              Pendentes
+            </button>
           </div>
         </div>
         <div className="overflow-x-auto">

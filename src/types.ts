@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'DESIGNER' | 'PARTNER';
+export type UserRole = 'ADMIN' | 'DESIGNER' | 'PARTNER' | 'EDITOR';
 
 export interface User {
   id: string;
@@ -6,6 +6,7 @@ export interface User {
   email: string;
   role: UserRole;
   avatar?: string;
+  ownerId?: string; // Admin or Partner who created this user
 }
 
 export type LeadStatus = 'prospect' | 'negotiation' | 'converted' | 'lost';
@@ -28,6 +29,11 @@ export interface Lead {
   lastContact: string; // dd/mm/aaaa
 }
 
+export interface ClientBranding {
+  logo?: string;
+  colors: string[]; // up to 5 hex/rgb colors
+}
+
 export interface Client {
   id: string;
   name: string;
@@ -39,6 +45,16 @@ export interface Client {
   assignedDesignerId?: string; // Designer responsável
   partnerId?: string; // Parceiro que trouxe o cliente
   designerPayout?: number; // Quanto o designer ganha por este cliente
+  branding?: ClientBranding;
+}
+
+export interface SupportTicket {
+  id: string;
+  partnerId: string;
+  subject: string;
+  description: string;
+  status: 'open' | 'closed' | 'replied';
+  createdAt: string;
 }
 
 export interface Receivable {
@@ -50,6 +66,18 @@ export interface Receivable {
   status: PaymentStatus;
   designerId?: string; // Designer que receberá parte deste valor
   payoutAmount?: number; // Valor do payout específico
+}
+
+export interface VideoOrder {
+  id: string;
+  title: string;
+  clientId: string;
+  editorId: string;
+  editorName?: string;
+  deadline: string;
+  priority: 'low' | 'medium' | 'high';
+  progress: number;
+  status: WorkStatus;
 }
 
 export interface ArtOrder {

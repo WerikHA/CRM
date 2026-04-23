@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL DEFAULT '123456', -- Added password field
     role TEXT NOT NULL DEFAULT 'DESIGNER', -- 'ADMIN', 'DESIGNER', 'PARTNER'
     avatar TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -95,12 +96,12 @@ CREATE TABLE IF NOT EXISTS partner_requests (
 );
 
 -- Initial Data (Bootstrap)
-INSERT INTO users (id, name, email, role) VALUES 
-('u1', 'Werik Admin', 'admin@agency.com', 'ADMIN'),
-('u2', 'Lucas Andrade', 'lucas@design.com', 'DESIGNER'),
-('u3', 'Mariana Costa', 'mariana@design.com', 'DESIGNER'),
-('u4', 'Roberto Financeiro', 'finance@agency.com', 'ADMIN'),
-('u5', 'Agência Video Pro', 'parceiro@videopro.com', 'PARTNER')
+INSERT INTO users (id, name, email, password, role) VALUES 
+('u1', 'Werik Admin', 'admin@agency.com', 'admin123', 'ADMIN'),
+('u2', 'Lucas Andrade', 'lucas@design.com', 'design123', 'DESIGNER'),
+('u3', 'Mariana Costa', 'mariana@design.com', 'design123', 'DESIGNER'),
+('u4', 'Roberto Financeiro', 'finance@agency.com', 'finance123', 'ADMIN'),
+('u5', 'Agência Video Pro', 'parceiro@videopro.com', 'partner123', 'PARTNER')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO partners (id, name, agency_name, email, commission_type, commission_value) VALUES

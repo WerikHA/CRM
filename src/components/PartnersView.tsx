@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Handshake, ExternalLink, Plus, MoreHorizontal, Briefcase, Mail, Trash2, Users, Receipt, ArrowRight } from 'lucide-react';
-import { PartnerRequest, PartnerRequestStatus, Partner, User } from '../types';
+import { Handshake, ExternalLink, Plus, MoreHorizontal, Briefcase, Mail, Trash2, Users, Receipt, ArrowRight, Clock, DollarSign } from 'lucide-react';
+import { PartnerRequest, PartnerRequestStatus, Partner, User, ArtOrder, Client } from '../types';
 import Modal from './Modal';
 import { cn } from '../lib/utils';
 
@@ -10,14 +10,52 @@ interface PartnersViewProps {
   partners: Partner[];
   setPartners: React.Dispatch<React.SetStateAction<Partner[]>>;
   currentUser: User;
+  artOrders: ArtOrder[];
+  setArtOrders: React.Dispatch<React.SetStateAction<ArtOrder[]>>;
+  clients: Client[];
+  setClients: React.Dispatch<React.SetStateAction<Client[]>>;
+  users: User[];
+  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
 }
 
-export default function PartnersView({ partnerRequests, setPartnerRequests, partners, setPartners, currentUser }: PartnersViewProps) {
-  const [activeTab, setActiveTab] = useState<'requests' | 'agencies'>(currentUser.role === 'PARTNER' ? 'requests' : 'agencies');
+export default function PartnersView({ 
+  partnerRequests, 
+  setPartnerRequests, 
+  partners, 
+  setPartners, 
+  currentUser,
+  artOrders,
+  setArtOrders,
+  clients,
+  setClients,
+  users,
+  setUsers
+}: PartnersViewProps) {
+  const [activeTab, setActiveTab] = useState<'requests' | 'agencies' | 'team'>(currentUser.role === 'PARTNER' ? 'requests' : 'agencies');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAgencyModalOpen, setIsAgencyModalOpen] = useState(false);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [editingRequest, setEditingRequest] = useState<PartnerRequest | null>(null);
+  const [editingAgency, setEditingAgency] = useState<Partner | null>(null);
+  const [editingTeamMember, setEditingTeamMember] = useState<User | null>(null);
   
   const isAdmin = currentUser.role === 'ADMIN';
+  const isPartner = currentUser.role === 'PARTNER';
+
+  const [teamFormData, setTeamFormData] = useState<Partial<User>>({
+    name: '',
+    email: '',
+    role: 'EDITOR'
+  });
+
+  const [agencyFormData, setAgencyFormData] = useState<Partial<Partner>>({
+    name: '',
+    agencyName: '',
+    email: '',
+    phone: '',
+    commissionType: 'percentage',
+    commissionValue: 10
+  });
 
   const filteredRequests = currentUser.role === 'PARTNER' 
     ? partnerRequests.filter(r => r.partnerId === currentUser.id)
@@ -25,8 +63,131 @@ export default function PartnersView({ partnerRequests, setPartnerRequests, part
 
   const handleAddRequest = () => {
     setEditingRequest(null);
+    setFormData({
+      clientName: '',
+      serviceType: '',
+      cost: 0,
+      status: 'pending',
+      partnerId: isAdmin ? (partners[0]?.id || '') : currentUser.id,
+      partnerName: isAdmin ? (partners[0]?.name || '') : currentUser.name
+    });
     setIsModalOpen(true);
   };
+
+  const handleAddAgency = () => {
+    setEditingAgency(null);
+    setAgencyFormData({
+      name: '',
+      agencyName: '',
+      email: '',
+      phone: '',
+      commissionType: 'percentage',
+      commissionValue: 10
+    });
+    setIsAgencyModalOpen(true);
+  };
+
+  const handleAgencySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingAgency) {
+      setPartners(prev => prev.map(p => p.id === editingAgency.id ? { ...p, ...agencyFormData } as Partner : p));
+    } else {
+      const newPartner: Partner = {
+        ...agencyFormData,
+        id: 'p' + Math.random().toString(36).substring(2, 9)
+      } as Partner;
+      setPartners(prev => [...prev, newPartner]);
+    }
+    setIsAgencyModalOpen(false);
+  };
+
+  const handleAddTeamMember = () => {
+    setEditingTeamMember(null);
+    setTeamFormData({ name: '', email: '', role: 'EDITOR' });
+    setIsTeamModalOpen(true);
+  };
+
+  const handleTeamSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingTeamMember) {
+      setUsers(users.map(u => u.id === editingTeamMember.id ? { ...u, ...teamFormData } as User : u));
+    } else {
+      const newUser: User = {
+        ...teamFormData,
+        id: Math.random().toString(36).substr(2, 9),
+        role: teamFormData.role || 'EDITOR',
+        ownerId: currentUser.id
+      } as User;
+      setUsers([...users, newUser]);
+    }
+    setIsTeamModalOpen(false);
+  };
+
+  const handleDeleteTeamMember = (id: string) => {
+    if (window.confirm('Excluir este membro da equipe?')) {
+      setUsers(users.filter(u => u.id !== id));
+    }
+  };
+
+  const myTeam = users.filter(u => u.ownerId === currentUser.id);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingRequest) {
+      setPartnerRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...formData } : r));
+    } else {
+      const requestId = 'pr' + Math.random().toString(36).substring(2, 9);
+      const newRequest: PartnerRequest = {
+        id: requestId,
+        partnerId: formData.partnerId || 'unknown',
+        partnerName: formData.partnerName || 'Agência Externa',
+        clientName: formData.clientName || '',
+        serviceType: formData.serviceType || '',
+        cost: formData.cost || 0,
+        status: formData.status as PartnerRequestStatus || 'pending'
+      };
+      setPartnerRequests(prev => [...prev, newRequest]);
+
+      // Automatically push to Design Workflow (ArtOrder)
+      // First, check/create client if needed
+      let clientId = clients.find(c => c.name === formData.clientName)?.id;
+      if (!clientId) {
+        clientId = 'c' + Math.random().toString(36).substring(2, 9);
+        const newClient: Client = {
+          id: clientId,
+          name: formData.clientName || '',
+          status: 'active',
+          monthlyValue: formData.cost || 0,
+          renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
+          contactEmail: '',
+          partnerId: formData.partnerId
+        };
+        setClients(prev => [...prev, newClient]);
+      }
+
+      const designers = users.filter(u => u.role === 'DESIGNER');
+      const newOrder: ArtOrder = {
+        id: 'ao' + Math.random().toString(36).substring(2, 9),
+        title: formData.serviceType || 'Novo Job',
+        clientId: clientId,
+        designerId: designers[0]?.id || 'unknown',
+        designerName: designers[0]?.name || 'Pendente',
+        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
+        priority: 'medium',
+        progress: 0,
+        status: 'queue'
+      };
+      setArtOrders(prev => [...prev, newOrder]);
+    }
+    setIsModalOpen(false);
+  };
+
+  const [formData, setFormData] = useState<Partial<PartnerRequest>>({
+    clientName: '',
+    serviceType: '',
+    cost: 0,
+    status: 'pending'
+  });
 
   return (
     <div className="space-y-6">
@@ -40,7 +201,7 @@ export default function PartnersView({ partnerRequests, setPartnerRequests, part
           </p>
         </div>
         
-        {activeTab === 'requests' && (
+        {activeTab === 'requests' && (currentUser.role === 'PARTNER' || isAdmin) && (
           <button 
             onClick={handleAddRequest}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-semibold hover:bg-indigo-600 transition-colors shadow-sm"
@@ -51,8 +212,54 @@ export default function PartnersView({ partnerRequests, setPartnerRequests, part
         )}
       </div>
 
-      {isAdmin && (
-        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+      {/* Partners Summary Cards (The "Group") */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total de Parceiros</p>
+          <div className="flex items-end justify-between">
+            <h3 className="text-2xl font-bold text-gray-900">{partners.length}</h3>
+            <div className="p-2 bg-indigo-50 text-indigo-500 rounded-lg">
+              <Briefcase size={16} />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Pedidos Pendentes</p>
+          <div className="flex items-end justify-between">
+            <h3 className="text-2xl font-bold text-gray-900">
+              {filteredRequests.filter(r => r.status === 'pending').length}
+            </h3>
+            <div className="p-2 bg-amber-50 text-amber-500 rounded-lg">
+              <Clock size={16} />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Jobs Concluídos</p>
+          <div className="flex items-end justify-between">
+            <h3 className="text-2xl font-bold text-gray-900">
+              {filteredRequests.filter(r => r.status === 'completed' || r.status === 'delivered').length}
+            </h3>
+            <div className="p-2 bg-emerald-50 text-emerald-500 rounded-lg">
+              <Receipt size={16} />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Receita Gerada</p>
+          <div className="flex items-end justify-between">
+            <h3 className="text-2xl font-bold text-gray-900">
+              R$ {filteredRequests.reduce((acc, r) => acc + r.cost, 0).toLocaleString()}
+            </h3>
+            <div className="p-2 bg-indigo-50 text-indigo-500 rounded-lg">
+              <DollarSign size={16} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+        {isAdmin && (
           <button 
             onClick={() => setActiveTab('agencies')}
             className={cn(
@@ -62,19 +269,28 @@ export default function PartnersView({ partnerRequests, setPartnerRequests, part
           >
             Agências Parceiras
           </button>
-          <button 
-            onClick={() => setActiveTab('requests')}
-            className={cn(
-              "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-              activeTab === 'requests' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
-            )}
-          >
-             Solicitações (Jobs)
-          </button>
-        </div>
-      )}
+        )}
+        <button 
+          onClick={() => setActiveTab('requests')}
+          className={cn(
+            "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+            activeTab === 'requests' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+          )}
+        >
+           {isPartner ? 'Minhas Solicitações' : 'Solicitações (Jobs)'}
+        </button>
+        <button 
+          onClick={() => setActiveTab('team')}
+          className={cn(
+            "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+            activeTab === 'team' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+          )}
+        >
+           {isPartner ? 'Minha Equipe' : 'Gestão de Equipes'}
+        </button>
+      </div>
 
-      {activeTab === 'agencies' ? (
+      {activeTab === 'agencies' && isAdmin ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {partners.map((partner) => (
             <div key={partner.id} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all">
@@ -117,12 +333,79 @@ export default function PartnersView({ partnerRequests, setPartnerRequests, part
             </div>
           ))}
           
-          <button className="border-2 border-dashed border-gray-200 rounded-2xl p-6 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition-all">
+          <button 
+            onClick={handleAddAgency}
+            className="border-2 border-dashed border-gray-200 rounded-2xl p-6 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition-all"
+          >
              <div className="w-12 h-12 rounded-full border-2 border-dashed border-current flex items-center justify-center">
                 <Plus size={24} />
              </div>
              <span className="font-bold text-sm">Adicionar Nova Agência</span>
           </button>
+        </div>
+      ) : activeTab === 'team' ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-gray-50 flex items-center justify-between">
+            <h3 className="font-bold text-gray-900 uppercase tracking-tight">Membros da Equipe</h3>
+            <button 
+              onClick={handleAddTeamMember}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-all shadow-sm"
+            >
+              <Plus size={14} /> Adicionar Membro
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100">
+                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nome</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Email</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cargo</th>
+                  <th className="px-6 py-4 text-right"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {myTeam.map((member) => (
+                  <tr key={member.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center font-bold text-xs">
+                          {member.name.charAt(0)}
+                        </div>
+                        <span className="text-sm font-semibold text-gray-900">{member.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-gray-500">{member.email}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-1 rounded-lg bg-slate-50 text-slate-600 text-[10px] font-bold uppercase tracking-wider border border-slate-100">
+                        {member.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button 
+                        onClick={() => handleDeleteTeamMember(member.id)}
+                        className="p-1.5 text-gray-300 hover:text-rose-500 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {myTeam.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-12 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <Users size={32} className="text-gray-200" />
+                        <p className="text-sm text-gray-400 italic">Sua equipe está vazia. Adicione membros para começar.</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -207,6 +490,215 @@ export default function PartnersView({ partnerRequests, setPartnerRequests, part
             </div>
          </div>
       </div>
+      
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingRequest ? "Editar Solicitação" : "Nova Solicitação de Job"}
+        footer={
+          <div className="flex justify-end gap-3">
+            <button 
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleSubmit}
+              className="px-6 py-2 text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl transition-colors shadow-sm"
+            >
+              {editingRequest ? 'Salvar Alterações' : 'Enviar Solicitação'}
+            </button>
+          </div>
+        }
+      >
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nome do Cliente Final</label>
+            <input 
+              type="text" 
+              required
+              value={formData.clientName}
+              onChange={e => setFormData({...formData, clientName: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+              placeholder="Ex: Restaurante do Porto"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tipo de Serviço</label>
+            <select 
+              value={formData.serviceType}
+              onChange={e => setFormData({...formData, serviceType: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+            >
+              <option value="">Selecione...</option>
+              <option value="Design de Logo">Design de Logo</option>
+              <option value="Social Media (Mensal)">Social Media (Mensal)</option>
+              <option value="Edição de Vídeo Ad">Edição de Vídeo Ad</option>
+              <option value="Configuração de Pixel">Configuração de Pixel</option>
+              <option value="Landing Page">Landing Page</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Custo para o Parceiro (R$)</label>
+              <input 
+                type="number" 
+                value={formData.cost}
+                onChange={e => setFormData({...formData, cost: Number(e.target.value)})}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Status Inicial</label>
+              <select 
+                value={formData.status}
+                onChange={e => setFormData({...formData, status: e.target.value as PartnerRequestStatus})}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm h-[42px]"
+                disabled={currentUser.role === 'PARTNER'}
+              >
+                <option value="pending">Pendente</option>
+                <option value="ongoing">Em Andamento</option>
+                <option value="completed">Concluído</option>
+              </select>
+            </div>
+          </div>
+
+          {isAdmin && (
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Atribuir ao Parceiro</label>
+              <select 
+                value={formData.partnerId}
+                onChange={e => {
+                  const p = partners.find(part => part.id === e.target.value);
+                  setFormData({...formData, partnerId: e.target.value, partnerName: p?.name || 'Agência Externa'});
+                }}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+              >
+                <option value="">Selecione um parceiro...</option>
+                {partners.map(p => (
+                  <option key={p.id} value={p.id}>{p.agencyName} ({p.name})</option>
+                ))}
+              </select>
+            </div>
+          )}
+          
+          <button type="submit" className="hidden" />
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={isAgencyModalOpen}
+        onClose={() => setIsAgencyModalOpen(false)}
+        title={editingAgency ? "Editar Agência" : "Nova Agência Parceira"}
+        footer={
+          <div className="flex justify-end gap-3">
+            <button 
+              onClick={() => setIsAgencyModalOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleAgencySubmit}
+              className="px-6 py-2 text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl transition-colors shadow-sm"
+            >
+              {editingAgency ? 'Salvar Alterações' : 'Cadastrar Agência'}
+            </button>
+          </div>
+        }
+      >
+        <form className="space-y-4" onSubmit={handleAgencySubmit}>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nome da Agência</label>
+              <input 
+                type="text" 
+                required
+                value={agencyFormData.agencyName}
+                onChange={e => setAgencyFormData({...agencyFormData, agencyName: e.target.value})}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+                placeholder="Ex: Agência Digital X"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nome do Responsável</label>
+              <input 
+                type="text" 
+                required
+                value={agencyFormData.name}
+                onChange={e => setAgencyFormData({...agencyFormData, name: e.target.value})}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+                placeholder="Ex: João Silva"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">E-mail de Contato</label>
+            <input 
+              type="email" 
+              required
+              value={agencyFormData.email}
+              onChange={e => setAgencyFormData({...agencyFormData, email: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tipo de Comissão</label>
+              <select 
+                value={agencyFormData.commissionType}
+                onChange={e => setAgencyFormData({...agencyFormData, commissionType: e.target.value as any})}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm h-[42px]"
+              >
+                <option value="percentage">Porcentagem (%)</option>
+                <option value="fixed">Valor Fixo (BRL)</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Valor</label>
+              <input 
+                type="number" 
+                value={agencyFormData.commissionValue}
+                onChange={e => setAgencyFormData({...agencyFormData, commissionValue: Number(e.target.value)})}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+              />
+            </div>
+          </div>
+          <button type="submit" className="hidden" />
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={isTeamModalOpen}
+        onClose={() => setIsTeamModalOpen(false)}
+        title={editingTeamMember ? 'Editar Membro' : 'Novo Membro da Equipe'}
+        footer={
+          <div className="flex justify-end gap-3">
+            <button onClick={() => setIsTeamModalOpen(false)} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl">Cancelar</button>
+            <button onClick={handleTeamSubmit} className="px-6 py-2 text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl">Salvar</button>
+          </div>
+        }
+      >
+        <form className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nome Completo</label>
+            <input type="text" value={teamFormData.name} onChange={e => setTeamFormData({...teamFormData, name: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Email de Acesso</label>
+            <input type="email" value={teamFormData.email} onChange={e => setTeamFormData({...teamFormData, email: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cargo/Permissão</label>
+            <select value={teamFormData.role} onChange={e => setTeamFormData({...teamFormData, role: e.target.value as any})} className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm">
+              <option value="EDITOR">EDITOR (Vídeos)</option>
+              {isAdmin && <option value="DESIGNER">DESIGNER (Artes)</option>}
+              {isAdmin && <option value="PARTNER">PARCEIRO</option>}
+            </select>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

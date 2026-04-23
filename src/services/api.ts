@@ -88,5 +88,28 @@ export const api = {
     const res = await fetch(`${API_BASE}/users`);
     if (!res.ok) throw new Error('Failed to fetch users');
     return res.json();
+  },
+
+  async createUser(user: User & { password?: string }): Promise<User> {
+    const res = await fetch(`${API_BASE}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user),
+    });
+    if (!res.ok) throw new Error('Failed to create user');
+    return res.json();
+  },
+
+  async login(email: string, password: string): Promise<{ success: boolean; user: User }> {
+    const res = await fetch(`${API_BASE}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'Falha na autenticação');
+    }
+    return res.json();
   }
 };

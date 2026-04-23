@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download } from 'lucide-react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2 } from 'lucide-react';
+import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import { IntegrationConfig, Lead, Client, ArtOrder, Receivable, User } from '../types';
+import Modal from './Modal';
 
 interface AdminViewProps {
   integrations: IntegrationConfig[];
@@ -11,6 +13,7 @@ interface AdminViewProps {
   artOrders?: ArtOrder[];
   receivables?: Receivable[];
   users: User[];
+  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
 }
 
 export default function AdminView({ 
@@ -20,12 +23,21 @@ export default function AdminView({
   clients = [],
   artOrders = [],
   receivables = [],
-  users
+  users,
+  setUsers
 }: AdminViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database'>('integrations');
   const [copied, setCopied] = useState<string | null>(null);
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditResults, setAuditResults] = useState<any>(null);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+  const [inviteData, setInviteData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'DESIGNER' as User['role']
+  });
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -33,8 +45,48 @@ export default function AdminView({
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const handleGenerateLink = () => {
+    if (!inviteData.name || !inviteData.email) {
+      alert("Por favor, preencha nome e e-mail antes de gerar o link.");
+      return;
+    }
+    const baseUrl = window.location.origin;
+    const link = `${baseUrl}/join?email=${encodeURIComponent(inviteData.email)}&role=${inviteData.role}&name=${encodeURIComponent(inviteData.name)}&token=${Math.random().toString(36).substr(2, 12)}`;
+    setGeneratedLink(link);
+    handleCopy(link, 'invite-link');
+  };
+
   const handleToggleIntegration = (id: string) => {
     setIntegrations(prev => prev.map(i => i.id === id ? { ...i, isActive: !i.isActive } : i));
+  };
+
+  const handleInviteMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const newUserFormData = {
+      id: Math.random().toString(36).substring(2, 9),
+      name: inviteData.name,
+      email: inviteData.email,
+      role: inviteData.role,
+      password: inviteData.password,
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteData.name)}&background=random`
+    };
+    
+    try {
+      const savedUser = await api.createUser(newUserFormData as any);
+      setUsers(prev => [...prev, savedUser]);
+      setIsInviteModalOpen(false);
+      setInviteData({ name: '', email: '', password: '', role: 'DESIGNER' });
+      setGeneratedLink(null);
+      alert(`Usuário ${inviteData.name} criado com sucesso! Ele já pode logar com e-mail e senha.`);
+    } catch (error) {
+      alert('Erro ao criar usuário: ' + (error as Error).message);
+    }
+  };
+
+  const handleRemoveUser = (id: string) => {
+    if (confirm('Deseja realmente remover este usuário?')) {
+      setUsers(prev => prev.filter(u => u.id !== id));
+    }
   };
 
   const handleUpdateWhatsAppConfig = (id: string, key: string, value: string) => {
@@ -86,7 +138,8 @@ export default function AdminView({
   };
 
   return (
-    <div className="space-y-8">
+    <>
+      <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight transition-colors">Configurações & Admin</h1>
@@ -340,7 +393,10 @@ export default function AdminView({
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="p-6 border-b border-gray-50 flex items-center justify-between">
                 <h3 className="font-bold text-gray-900">Usuários Ativos</h3>
-                <button className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-colors">
+                <button 
+                  onClick={() => setIsInviteModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-colors"
+                >
                    <Plus size={14} /> Convidar Membro
                 </button>
               </div>
@@ -348,8 +404,8 @@ export default function AdminView({
                 {users.map(user => (
                   <div key={user.id} className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
-                        {user.name.substring(0, 2).toUpperCase()}
+                      <div className="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold overflow-hidden">
+                        {user.avatar ? <img src={user.avatar} alt={user.name} /> : user.name.substring(0, 2).toUpperCase()}
                       </div>
                       <div>
                         <p className="font-bold text-gray-900">{user.name}</p>
@@ -365,7 +421,12 @@ export default function AdminView({
                        )}>
                          {user.role}
                        </span>
-                       <button className="p-2 text-gray-300 hover:text-gray-500 transition-colors"><MoreHorizontal size={16} /></button>
+                       <button 
+                        onClick={() => handleRemoveUser(user.id)}
+                        className="p-2 text-gray-300 hover:text-rose-500 transition-colors"
+                       >
+                        <Trash2 size={16} />
+                       </button>
                     </div>
                   </div>
                 ))}
@@ -418,5 +479,103 @@ export default function AdminView({
         </div>
       </div>
     </div>
+
+      <Modal
+        isOpen={isInviteModalOpen}
+        onClose={() => {
+          setIsInviteModalOpen(false);
+          setGeneratedLink(null);
+        }}
+        title="Convidar Novo Membro"
+        footer={
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 w-full">
+            <button 
+              onClick={handleGenerateLink}
+              className="flex items-center gap-2 text-indigo-600 font-bold hover:underline text-xs"
+            >
+               <Link size={14} /> Gerar e Copiar Link
+            </button>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => {
+                  setIsInviteModalOpen(false);
+                  setGeneratedLink(null);
+                }}
+                className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+              >
+                Fechar
+              </button>
+              <button 
+                onClick={handleInviteMember}
+                className="px-6 py-2 text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl transition-colors shadow-sm"
+              >
+                Adicionar Direto
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <form className="space-y-4" onSubmit={handleInviteMember}>
+          {generatedLink && (
+            <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl mb-4 animate-in fade-in zoom-in duration-300">
+               <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                 <Check size={12} /> Link Copiado!
+               </p>
+               <input 
+                 readOnly 
+                 value={generatedLink} 
+                 className="w-full bg-white border border-emerald-100 px-3 py-2 rounded-lg text-[10px] font-mono text-emerald-700 focus:outline-none"
+               />
+            </div>
+          )}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nome Completo</label>
+            <input 
+              type="text" 
+              required
+              value={inviteData.name}
+              onChange={e => setInviteData({...inviteData, name: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+              placeholder="Ex: João Designer"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">E-mail</label>
+            <input 
+              type="email" 
+              required
+              value={inviteData.email}
+              onChange={e => setInviteData({...inviteData, email: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+              placeholder="exemplo@agencyflow.com"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Senha Provisória</label>
+            <input 
+              type="text" 
+              required
+              value={inviteData.password}
+              onChange={e => setInviteData({...inviteData, password: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+              placeholder="Ex: design123"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cargo / Permissão</label>
+            <select 
+              value={inviteData.role}
+              onChange={e => setInviteData({...inviteData, role: e.target.value as any})}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+            >
+              <option value="DESIGNER">Designer</option>
+              <option value="PARTNER">Parceiro</option>
+              <option value="ADMIN">Administrador</option>
+            </select>
+          </div>
+          <button type="submit" className="hidden" />
+        </form>
+      </Modal>
+    </>
   );
 }

@@ -44,10 +44,15 @@ import FinanceView from './components/FinanceView';
 import DesignView from './components/DesignView';
 import PartnersView from './components/PartnersView';
 import AdminView from './components/AdminView';
+import LoginView from './components/LoginView';
+import SupportView from './components/SupportView';
+import VideoWorkflowView from './components/VideoWorkflowView';
+import { LogOut, Film } from 'lucide-react';
 
-type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'partners' | 'admin';
+type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'tickets' | 'admin';
 
 import { api } from './services/api';
+import { VideoOrder, SupportTicket } from './types';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   dashboard: 'Painel',
@@ -55,7 +60,9 @@ const VIEW_LABELS: Record<ViewType, string> = {
   clients: 'Clientes',
   finance: 'Financeiro',
   design: 'Design',
+  videos: 'Edição de Vídeo',
   partners: 'Parceiros',
+  tickets: 'Suporte',
   admin: 'Configurações'
 };
 
@@ -70,7 +77,10 @@ const AGENCY_CONFIG = {
 export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [perspective, setPerspective] = useState<User['role'] | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Global State
@@ -78,14 +88,56 @@ export default function App() {
   const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
   const [receivables, setReceivables] = useState<Receivable[]>(INITIAL_RECEIVABLES);
   const [artOrders, setArtOrders] = useState<ArtOrder[]>(INITIAL_ART_ORDERS);
+  const [videoOrders, setVideoOrders] = useState<VideoOrder[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [partnerRequests, setPartnerRequests] = useState<PartnerRequest[]>(INITIAL_PARTNER_REQUESTS);
   const [partners, setPartners] = useState<Partner[]>(INITIAL_PARTNERS_LIST);
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>(INITIAL_INTEGRATIONS);
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
   const [holidays] = useState([{ date: '21/04/2026', name: 'Tiradentes' }]);
 
-  // Fetch data on mount
+  const effectiveUser = useMemo(() => {
+    if (!currentUser) return null;
+    if (currentUser.role !== 'ADMIN' || !perspective) return currentUser;
+    return { ...currentUser, role: perspective };
+  }, [currentUser, perspective]);
+
+  const handleLogin = async (email: string, password: string) => {
+    try {
+      setIsAuthLoading(true);
+      const res = await api.login(email, password);
+      setCurrentUser(res.user);
+      setIsAuthenticated(true);
+      localStorage.setItem('agency_user', JSON.stringify(res.user));
+    } catch (err) {
+      throw err;
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    localStorage.removeItem('agency_user');
+  };
+
+  // Check persisted auth
   useEffect(() => {
+    const savedUser = localStorage.getItem('agency_user');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  // Fetch data on mount & auth change
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
+    
     const fetchData = async () => {
       try {
         setIsLoading(true);
@@ -112,7 +164,12 @@ export default function App() {
         if (partnersData.length > 0) setPartners(partnersData);
         if (usersData.length > 0) {
           setUsers(usersData);
-          setCurrentUser(usersData[0]);
+          // Only update current user if it matches the ID to refresh profile data, 
+          // but don't overwrite with a different user
+          if (currentUser) {
+            const freshSelf = usersData.find(u => u.id === currentUser.id);
+            if (freshSelf) setCurrentUser(freshSelf);
+          }
         }
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
@@ -122,20 +179,28 @@ export default function App() {
     };
 
     fetchData();
-  }, []);
+  }, [isAuthenticated]);
 
   // Filtro de Menu baseado no cargo
-  const menuItems = [
-    { id: 'dashboard', label: 'Painel', icon: LineChart, roles: ['ADMIN', 'DESIGNER', 'PARTNER'] },
-    { id: 'leads', label: 'Leads', icon: TrendingUp, roles: ['ADMIN'] },
-    { id: 'clients', label: 'Clientes', icon: Users, roles: ['ADMIN'] },
-    { id: 'finance', label: 'Financeiro', icon: DollarSign, roles: ['ADMIN', 'DESIGNER'] },
-    { id: 'design', label: 'Design', icon: Palette, roles: ['ADMIN', 'DESIGNER'] },
-    { id: 'partners', label: 'Parceiros', icon: Handshake, roles: ['ADMIN', 'PARTNER'] },
-    { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN'] },
-  ].filter(item => item.roles.includes(currentUser.role));
+  const menuItems = useMemo(() => {
+    if (!effectiveUser) return [];
+    const isPartner = effectiveUser.role === 'PARTNER';
+    
+    return [
+      { id: 'dashboard', label: 'Painel', icon: LineChart, roles: ['ADMIN', 'DESIGNER', 'PARTNER', 'EDITOR'] },
+      { id: 'leads', label: 'Leads', icon: TrendingUp, roles: ['ADMIN'] },
+      { id: 'clients', label: 'Clientes', icon: Users, roles: ['ADMIN', 'PARTNER'] },
+      { id: 'finance', label: 'Financeiro', icon: DollarSign, roles: ['ADMIN', 'DESIGNER', 'EDITOR'] },
+      { id: 'design', label: 'Design', icon: Palette, roles: ['ADMIN', 'DESIGNER', 'PARTNER'] },
+      { id: 'videos', label: 'Edição de Vídeo', icon: Briefcase, roles: ['ADMIN', 'EDITOR', 'PARTNER'] },
+      { id: 'partners', label: isPartner ? 'Solicitações' : 'Parceiros', icon: Handshake, roles: ['ADMIN', 'PARTNER'] },
+      { id: 'tickets', label: 'Suporte', icon: Settings, roles: ['ADMIN', 'PARTNER'] },
+      { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN'] },
+    ].filter(item => item.roles.includes(effectiveUser.role));
+  }, [effectiveUser]);
 
   const renderView = () => {
+    if (!effectiveUser) return null;
     switch (activeView) {
       case 'dashboard': 
         return <DashboardView 
@@ -143,13 +208,16 @@ export default function App() {
           clients={clients} 
           receivables={receivables} 
           artOrders={artOrders} 
+          partners={partners}
+          partnerRequests={partnerRequests}
           onViewChange={setActiveView}
-          currentUser={currentUser}
+          currentUser={effectiveUser}
         />;
       case 'leads': 
         return <LeadsView 
           leads={leads} 
           setLeads={setLeads} 
+          setClients={setClients}
         />;
       case 'clients': 
         return <ClientsView 
@@ -157,13 +225,14 @@ export default function App() {
           setClients={setClients} 
           users={users}
           partners={partners}
+          currentUser={effectiveUser}
         />;
       case 'finance': 
         return <FinanceView 
           receivables={receivables} 
           setReceivables={setReceivables} 
           clients={clients}
-          currentUser={currentUser}
+          currentUser={effectiveUser}
         />;
       case 'design': 
         return <DesignView 
@@ -172,7 +241,7 @@ export default function App() {
           clients={clients}
           holidays={holidays}
           integrations={integrations}
-          currentUser={currentUser}
+          currentUser={effectiveUser}
           users={users}
         />;
       case 'partners': 
@@ -181,7 +250,27 @@ export default function App() {
           setPartnerRequests={setPartnerRequests}
           partners={partners}
           setPartners={setPartners}
-          currentUser={currentUser}
+          currentUser={effectiveUser}
+          artOrders={artOrders}
+          setArtOrders={setArtOrders}
+          clients={clients}
+          setClients={setClients}
+          users={users}
+          setUsers={setUsers}
+        />;
+      case 'tickets':
+        return <SupportView 
+          tickets={tickets}
+          setTickets={setTickets}
+          currentUser={effectiveUser}
+        />;
+      case 'videos':
+        return <VideoWorkflowView 
+          videoOrders={videoOrders}
+          setVideoOrders={setVideoOrders}
+          clients={clients}
+          users={users}
+          currentUser={effectiveUser}
         />;
       case 'admin': 
         return <AdminView 
@@ -192,10 +281,23 @@ export default function App() {
           artOrders={artOrders}
           receivables={receivables}
           users={users}
+          setUsers={setUsers}
         />;
-      default: return <DashboardView leads={leads} clients={clients} receivables={receivables} artOrders={artOrders} currentUser={currentUser} />;
+      default: return <DashboardView 
+        leads={leads} 
+        clients={clients} 
+        receivables={receivables} 
+        artOrders={artOrders} 
+        currentUser={effectiveUser} 
+        partners={partners}
+        partnerRequests={partnerRequests}
+      />;
     }
   };
+
+  if (!isAuthenticated || !currentUser || !effectiveUser) {
+    return <LoginView onLogin={handleLogin} isLoading={isAuthLoading} />;
+  }
 
   return (
     <div className="flex h-screen bg-white text-gray-900 transition-colors duration-300">
@@ -254,32 +356,68 @@ export default function App() {
         </nav>
 
         <div className="p-4 border-t border-gray-100 space-y-3">
-          <select 
-            value={currentUser.id}
-            onChange={(e) => {
-              const user = users.find(u => u.id === e.target.value);
-              if (user) {
-                setCurrentUser(user);
-                setActiveView('dashboard');
-              }
-            }}
-            className="w-full text-[10px] font-bold text-indigo-600 bg-indigo-50 border-none rounded-lg p-1 px-2 focus:ring-0 cursor-pointer mb-2"
-          >
-            {users.map(u => (
-              <option key={u.id} value={u.id}>Simular: {u.name} ({u.role})</option>
-            ))}
-          </select>
-
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 uppercase">
-              {currentUser.name.substring(0, 2)}
-            </div>
-            {isSidebarOpen && (
-              <div className="flex flex-col">
-                <span className="text-sm font-semibold text-gray-900">{currentUser.name}</span>
-                <span className="text-[10px] text-gray-400 uppercase tracking-wider">{currentUser.role}</span>
+          {currentUser.role === 'ADMIN' && (
+            <div className="flex flex-col gap-1 mb-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Simular Visão</label>
+              <div className="flex bg-gray-50 rounded-xl p-1 gap-1">
+                <button 
+                  onClick={() => { setPerspective(null); setActiveView('dashboard'); }}
+                  className={cn(
+                    "flex-1 py-1 rounded-lg text-[9px] font-bold uppercase transition-all",
+                    !perspective ? "bg-white text-indigo-600 shadow-sm" : "text-gray-400 hover:text-gray-600 border border-transparent"
+                  )}
+                >
+                  Admin
+                </button>
+                <button 
+                  onClick={() => { setPerspective('PARTNER'); setActiveView('dashboard'); }}
+                  className={cn(
+                    "flex-1 py-1 rounded-lg text-[9px] font-bold uppercase transition-all",
+                    perspective === 'PARTNER' ? "bg-white text-amber-600 shadow-sm" : "text-gray-400 hover:text-gray-600 border border-transparent"
+                  )}
+                >
+                  Parceiro
+                </button>
+                <button 
+                  onClick={() => { setPerspective('DESIGNER'); setActiveView('dashboard'); }}
+                  className={cn(
+                    "flex-1 py-1 rounded-lg text-[9px] font-bold uppercase transition-all",
+                    perspective === 'DESIGNER' ? "bg-white text-emerald-600 shadow-sm" : "text-gray-400 hover:text-gray-600 border border-transparent"
+                  )}
+                >
+                  Design
+                </button>
               </div>
-            )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border uppercase",
+                !perspective ? "bg-indigo-100 text-indigo-700 border-indigo-200" :
+                perspective === 'PARTNER' ? "bg-amber-100 text-amber-700 border-amber-200" :
+                perspective === 'DESIGNER' ? "bg-emerald-100 text-emerald-700 border-emerald-200" :
+                ""
+              )}>
+                {currentUser.name.substring(0, 2)}
+              </div>
+              {isSidebarOpen && (
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold text-gray-900 truncate max-w-[120px]">{currentUser.name}</span>
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wider">
+                    {perspective ? `Visualizar: ${perspective}` : currentUser.role}
+                  </span>
+                </div>
+              )}
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="p-1.5 text-gray-400 hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50"
+              title="Sair"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
         </div>
       </aside>
