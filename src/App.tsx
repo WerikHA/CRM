@@ -20,7 +20,10 @@ import {
   CheckCircle2,
   Calendar as CalendarIcon,
   Moon,
-  Sun
+  Sun,
+  Target,
+  Activity,
+  Bell
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -45,11 +48,13 @@ import DesignView from './components/DesignView';
 import PartnersView from './components/PartnersView';
 import AdminView from './components/AdminView';
 import LoginView from './components/LoginView';
+import ProspectionView from './components/ProspectionView';
 import SupportView from './components/SupportView';
+import ProspectingView from './components/prospecting/ProspectingView';
 import VideoWorkflowView from './components/VideoWorkflowView';
 import { LogOut, Film } from 'lucide-react';
 
-type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'tickets' | 'admin';
+type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'tickets' | 'admin' | 'prospecting';
 
 import { api } from './services/api';
 import { VideoOrder, SupportTicket } from './types';
@@ -63,18 +68,30 @@ const VIEW_LABELS: Record<ViewType, string> = {
   videos: 'Edição de Vídeo',
   partners: 'Parceiros',
   tickets: 'Suporte',
+  prospecting: 'Prospecção',
   admin: 'Configurações'
 };
 
 // Configuração da Agência
-const AGENCY_CONFIG = {
+const DEFAULT_AGENCY_CONFIG = {
   name: import.meta.env.VITE_COMPANY_NAME || 'AgencyFlow CRM',
   primaryColor: import.meta.env.VITE_PRIMARY_COLOR || '#4f46e5',
+  logoBgColor: '#6366f1',
+  logoUrl: '',
   currency: 'R$',
   locale: 'pt-BR'
 };
 
 export default function App() {
+  const [agencyConfig, setAgencyConfig] = useState(() => {
+    const saved = localStorage.getItem('agency_config');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Evita sumir as chaves novas no parse
+      return { ...DEFAULT_AGENCY_CONFIG, ...parsed };
+    }
+    return DEFAULT_AGENCY_CONFIG;
+  });
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -138,47 +155,60 @@ export default function App() {
       return;
     }
     
-    const fetchData = async () => {
+    const fetchData = async (showLoading = true) => {
       try {
-        setIsLoading(true);
+        if (showLoading) setIsLoading(true);
         const [
           leadsData, 
           clientsData, 
           receivablesData, 
           artOrdersData, 
           partnersData,
-          usersData
+          usersData,
+          partnerRequestsData,
+          ticketsData,
+          videoOrdersData
         ] = await Promise.all([
           api.getLeads(),
           api.getClients(),
           api.getReceivables(),
           api.getArtOrders(),
           api.getPartners(),
-          api.getUsers()
+          api.getUsers(),
+          api.getPartnerRequests(),
+          api.getSupportTickets(),
+          api.getVideoOrders()
         ]);
 
-        if (leadsData.length > 0) setLeads(leadsData);
-        if (clientsData.length > 0) setClients(clientsData);
-        if (receivablesData.length > 0) setReceivables(receivablesData);
-        if (artOrdersData.length > 0) setArtOrders(artOrdersData);
-        if (partnersData.length > 0) setPartners(partnersData);
-        if (usersData.length > 0) {
-          setUsers(usersData);
-          // Only update current user if it matches the ID to refresh profile data, 
-          // but don't overwrite with a different user
-          if (currentUser) {
-            const freshSelf = usersData.find(u => u.id === currentUser.id);
-            if (freshSelf) setCurrentUser(freshSelf);
-          }
+        setLeads(leadsData);
+        setClients(clientsData);
+        setReceivables(receivablesData);
+        setArtOrders(artOrdersData);
+        setPartners(partnersData);
+        setPartnerRequests(partnerRequestsData);
+        setTickets(ticketsData);
+        setVideoOrders(videoOrdersData);
+        setUsers(usersData);
+        
+        if (currentUser && usersData.length > 0) {
+          const freshSelf = usersData.find(u => u.id === currentUser.id);
+          if (freshSelf) setCurrentUser(freshSelf);
         }
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
       } finally {
-        setIsLoading(false);
+        if (showLoading) setIsLoading(false);
       }
     };
 
     fetchData();
+
+    // Auto-refresh data every 30 seconds to catch WhatsApp poll updates
+    const interval = setInterval(() => {
+      fetchData(false);
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [isAuthenticated]);
 
   // Filtro de Menu baseado no cargo
@@ -193,6 +223,8 @@ export default function App() {
       { id: 'finance', label: 'Financeiro', icon: DollarSign, roles: ['ADMIN', 'DESIGNER', 'EDITOR'] },
       { id: 'design', label: 'Design', icon: Palette, roles: ['ADMIN', 'DESIGNER', 'PARTNER'] },
       { id: 'videos', label: 'Edição de Vídeo', icon: Briefcase, roles: ['ADMIN', 'EDITOR', 'PARTNER'] },
+      { id: 'prospection', label: 'Prospecção', icon: Target, roles: ['ADMIN'] },
+      { id: 'prospecting', label: 'Prospecção', icon: Target, roles: ['ADMIN'] },
       { id: 'partners', label: isPartner ? 'Solicitações' : 'Parceiros', icon: Handshake, roles: ['ADMIN', 'PARTNER'] },
       { id: 'tickets', label: 'Suporte', icon: Settings, roles: ['ADMIN', 'PARTNER'] },
       { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN'] },
@@ -208,6 +240,7 @@ export default function App() {
           clients={clients} 
           receivables={receivables} 
           artOrders={artOrders} 
+          videoOrders={videoOrders}
           partners={partners}
           partnerRequests={partnerRequests}
           onViewChange={setActiveView}
@@ -239,6 +272,11 @@ export default function App() {
           artOrders={artOrders} 
           setArtOrders={setArtOrders} 
           clients={clients}
+          setClients={setClients}
+          receivables={receivables}
+          setReceivables={setReceivables}
+          partnerRequests={partnerRequests}
+          setPartnerRequests={setPartnerRequests}
           holidays={holidays}
           integrations={integrations}
           currentUser={effectiveUser}
@@ -264,11 +302,18 @@ export default function App() {
           setTickets={setTickets}
           currentUser={effectiveUser}
         />;
+      case 'prospecting':
+        return <ProspectingView />;
+      case 'prospection':
+        return <ProspectionView />;
       case 'videos':
         return <VideoWorkflowView 
           videoOrders={videoOrders}
           setVideoOrders={setVideoOrders}
           clients={clients}
+          setClients={setClients}
+          receivables={receivables}
+          setReceivables={setReceivables}
           users={users}
           currentUser={effectiveUser}
         />;
@@ -282,6 +327,8 @@ export default function App() {
           receivables={receivables}
           users={users}
           setUsers={setUsers}
+          agencyConfig={agencyConfig}
+          setAgencyConfig={setAgencyConfig}
         />;
       default: return <DashboardView 
         leads={leads} 
@@ -300,12 +347,20 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-white text-gray-900 transition-colors duration-300">
+    <div className="flex h-screen bg-white text-gray-900 transition-colors duration-300 overflow-hidden relative">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/20 z-40 md:hidden backdrop-blur-sm" 
+          onClick={() => setIsSidebarOpen(false)} 
+        />
+      )}
+
       {/* Sidebar */}
       <aside 
         className={cn(
-          "transition-all duration-300 flex flex-col z-50 border-r border-gray-100 bg-white",
-          isSidebarOpen ? "w-64" : "w-16"
+          "transition-all duration-300 flex flex-col z-50 border-r border-gray-100 bg-white absolute md:relative h-full top-0 left-0",
+          isSidebarOpen ? "w-64 translate-x-0" : "w-64 md:w-16 -translate-x-full md:translate-x-0"
         )}
       >
         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
@@ -313,10 +368,19 @@ export default function App() {
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex items-center gap-2 font-bold text-xl tracking-tight text-indigo-500"
+              className="flex items-center gap-3 font-bold text-xl tracking-tight text-indigo-500 flex-1"
             >
-              <Briefcase className="w-6 h-6" />
-              <span>{AGENCY_CONFIG.name}</span>
+              <div 
+                className="flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-xl shadow-sm"
+                style={{ backgroundColor: agencyConfig.logoBgColor || agencyConfig.primaryColor }}
+              >
+                {agencyConfig.logoUrl ? (
+                  <img src={agencyConfig.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+                ) : (
+                  <Briefcase className="w-6 h-6 text-white" />
+                )}
+              </div>
+              <span className="leading-tight text-lg break-words whitespace-normal max-w-[130px]" style={{ color: agencyConfig.primaryColor }}>{agencyConfig.name}</span>
             </motion.div>
           )}
           <button 
@@ -344,11 +408,15 @@ export default function App() {
                 activeView === item.id ? "text-indigo-500" : "text-gray-400 group-hover:text-indigo-500"
               )} />
               {isSidebarOpen && (
-                <span className="font-medium text-sm whitespace-nowrap">{item.label}</span>
+                <span className="font-medium text-sm whitespace-nowrap flex items-center gap-2">
+                  {item.label}
+                  {item.id === 'videos' && <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[8px] rounded uppercase tracking-wider font-bold border border-amber-100">Em Breve</span>}
+                </span>
               )}
               {!isSidebarOpen && (
-                <div className="absolute left-full ml-4 px-2 py-1 bg-indigo-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">
+                <div className="absolute left-full ml-4 px-2 py-1 bg-indigo-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap hidden md:block">
                   {item.label}
+                  {item.id === 'videos' && <span className="ml-2 text-amber-200 text-[10px]">(Em breve)</span>}
                 </div>
               )}
             </button>
@@ -387,6 +455,15 @@ export default function App() {
                 >
                   Design
                 </button>
+                <button 
+                  onClick={() => { setPerspective('EDITOR'); setActiveView('dashboard'); }}
+                  className={cn(
+                    "flex-1 py-1 rounded-lg text-[9px] font-bold uppercase transition-all whitespace-nowrap px-1",
+                    perspective === 'EDITOR' ? "bg-white text-purple-600 shadow-sm" : "text-gray-400 hover:text-gray-600 border border-transparent"
+                  )}
+                >
+                  Editor <span className="text-[7px] text-amber-500">(Breve)</span>
+                </button>
               </div>
             </div>
           )}
@@ -398,6 +475,7 @@ export default function App() {
                 !perspective ? "bg-indigo-100 text-indigo-700 border-indigo-200" :
                 perspective === 'PARTNER' ? "bg-amber-100 text-amber-700 border-amber-200" :
                 perspective === 'DESIGNER' ? "bg-emerald-100 text-emerald-700 border-emerald-200" :
+                perspective === 'EDITOR' ? "bg-purple-100 text-purple-700 border-purple-200" :
                 ""
               )}>
                 {currentUser.name.substring(0, 2)}
@@ -423,12 +501,18 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="h-16 border-b border-gray-100 bg-white/80 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-10 transition-colors duration-300">
+      <main className="flex-1 flex flex-col overflow-hidden relative w-full">
+        <header className="h-16 border-b border-gray-100 bg-white/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 sticky top-0 z-10 transition-colors duration-300">
           <div className="flex items-center gap-2 text-sm text-gray-500">
-            <span className="hover:text-indigo-500 cursor-pointer transition-colors">{AGENCY_CONFIG.name}</span>
-            <ChevronRight size={14} className="opacity-40" />
-            <span className="font-medium text-gray-900">
+            <button 
+              className="md:hidden p-1 mr-1 text-gray-500 hover:text-indigo-600 transition-colors" 
+              onClick={() => setIsSidebarOpen(true)}
+            >
+              <Menu size={20} />
+            </button>
+            <span className="cursor-pointer transition-colors hidden sm:block truncate max-w-[120px]" style={{ color: agencyConfig.primaryColor }}>{agencyConfig.name}</span>
+            <ChevronRight size={14} className="opacity-40 hidden sm:block" />
+            <span className="font-medium text-gray-900 truncate">
               {VIEW_LABELS[activeView]}
             </span>
           </div>
@@ -440,6 +524,10 @@ export default function App() {
              </div>
 
              <div className="h-8 w-[1px] mx-2 bg-gray-100" />
+             <button className="text-gray-400 hover:text-indigo-600 transition-colors relative">
+               <Bell size={20} />
+               <span className="absolute top-0 right-0 w-2 h-2 bg-rose-500 rounded-full border border-white" />
+             </button>
              <div className="flex items-center gap-2 cursor-pointer group">
                <span className="text-xs font-semibold text-gray-400 group-hover:text-indigo-500 transition-colors uppercase tracking-widest italic">Status: Online</span>
                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />

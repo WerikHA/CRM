@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { DollarSign, Download, Printer, Filter, ArrowDownToLine, MoreHorizontal, AlertCircle, CheckCircle2, Plus, Trash2, Edit, PieChart as PieChartIcon, BarChart3, Users } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { DollarSign, Download, Printer, Filter, ArrowDownToLine, MoreHorizontal, AlertCircle, CheckCircle2, Plus, Trash2, Edit, PieChart as PieChartIcon, BarChart3, Users, MessageSquare, Settings } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { cn } from '../lib/utils';
-import { Client, Receivable, ReceivableStatus, User } from '../types';
+import { Client, Receivable, ReceivableStatus, User, FinanceConfig } from '../types';
 import Modal from './Modal';
+import { api } from '../services/api';
 
 interface FinanceViewProps {
   receivables: Receivable[];
@@ -24,17 +25,32 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
   });
   
   const [filter, setFilter] = useState<ReceivableStatus | 'all'>('all');
+  const [financeConfig, setFinanceConfig] = useState<FinanceConfig>({ pixKey: '', enableReminders: false, reminderTemplate: '' });
+
+  useEffect(() => {
+    fetch('/api/finance/config').then(res => res.json()).then(setFinanceConfig);
+  }, []);
+
+  const saveConfig = async () => {
+      await fetch('/api/finance/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(financeConfig)
+      });
+      alert("Configurações salvas!");
+  };
   
   const isDesigner = currentUser.role === 'DESIGNER';
   const isAdmin = currentUser.role === 'ADMIN';
+  const isEditor = currentUser.role === 'EDITOR';
 
-  const filteredReceivables = (isDesigner 
+  const filteredReceivables = (isDesigner || isEditor
     ? receivables.filter(r => r.designerId === currentUser.id)
     : receivables).filter(r => filter === 'all' ? true : r.status === filter);
 
-  const totalAmount = filteredReceivables.filter(r => r.status === 'paid').reduce((acc, r) => acc + (isDesigner ? (r.payoutAmount || 0) : r.amount), 0);
-  const totalPending = filteredReceivables.filter(r => r.status === 'pending').reduce((acc, r) => acc + (isDesigner ? (r.payoutAmount || 0) : r.amount), 0);
-  const totalOverdue = filteredReceivables.filter(r => r.status === 'overdue').reduce((acc, r) => acc + (isDesigner ? (r.payoutAmount || 0) : r.amount), 0);
+  const totalAmount = filteredReceivables.filter(r => r.status === 'paid').reduce((acc, r) => acc + (isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount), 0);
+  const totalPending = filteredReceivables.filter(r => r.status === 'pending').reduce((acc, r) => acc + (isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount), 0);
+  const totalOverdue = filteredReceivables.filter(r => r.status === 'overdue').reduce((acc, r) => acc + (isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount), 0);
 
   const chartData = [
     { name: 'Pago', value: totalAmount, color: '#10b981' },
@@ -48,7 +64,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     const monthNames: any = { '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr', '05': 'Mai', '06': 'Jun', '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez' };
     const monthName = monthNames[month] || month;
     if (!acc[monthName]) acc[monthName] = { name: monthName, total: 0, count: 0 };
-    acc[monthName].total += isDesigner ? (r.payoutAmount || 0) : r.amount;
+    acc[monthName].total += isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount;
     acc[monthName].count += 1;
     return acc;
   }, {});
@@ -61,7 +77,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     if (!client) return acc;
     const clientName = client.name;
     if (!acc[clientName]) acc[clientName] = { name: clientName, total: 0 };
-    acc[clientName].total += isDesigner ? (r.payoutAmount || 0) : r.amount;
+    acc[clientName].total += isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount;
     return acc;
   }, {});
 
@@ -83,28 +99,73 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
 
   const handleEditReceivable = (receivable: Receivable) => {
     setEditingReceivable(receivable);
-    setFormData(receivable);
+    setFormData({
+      clientId: receivable.clientId || '',
+      description: receivable.description || '',
+      amount: receivable.amount || 0,
+      dueDate: receivable.dueDate || '',
+      status: receivable.status || 'pending',
+      ...receivable
+    });
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingReceivable) {
-      setReceivables(receivables.map(r => r.id === editingReceivable.id ? { ...r, ...formData } as Receivable : r));
-    } else {
-      const newReceivable: Receivable = {
-        ...formData,
-        id: Math.random().toString(36).substr(2, 9),
-      } as Receivable;
-      setReceivables([...receivables, newReceivable]);
+    try {
+      if (editingReceivable) {
+        const updated = await api.updateReceivable(editingReceivable.id, formData);
+        setReceivables(receivables.map(r => r.id === editingReceivable.id ? { ...r, ...updated } : r));
+      } else {
+        const newData: any = {
+          ...formData,
+          id: 'r' + Math.random().toString(36).substr(2, 9),
+        };
+        const created = await api.createReceivable(newData);
+        setReceivables([...receivables, created]);
+      }
+      setIsModalOpen(false);
+    } catch (err: any) {
+      alert('Erro ao salvar financeiro: ' + err.message);
     }
-    setIsModalOpen(false);
   };
 
-  const handleDeleteReceivable = (id: string) => {
-    if (window.confirm('Deseja excluir este lançamento financeiro?')) {
+  const handleDeleteReceivable = async (id: string) => {
+    try {
+      await api.deleteReceivable(id);
       setReceivables(receivables.filter(r => r.id !== id));
+    } catch (err: any) {
+      alert('Erro ao excluir financeiro: ' + err.message);
     }
+  };
+
+  const handleSendReminder = async (e: React.MouseEvent, receivableId: string) => {
+    e.stopPropagation();
+    const receivable = receivables.find(r => r.id === receivableId);
+    const client = clients.find(c => c.id === receivable?.clientId);
+    
+    if (!client || !client.phone) {
+      alert("Cliente sem telefone cadastrado.");
+      return;
+    }
+
+    const pixKey = client.pixKey || financeConfig.pixKey || 'Não cadastrada';
+    const message = financeConfig.reminderTemplate
+        .replace('{{clientName}}', client.name)
+        .replace('{{description}}', receivable?.description || '')
+        .replace('{{amount}}', receivable?.amount.toString() || '0')
+        .replace('{{pixKey}}', pixKey);
+
+    try {
+        const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: client.phone, message })
+      });
+      if (res.ok) alert("Lembrete enviado!");
+      else alert("Erro ao enviar lembrete.");
+    } catch(e) { alert("Erro de conexão."); }
+    
   };
 
   return (
@@ -133,14 +194,14 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
           <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CheckCircle2 size={18} /></div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner ? 'Recebido' : 'Receita Total'}</span>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner || isEditor ? 'Recebido' : 'Receita Total'}</span>
             </div>
             <p className="text-2xl font-bold text-gray-900">R$ {totalAmount.toLocaleString()}</p>
           </div>
           <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><DollarSign size={18} /></div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner ? 'A Receber' : 'Pendentes'}</span>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner || isEditor ? 'A Receber' : 'Pendentes'}</span>
             </div>
             <p className="text-2xl font-bold text-gray-900">R$ {totalPending.toLocaleString()}</p>
           </div>
@@ -304,6 +365,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                 <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Descrição</th>
                 <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Vencimento</th>
                 <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Valor</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Chave PIX</th>
                 <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</th>
                 <th className="px-6 py-3 text-right"></th>
               </tr>
@@ -311,7 +373,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
             <tbody className="divide-y divide-gray-50">
               {filteredReceivables.map((r) => {
                 const client = clients.find(c => c.id === r.clientId);
-                const displayAmount = isDesigner ? (r.payoutAmount || 0) : r.amount;
+                const displayAmount = isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount;
                 return (
                   <tr key={r.id} className="hover:bg-gray-50/80 transition-colors group cursor-pointer" onClick={() => isAdmin && handleEditReceivable(r)}>
                     <td className="px-6 py-4">
@@ -325,6 +387,11 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                     <td className="px-6 py-4 text-xs font-medium text-gray-500">{r.description}</td>
                     <td className="px-6 py-4 text-xs font-medium text-gray-500">{r.dueDate}</td>
                     <td className="px-6 py-4 text-sm font-bold text-gray-900">R$ {displayAmount.toLocaleString()}</td>
+                    <td className="px-6 py-4">
+                       <span className="text-[10px] font-mono text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-100">
+                         {client?.pixKey || 'N/A'}
+                       </span>
+                    </td>
                     <td className="px-6 py-4">
                       {isAdmin ? (
                         <select 
@@ -356,10 +423,18 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
+                       <button 
+                         onClick={(e) => { e.stopPropagation(); handleSendReminder(e, r.id); }}
+                         className="p-1.5 hover:bg-emerald-50 rounded-lg text-gray-400 hover:text-emerald-500 transition-all font-bold"
+                         title="Enviar Lembrete"
+                       >
+                         <MessageSquare size={16} />
+                       </button>
                        {isAdmin && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleDeleteReceivable(r.id); }}
-                          className="p-1.5 hover:bg-rose-50 rounded-lg text-gray-300 hover:text-rose-500 transition-all font-bold"
+                          className="p-1.5 hover:bg-rose-50 rounded-lg text-gray-400 hover:text-rose-500 transition-all font-bold"
+                          title="Excluir Transação"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -372,6 +447,27 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
           </table>
         </div>
       </div>
+      
+      {isAdmin && (
+      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors space-y-4">
+        <h2 className="font-bold text-gray-900 flex items-center gap-2">
+            <Settings size={18} className="text-indigo-500" />
+            Configurações de Cobrança
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="text" placeholder="Chave PIX Global" value={financeConfig.pixKey} onChange={e => setFinanceConfig({...financeConfig, pixKey: e.target.value})} className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 text-sm" />
+            <label className="flex items-center gap-2">
+                <input type="checkbox" checked={financeConfig.enableReminders} onChange={e => setFinanceConfig({...financeConfig, enableReminders: e.target.checked})} />
+                <span className="text-sm font-medium">Habilitar lembretes automáticos</span>
+            </label>
+            <textarea placeholder="Mensagem de lembrete" value={financeConfig.reminderTemplate} onChange={e => setFinanceConfig({...financeConfig, reminderTemplate: e.target.value})} className="col-span-2 px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 text-sm" rows={2} />
+        </div>
+        <p className="text-xs text-gray-500">
+            Variáveis disponíveis: <code>{'{{clientName}}'}</code>, <code>{'{{description}}'}</code>, <code>{'{{amount}}'}</code>, <code>{'{{pixKey}}'}</code>.
+        </p>
+        <button onClick={saveConfig} className="px-4 py-2 bg-indigo-500 text-white text-sm font-semibold rounded-xl hover:bg-indigo-600">Salvar Configurações</button>
+      </div>
+      )}
 
       <Modal
         isOpen={isModalOpen}

@@ -1,115 +1,214 @@
-import { Lead, Client, Receivable, ArtOrder, Partner, User } from '../types';
+import { Lead, Client, Receivable, ArtOrder, Partner, User, SupportTicket, VideoOrder } from '../types';
 
 const API_BASE = '/api';
 
+function toSnakeCase(obj: any): any {
+  if (Array.isArray(obj)) return obj.map(toSnakeCase);
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj).reduce((acc, key) => {
+      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      acc[snakeKey] = toSnakeCase(obj[key]);
+      return acc;
+    }, {} as any);
+  }
+  return obj;
+}
+
+function toCamelCase(obj: any): any {
+  if (Array.isArray(obj)) return obj.map(toCamelCase);
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj).reduce((acc, key) => {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      acc[camelKey] = toCamelCase(obj[key]);
+      return acc;
+    }, {} as any);
+  }
+  return obj;
+}
+
+async function request(endpoint: string, method: string, data?: any) {
+  const url = `${API_BASE}${endpoint}`;
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: data ? JSON.stringify(toSnakeCase(data)) : undefined,
+    });
+    
+    const contentType = res.headers.get('content-type');
+    if (contentType && contentType.includes('text/html')) {
+      console.error(`[API] Erro: O endpoint ${url} retornou HTML em vez de JSON. Possível erro de rota ou 404.`);
+      const text = await res.text();
+      console.error(`[API] Conteúdo retornado (truncado): ${text.substring(0, 200)}...`);
+      throw new Error(`Endpoint ${endpoint} retornou HTML. Verifique se a rota existe no servidor.`);
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to ${method} ${endpoint}`);
+    }
+    const result = await res.json();
+    return toCamelCase(result);
+  } catch (error) {
+    console.error(`[API] Falha na requisição para ${url}:`, error);
+    throw error;
+  }
+}
+
 export const api = {
+  // LEADS
   async getLeads(): Promise<Lead[]> {
-    const res = await fetch(`${API_BASE}/leads`);
-    if (!res.ok) throw new Error('Failed to fetch leads');
-    const data = await res.json();
+    const data = await request('/leads', 'GET');
     return data.map((item: any) => ({
       ...item,
-      contactName: item.contact_name,
-      estimatedValue: Number(item.estimated_value),
-      lastContact: item.last_contact
+      estimatedValue: Number(item.estimatedValue)
     }));
   },
-
   async createLead(lead: Lead): Promise<Lead> {
-    const res = await fetch(`${API_BASE}/leads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...lead,
-        contact_name: lead.contactName,
-        estimated_value: lead.estimatedValue,
-        last_contact: lead.lastContact
-      }),
-    });
-    if (!res.ok) throw new Error('Failed to create lead');
-    return res.json();
+    return request('/leads', 'POST', lead);
+  },
+  async updateLead(id: string, lead: Partial<Lead>): Promise<Lead> {
+    return request(`/leads/${id}`, 'PUT', lead);
+  },
+  async deleteLead(id: string): Promise<void> {
+    return request(`/leads/${id}`, 'DELETE');
   },
 
+  // CLIENTS
   async getClients(): Promise<Client[]> {
-    const res = await fetch(`${API_BASE}/clients`);
-    if (!res.ok) throw new Error('Failed to fetch clients');
-    const data = await res.json();
+    const data = await request('/clients', 'GET');
     return data.map((item: any) => ({
       ...item,
-      monthlyValue: Number(item.monthly_value),
-      renewalDate: item.renewal_date,
-      contactEmail: item.contact_email,
-      assignedDesignerId: item.assigned_designer_id,
-      partnerId: item.partner_id,
-      designerPayout: Number(item.designer_payout)
+      monthlyValue: Number(item.monthlyValue),
+      designerPayout: Number(item.designerPayout)
     }));
   },
+  async createClient(client: Client): Promise<Client> {
+    return request('/clients', 'POST', client);
+  },
+  async updateClient(id: string, client: Partial<Client>): Promise<Client> {
+    return request(`/clients/${id}`, 'PUT', client);
+  },
+  async deleteClient(id: string): Promise<void> {
+    return request(`/clients/${id}`, 'DELETE');
+  },
 
+  // RECEIVABLES
   async getReceivables(): Promise<Receivable[]> {
-    const res = await fetch(`${API_BASE}/receivables`);
-    if (!res.ok) throw new Error('Failed to fetch receivables');
-    const data = await res.json();
+    const data = await request('/receivables', 'GET');
     return data.map((item: any) => ({
       ...item,
-      clientId: item.client_id,
       amount: Number(item.amount),
-      dueDate: item.due_date,
-      designerId: item.designer_id,
-      payoutAmount: Number(item.payout_amount)
+      payoutAmount: Number(item.payoutAmount)
     }));
   },
+  async createReceivable(receivable: Receivable): Promise<Receivable> {
+    return request('/receivables', 'POST', receivable);
+  },
+  async updateReceivable(id: string, receivable: Partial<Receivable>): Promise<Receivable> {
+    return request(`/receivables/${id}`, 'PUT', receivable);
+  },
+  async deleteReceivable(id: string): Promise<void> {
+    return request(`/receivables/${id}`, 'DELETE');
+  },
 
+  // ART ORDERS
   async getArtOrders(): Promise<ArtOrder[]> {
-    const res = await fetch(`${API_BASE}/art-orders`);
-    if (!res.ok) throw new Error('Failed to fetch art orders');
-    const data = await res.json();
-    return data.map((item: any) => ({
-      ...item,
-      clientId: item.client_id,
-      designerId: item.designer_id,
-      approvalStatus: item.approval_status,
-      whatsappSentAt: item.whatsapp_sent_at
-    }));
+    return request('/art-orders', 'GET');
+  },
+  async createArtOrder(order: ArtOrder): Promise<ArtOrder> {
+    return request('/art-orders', 'POST', order);
+  },
+  async updateArtOrder(id: string, order: Partial<ArtOrder>): Promise<ArtOrder> {
+    return request(`/art-orders/${id}`, 'PUT', order);
+  },
+  async deleteArtOrder(id: string): Promise<void> {
+    return request(`/art-orders/${id}`, 'DELETE');
   },
 
+  // PARTNERS
   async getPartners(): Promise<Partner[]> {
-    const res = await fetch(`${API_BASE}/partners`);
-    if (!res.ok) throw new Error('Failed to fetch partners');
-    const data = await res.json();
+    const data = await request('/partners', 'GET');
     return data.map((item: any) => ({
       ...item,
-      agencyName: item.agency_name,
-      commissionType: item.commission_type,
-      commissionValue: Number(item.commission_value)
+      commissionValue: Number(item.commissionValue)
     }));
   },
-
-  async getUsers(): Promise<User[]> {
-    const res = await fetch(`${API_BASE}/users`);
-    if (!res.ok) throw new Error('Failed to fetch users');
-    return res.json();
+  async createPartner(partner: Partner): Promise<Partner> {
+    return request('/partners', 'POST', partner);
+  },
+  async updatePartner(id: string, partner: Partial<Partner>): Promise<Partner> {
+    return request(`/partners/${id}`, 'PUT', partner);
+  },
+  async deletePartner(id: string): Promise<void> {
+    return request(`/partners/${id}`, 'DELETE');
   },
 
+  // PARTNER REQUESTS
+  async getPartnerRequests(): Promise<any[]> {
+    const data = await request('/partner-requests', 'GET');
+    return data.map((item: any) => ({
+      ...item,
+      cost: Number(item.cost)
+    }));
+  },
+  async createPartnerRequest(partnerReq: any): Promise<any> {
+    return request('/partner-requests', 'POST', partnerReq);
+  },
+  async updatePartnerRequest(id: string, partnerReq: any): Promise<any> {
+    return request(`/partner-requests/${id}`, 'PUT', partnerReq);
+  },
+  async deletePartnerRequest(id: string): Promise<void> {
+    return request(`/partner-requests/${id}`, 'DELETE');
+  },
+
+  // SUPPORT TICKETS
+  async getSupportTickets(): Promise<SupportTicket[]> {
+    return request('/support-tickets', 'GET');
+  },
+  async createSupportTicket(ticket: SupportTicket): Promise<SupportTicket> {
+    return request('/support-tickets', 'POST', ticket);
+  },
+  async updateSupportTicket(id: string, ticket: Partial<SupportTicket>): Promise<SupportTicket> {
+    return request(`/support-tickets/${id}`, 'PUT', ticket);
+  },
+  async deleteSupportTicket(id: string): Promise<void> {
+    return request(`/support-tickets/${id}`, 'DELETE');
+  },
+
+  // VIDEO ORDERS
+  async getVideoOrders(): Promise<VideoOrder[]> {
+    return request('/video-orders', 'GET');
+  },
+  async createVideoOrder(order: VideoOrder): Promise<VideoOrder> {
+    return request('/video-orders', 'POST', order);
+  },
+  async updateVideoOrder(id: string, order: Partial<VideoOrder>): Promise<VideoOrder> {
+    return request(`/video-orders/${id}`, 'PUT', order);
+  },
+  async deleteVideoOrder(id: string): Promise<void> {
+    return request(`/video-orders/${id}`, 'DELETE');
+  },
+
+  // USERS
+  async getUsers(): Promise<User[]> {
+    return request('/users', 'GET');
+  },
   async createUser(user: User & { password?: string }): Promise<User> {
-    const res = await fetch(`${API_BASE}/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(user),
-    });
-    if (!res.ok) throw new Error('Failed to create user');
-    return res.json();
+    return request('/users', 'POST', user);
+  },
+  async updateUser(id: string, user: Partial<User>): Promise<User> {
+    return request(`/users/${id}`, 'PUT', user);
+  },
+  async deleteUser(id: string): Promise<void> {
+    return request(`/users/${id}`, 'DELETE');
   },
 
   async login(email: string, password: string): Promise<{ success: boolean; user: User }> {
-    const res = await fetch(`${API_BASE}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || 'Falha na autenticação');
-    }
-    return res.json();
+    return request('/login', 'POST', { email, password });
+  },
+
+  async triggerIntegration(integrationId: string, payload: any): Promise<void> {
+    return request(`/integrations/${integrationId}/trigger`, 'POST', payload);
   }
 };

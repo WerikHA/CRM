@@ -18,13 +18,14 @@ import {
   Area
 } from 'recharts';
 import { cn } from '../lib/utils';
-import { Lead, Client, Receivable, ArtOrder, User, Partner, PartnerRequest } from '../types';
+import { Lead, Client, Receivable, ArtOrder, User, Partner, PartnerRequest, VideoOrder } from '../types';
 
 interface DashboardViewProps {
   leads: Lead[];
   clients: Client[];
   receivables: Receivable[];
   artOrders: ArtOrder[];
+  videoOrders?: VideoOrder[];
   partners: Partner[];
   partnerRequests: PartnerRequest[];
   onViewChange?: (view: any) => void;
@@ -64,14 +65,15 @@ const StatCard = ({ title, value, change, icon: Icon, color }: any) => (
   </div>
 );
 
-export default function DashboardView({ leads, clients, receivables, artOrders, partners, partnerRequests, onViewChange, currentUser }: DashboardViewProps) {
+export default function DashboardView({ leads, clients, receivables, artOrders, videoOrders = [], partners, partnerRequests, onViewChange, currentUser }: DashboardViewProps) {
   // Lógica de filtragem por papel
   const isDesigner = currentUser.role === 'DESIGNER';
   const isPartner = currentUser.role === 'PARTNER';
   const isAdmin = currentUser.role === 'ADMIN';
+  const isEditor = currentUser.role === 'EDITOR';
 
   // Métricas Filtradas
-  const filteredClients = isDesigner 
+  const filteredClients = isDesigner || isEditor
     ? clients.filter(c => c.assignedDesignerId === currentUser.id)
     : isPartner 
       ? clients.filter(c => c.partnerId === currentUser.id)
@@ -79,11 +81,13 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
 
   const filteredOrders = isDesigner
     ? artOrders.filter(o => o.designerId === currentUser.id)
-    : isPartner
-      ? artOrders.filter(o => clients.find(c => c.id === o.clientId)?.partnerId === currentUser.id)
-      : artOrders;
+    : isEditor
+      ? videoOrders.filter(o => o.editorId === currentUser.id)
+      : isPartner
+        ? artOrders.filter(o => clients.find(c => c.id === o.clientId)?.partnerId === currentUser.id)
+        : artOrders;
 
-  const filteredReceivables = isDesigner
+  const filteredReceivables = isDesigner || isEditor
     ? receivables.filter(r => r.designerId === currentUser.id)
     : isPartner
       ? receivables.filter(r => clients.find(c => c.id === r.clientId)?.partnerId === currentUser.id)
@@ -92,7 +96,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
   // Valores
   const totalValue = isAdmin 
     ? clients.reduce((acc, c) => acc + c.monthlyValue, 0)
-    : isDesigner
+    : isDesigner || isEditor
       ? clients.filter(c => c.assignedDesignerId === currentUser.id).reduce((acc, c) => acc + (c.designerPayout || 0), 0)
       : filteredClients.reduce((acc, c) => acc + c.monthlyValue, 0);
 
@@ -134,10 +138,10 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
   ];
 
   const jobStatusData = [
-    { name: 'Fila', value: artOrders.filter(o => o.status === 'queue').length, color: '#94a3b8' },
-    { name: 'Prod', value: artOrders.filter(o => o.status === 'production').length, color: '#0ea5e9' },
-    { name: 'Revisão', value: artOrders.filter(o => o.status === 'review').length, color: '#f59e0b' },
-    { name: 'Feito', value: artOrders.filter(o => o.status === 'done').length, color: '#10b981' },
+    { name: 'Fila', value: (isEditor ? videoOrders : artOrders).filter(o => o.status === 'queue').length, color: '#94a3b8' },
+    { name: 'Prod', value: (isEditor ? videoOrders : artOrders).filter(o => o.status === 'production').length, color: '#0ea5e9' },
+    { name: 'Revisão', value: (isEditor ? videoOrders : artOrders).filter(o => o.status === 'review').length, color: '#f59e0b' },
+    { name: 'Feito', value: (isEditor ? videoOrders : artOrders).filter(o => o.status === 'done').length, color: '#10b981' },
   ];
 
   const filteredPartnerRequests = isPartner 
@@ -300,10 +304,10 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight transition-colors">
-            {isDesigner ? 'Painel do Designer' : isPartner ? 'Painel do Parceiro' : 'Painel Administrativo'}
+            {isDesigner ? 'Painel do Designer' : isEditor ? 'Painel do Editor' : isPartner ? 'Painel do Parceiro' : 'Painel Administrativo'}
           </h1>
           <p className="text-gray-500 mt-1">
-            {isDesigner ? `Olá, ${currentUser.name}. Acompanhe suas produções e ganhos.` : 
+            {isDesigner || isEditor ? `Olá, ${currentUser.name}. Acompanhe suas produções e ganhos.` : 
              isPartner ? `Olá, ${currentUser.name}. Acompanhe seus clientes indicados.` : 
              'Bem-vindo de volta! Aqui está o resumo da sua agência.'}
           </p>
@@ -312,7 +316,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
-          title={isDesigner ? "Ganhos Previstos" : isPartner ? "Gasto (Amplifica Marketing)" : "Receita Mensal"} 
+          title={isDesigner || isEditor ? "Ganhos Previstos" : isPartner ? "Gasto (Amplifica Marketing)" : "Receita Mensal"} 
           value={`R$ ${totalValue.toLocaleString()}`} 
           change={12.5} 
           icon={DollarSign} 
@@ -678,7 +682,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 transition-colors duration-300">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-bold text-gray-900">
-              {isDesigner ? 'Meus Recebimentos' : isPartner ? 'Pagamentos dos Meus Clientes' : 'Pendências Financeiras'}
+              {isDesigner || isEditor ? 'Meus Recebimentos' : isPartner ? 'Pagamentos dos Meus Clientes' : 'Pendências Financeiras'}
             </h2>
             <button 
               onClick={() => onViewChange && onViewChange('finance')}
@@ -690,7 +694,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
           <div className="space-y-4">
             {filteredReceivables.filter(r => r.status !== 'paid').slice(0, 5).map(r => {
               const client = clients.find(c => c.id === r.clientId);
-              const displayAmount = isDesigner ? (r.payoutAmount || 0) : r.amount;
+              const displayAmount = isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount;
               return (
                 <div key={r.id} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:border-indigo-100 transition-colors">
                   <div className="flex items-center gap-4">
@@ -763,7 +767,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
             )}
           </div>
           <button 
-            onClick={() => onViewChange && onViewChange('design')}
+            onClick={() => onViewChange && onViewChange(isEditor ? 'videos' : 'design')}
             className="w-full mt-8 py-2.5 rounded-xl border border-gray-100 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-all duration-300"
           >
             Gerenciar Jobs

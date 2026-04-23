@@ -42,6 +42,7 @@ export interface Client {
   renewalDate: string; // dd/mm/aaaa
   contactEmail: string;
   phone?: string;
+  pixKey?: string; // Chave PIX para pagamentos
   assignedDesignerId?: string; // Designer responsável
   partnerId?: string; // Parceiro que trouxe o cliente
   designerPayout?: number; // Quanto o designer ganha por este cliente
@@ -53,6 +54,7 @@ export interface SupportTicket {
   partnerId: string;
   subject: string;
   description: string;
+  response?: string;
   status: 'open' | 'closed' | 'replied';
   createdAt: string;
 }
@@ -92,6 +94,7 @@ export interface ArtOrder {
   status: WorkStatus;
   approvalStatus?: ApprovalStatus;
   whatsappSentAt?: string; // dd/mm/aaaa hh:mm
+  observation?: string; // Limite de 300 caracteres
 }
 
 export type PartnerRequestStatus = 'pending' | 'ongoing' | 'completed' | 'requested' | 'delivered';
@@ -131,4 +134,45 @@ export interface IntegrationConfig {
     accessToken: string;
     businessAccountId: string;
   };
+}
+
+export interface ProspectLead {
+  id: string;
+  name: string;
+  source: 'google' | 'instagram';
+  phone: string;
+  email?: string;
+  username?: string;
+  site?: string;
+  category: string;
+  city: string;
+  status: 'novo' | 'contatado' | 'respondeu' | 'convertido' | 'descartado';
+  tags: string[];
+  createdAt: string;
+  listId?: string; // ID da lista vinculada
+}
+
+export interface ProspectList {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+}
+
+export interface ProspectCampaign {
+  id: string;
+  name: string;
+  listId: string;
+  status: 'draft' | 'running' | 'paused' | 'completed';
+  channel: 'whatsapp';
+  messageTemplate: string;
+  delayBetweenMessages: number; // segundos
+  dailyLimit: number;
+  lastRunAt?: string;
+}
+
+export interface FinanceConfig {
+  pixKey: string;
+  enableReminders: boolean;
+  reminderTemplate: string;
 }

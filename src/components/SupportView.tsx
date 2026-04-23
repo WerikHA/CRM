@@ -3,6 +3,7 @@ import { MessageSquare, Plus, Clock, CheckCircle2, AlertCircle, Send, Trash2, Fi
 import { cn } from '../lib/utils';
 import { SupportTicket, User } from '../types';
 import Modal from './Modal';
+import { api } from '../services/api';
 
 interface SupportViewProps {
   tickets: SupportTicket[];
@@ -12,10 +13,12 @@ interface SupportViewProps {
 
 export default function SupportView({ tickets, setTickets, currentUser }: SupportViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState<Partial<SupportTicket>>({
+  const initialFormData: Partial<SupportTicket> = {
     subject: '',
     description: '',
-  });
+  };
+
+  const [formData, setFormData] = useState<Partial<SupportTicket>>(initialFormData);
 
   const isPartner = currentUser.role === 'PARTNER';
   const isAdmin = currentUser.role === 'ADMIN';
@@ -25,27 +28,61 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
     : tickets;
 
   const handleOpenTicket = () => {
-    setFormData({ subject: '', description: '' });
+    setFormData(initialFormData);
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newTicket: SupportTicket = {
-      id: Math.random().toString(36).substr(2, 9),
-      partnerId: currentUser.id,
-      subject: formData.subject || '',
-      description: formData.description || '',
-      status: 'open',
-      createdAt: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-    };
-    setTickets([...tickets, newTicket]);
-    setIsModalOpen(false);
+    try {
+      const newTicketData: SupportTicket = {
+        id: Math.random().toString(36).substr(2, 9),
+        partnerId: currentUser.id,
+        subject: formData.subject || '',
+        description: formData.description || '',
+        status: 'open',
+        createdAt: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      };
+      const created = await api.createSupportTicket(newTicketData);
+      setTickets([...tickets, created]);
+      setIsModalOpen(false);
+    } catch (err: any) {
+      alert('Erro ao abrir ticket: ' + err.message);
+    }
   };
 
-  const handleDeleteTicket = (id: string) => {
-    if (window.confirm('Excluir este ticket permanentemente?')) {
-      setTickets(tickets.filter(t => t.id !== id));
+  const handleRespondTicket = async (id: string, response: string) => {
+    try {
+      const ticket = tickets.find(t => t.id === id);
+      if (!ticket) return;
+
+      const updated = {
+        ...ticket,
+        response,
+        status: 'replied' as 'replied'
+      };
+
+      await api.updateSupportTicket(id, updated);
+      setTickets(tickets.map(t => t.id === id ? updated : t));
+    } catch (err: any) {
+      alert('Erro ao responder ticket: ' + err.message);
+    }
+  };
+
+  const handleCloseTicket = async (id: string) => {
+    try {
+      const ticket = tickets.find(t => t.id === id);
+      if (!ticket) return;
+
+      const updated = {
+        ...ticket,
+        status: 'closed' as 'closed'
+      };
+
+      await api.updateSupportTicket(id, updated);
+      setTickets(tickets.map(t => t.id === id ? updated : t));
+    } catch (err: any) {
+      alert('Erro ao fechar ticket: ' + err.message);
     }
   };
 
@@ -127,9 +164,39 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
                   </button>
                 )}
               </div>
-              <p className="text-sm text-gray-500 leading-relaxed bg-gray-50/50 p-4 rounded-xl border border-gray-100/50 italic">
+              <p className="text-sm text-gray-500 leading-relaxed bg-gray-50/50 p-4 rounded-xl border border-gray-100/50 italic mb-4">
                 {ticket.description}
               </p>
+              
+              {ticket.response && (
+                <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mb-4">
+                  <p className="text-xs font-bold text-indigo-600 uppercase mb-1">Resposta do Suporte:</p>
+                  <p className="text-sm text-indigo-900">{ticket.response}</p>
+                </div>
+              )}
+
+              {isAdmin && ticket.status !== 'closed' && (
+                <div className="space-y-3 mt-4 pt-4 border-t border-gray-100">
+                   <textarea 
+                     className="w-full p-3 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                     placeholder="Digite sua resposta..."
+                     onBlur={(e) => {
+                       if (e.target.value.trim()) {
+                         handleRespondTicket(ticket.id, e.target.value);
+                         e.target.value = '';
+                       }
+                     }}
+                   />
+                   <div className="flex gap-2">
+                     <button 
+                       onClick={() => handleCloseTicket(ticket.id)}
+                       className="px-4 py-2 text-xs font-bold text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100"
+                     >
+                       Marcar como Concluído
+                     </button>
+                   </div>
+                </div>
+              )}
             </div>
           ))
         )}

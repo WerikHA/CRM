@@ -1,29 +1,55 @@
 import React, { useState, useMemo } from 'react';
-import { Palette, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, ArrowUpCircle, Filter, MessageSquare, Check, X as XIcon, RefreshCcw, Eye, Download, Copy } from 'lucide-react';
+import { Palette, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, ArrowUpCircle, Filter, MessageSquare, Check, X as XIcon, RefreshCcw, Eye, Download, Copy, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { ArtOrder, Client, WorkStatus, IntegrationConfig, ApprovalStatus, User } from '../types';
+import { ArtOrder, Client, WorkStatus, IntegrationConfig, ApprovalStatus, User, Receivable, PartnerRequest } from '../types';
 import Modal from './Modal';
+import { api } from '../services/api';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, getYear } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { getBrazilianHolidays, Holiday } from '../constants/holidays';
 
 interface DesignViewProps {
   artOrders: ArtOrder[];
   setArtOrders: React.Dispatch<React.SetStateAction<ArtOrder[]>>;
   clients: Client[];
+  setClients: React.Dispatch<React.SetStateAction<Client[]>>;
+  receivables: Receivable[];
+  setReceivables: React.Dispatch<React.SetStateAction<Receivable[]>>;
+  partnerRequests: PartnerRequest[];
+  setPartnerRequests: React.Dispatch<React.SetStateAction<PartnerRequest[]>>;
   holidays: { date: string; name: string }[];
   integrations: IntegrationConfig[];
   users: User[];
   currentUser: any; // User type
 }
 
-export default function DesignView({ artOrders, setArtOrders, clients, holidays, integrations, users, currentUser }: DesignViewProps) {
-  const [sendingId, setSendingId] = useState<string | null>(null);
+export default function DesignView({ 
+  artOrders, 
+  setArtOrders, 
+  clients, 
+  setClients,
+  receivables,
+  setReceivables,
+  partnerRequests,
+  setPartnerRequests,
+  holidays, 
+  integrations, 
+  users, 
+  currentUser 
+}: DesignViewProps) {
   const [designerFilter, setDesignerFilter] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
+  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+  const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
+  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
+  const [orderToApprove, setOrderToApprove] = useState<ArtOrder | null>(null);
+  const [whatsappImageBase64, setWhatsappImageBase64] = useState<string>('');
   const [selectedBrandClient, setSelectedBrandClient] = useState<Client | null>(null);
   const [editingOrder, setEditingOrder] = useState<ArtOrder | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   
-  const [formData, setFormData] = useState<Partial<ArtOrder>>({
+  const initialFormData: Partial<ArtOrder> = {
     title: '',
     clientId: '',
     designerId: '',
@@ -31,8 +57,11 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
     deadline: '',
     priority: 'medium',
     progress: 0,
-    status: 'queue'
-  });
+    status: 'queue',
+    observation: ''
+  };
+
+  const [formData, setFormData] = useState<Partial<ArtOrder>>(initialFormData);
 
   const isDesigner = currentUser.role === 'DESIGNER';
   const isAdmin = currentUser.role === 'ADMIN';
@@ -71,6 +100,29 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
     return [];
   }, [clients, isAdmin, isPartner, currentUser.id]);
 
+  const monthShortNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  const sidebarHolidays = useMemo(() => {
+    const yearHolidays = getBrazilianHolidays(getYear(currentCalendarDate));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return yearHolidays.filter(h => {
+      // Must be in the month we are viewing
+      const inMonth = isSameMonth(h.date, currentCalendarDate);
+      if (!inMonth) return false;
+      
+      // If viewing current month, only show from today onwards
+      if (isSameMonth(currentCalendarDate, today)) {
+        return h.date >= today;
+      }
+      
+      // If viewing future month, show all (they are all upcoming)
+      // If viewing past month, h.date >= today will naturally be false for those dates
+      return h.date >= today;
+    });
+  }, [currentCalendarDate]);
+
   const whatsappIntegration = integrations.find(i => i.type === 'whatsapp' && i.isActive);
 
   const getStatusColor = (status: string) => {
@@ -102,6 +154,10 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
     }
   };
 
+  const handleShowCalendar = () => {
+    setIsCalendarModalOpen(true);
+  };
+
   const handleAddOrder = () => {
     if (partnerClients.length === 0) {
       alert("Você precisa ter pelo menos um cliente vinculado para solicitar um pedido.");
@@ -112,21 +168,22 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
 
     setEditingOrder(null);
     setFormData({
-      title: '',
+      ...initialFormData,
       clientId: partnerClients[0].id,
       designerId: assigned.id,
       designerName: assigned.name,
       deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
-      priority: 'medium',
-      progress: 0,
-      status: 'queue'
     });
     setIsModalOpen(true);
   };
 
-  const handleEditOrder = (order: ArtOrder) => {
+  const handleEditOrder = (e: React.MouseEvent, order: ArtOrder) => {
+    e.stopPropagation();
     setEditingOrder(order);
-    setFormData(order);
+    setFormData({
+      ...initialFormData,
+      ...order
+    });
     setIsModalOpen(true);
   };
 
@@ -144,79 +201,323 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
     setTimeout(() => setCopyFeedback(null), 2000);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingOrder) {
-      setArtOrders(orders => orders.map(o => o.id === editingOrder.id ? { ...o, ...formData } as ArtOrder : o));
-    } else {
-      const newOrder: ArtOrder = {
-        ...formData,
-        id: Math.random().toString(36).substr(2, 9),
-      } as ArtOrder;
-      setArtOrders([...artOrders, newOrder]);
-    }
-    setIsModalOpen(false);
-  };
-
-  const handleUpdateStatus = (id: string, status: WorkStatus) => {
-    setArtOrders(orders => orders.map(o => o.id === id ? { ...o, status, progress: status === 'done' ? 100 : o.progress } : o));
-  };
-
-  const handleIncreaseProgress = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setArtOrders(orders => orders.map(o => {
-      if (o.id === id) {
-        const nextProgress = Math.min(o.progress + 10, 100);
-        const nextStatus = nextProgress === 100 ? 'done' : o.status === 'queue' ? 'production' : o.status;
-        return { ...o, progress: nextProgress, status: nextStatus };
+    try {
+      if (editingOrder) {
+        const updated = await api.updateArtOrder(editingOrder.id, formData);
+        setArtOrders(orders => orders.map(o => o.id === editingOrder.id ? { ...o, ...updated } : o));
+      } else {
+        const newOrderData: any = {
+          ...formData,
+          id: 'o' + Math.random().toString(36).substr(2, 9),
+        };
+        const created = await api.createArtOrder(newOrderData);
+        setArtOrders([...artOrders, created]);
       }
-      return o;
-    }));
-  };
-
-  const handleDeleteOrder = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (window.confirm('Deseja excluir este pedido de arte?')) {
-      setArtOrders(orders => orders.filter(o => o.id !== id));
+      setIsModalOpen(false);
+    } catch (err: any) {
+      alert('Erro ao salvar pedido: ' + err.message);
     }
   };
 
-  const handleSendToWhatsapp = (e: React.MouseEvent, id: string) => {
+  const handleUpdateStatus = async (id: string, status: WorkStatus) => {
+    let progress = 0;
+    if (status === 'queue') progress = 0;
+    else if (status === 'production') progress = 40;
+    else if (status === 'review') progress = 80;
+    else if (status === 'done') progress = 100;
+    
+    // Evitar updates desnecessários
+    const currentOrder = artOrders.find(o => o.id === id);
+    if (currentOrder && currentOrder.status === status) return;
+
+    // Update otimista local
+    setArtOrders(prev => prev.map(o => o.id === id ? { ...o, status, progress } : o));
+    
+    try {
+      await api.updateArtOrder(id, { status, progress });
+      
+      // Sincronização silenciosa com solicitações de parceiros
+      if (status === 'done') {
+        const relatedRequest = partnerRequests.find(pr => pr.relatedOrderId === id);
+        if (relatedRequest && relatedRequest.status !== 'completed') {
+          api.updatePartnerRequest(relatedRequest.id, { status: 'completed' })
+            .then(updated => {
+              setPartnerRequests(prev => prev.map(pr => pr.id === updated.id ? updated : pr));
+            }).catch(e => console.error('Silent sync failed:', e));
+        }
+      }
+    } catch (err: any) {
+      console.error('Falha ao atualizar status:', err);
+      // Em caso de erro, busca os dados mais recentes do servidor para garantir consistência
+      try {
+        const latest = await api.getArtOrders();
+        setArtOrders(latest);
+      } catch (fetchErr) {
+        alert('Erro crítico de conexão. Por favor, recarregue a página.');
+      }
+    }
+  };
+
+  const handleDeleteOrder = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!whatsappIntegration) {
-      alert("Integração com WhatsApp não configurada ou inativa no painel Admin.");
+    try {
+      await api.deleteArtOrder(id);
+      setArtOrders(orders => orders.filter(o => o.id !== id));
+    } catch (err: any) {
+      alert('Erro ao excluir pedido: ' + err.message);
+    }
+  };
+
+
+  const handleSimulateResponse = async (e: React.MouseEvent, id: string, status: ApprovalStatus) => {
+    e.stopPropagation();
+    try {
+      const updates = { 
+        approvalStatus: status,
+        status: status === 'approved' ? 'done' as WorkStatus : 'production' as WorkStatus,
+        progress: status === 'approved' ? 100 : 80
+      };
+      await api.updateArtOrder(id, updates);
+      setArtOrders(orders => orders.map(o => o.id === id ? { ...o, ...updates } : o));
+
+      if (status === 'approved') {
+        // Sync with partner request if approved (translated to 'done')
+        const relatedRequest = partnerRequests.find(pr => pr.relatedOrderId === id);
+        if (relatedRequest && relatedRequest.status !== 'completed') {
+          api.updatePartnerRequest(relatedRequest.id, { status: 'completed' }).then(updated => {
+             setPartnerRequests(prev => prev.map(pr => pr.id === updated.id ? updated : pr));
+          }).catch(e => console.error('Sync failed', e));
+        }
+      }
+    } catch (err: any) {
+      alert('Erro ao simular resposta: ' + err.message);
+    }
+  };
+
+  const renderCalendar = () => {
+    const monthStart = startOfMonth(currentCalendarDate);
+    const monthEnd = endOfMonth(monthStart);
+    const startDate = startOfWeek(monthStart);
+    const endDate = endOfWeek(monthEnd);
+    const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
+    const currentYear = getYear(currentCalendarDate);
+    
+    // Get holidays for the current year being viewed
+    const yearlyHolidays = getBrazilianHolidays(currentYear);
+
+    const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 px-2">
+          <div className="space-y-0.5">
+            <h3 className="text-4xl font-black text-gray-900 capitalize tracking-tighter">
+              {format(currentCalendarDate, 'MMMM', { locale: ptBR })}
+              <span className="text-indigo-500 ml-2">{format(currentCalendarDate, 'yyyy')}</span>
+            </h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">Feriados e Planejamento Mensal</p>
+          </div>
+          
+          <div className="flex items-center gap-1.5 bg-gray-100 p-1.5 rounded-2xl border border-gray-200 shadow-sm">
+            <button 
+              onClick={() => setCurrentCalendarDate(subMonths(currentCalendarDate, 1))}
+              className="p-2 hover:bg-white hover:text-indigo-600 rounded-xl text-gray-500 transition-all hover:shadow-sm"
+              title="Mês Anterior"
+            >
+               <ChevronLeft size={20} strokeWidth={2.5} />
+            </button>
+            <button 
+              onClick={() => setCurrentCalendarDate(new Date())}
+              className="px-4 py-2 text-[10px] font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all uppercase tracking-widest shadow-md shadow-indigo-100"
+            >
+               Hoje
+            </button>
+            <button 
+              onClick={() => setCurrentCalendarDate(addMonths(currentCalendarDate, 1))}
+              className="p-2 hover:bg-white hover:text-indigo-600 rounded-xl text-gray-500 transition-all hover:shadow-sm"
+              title="Próximo Mês"
+            >
+               <ChevronRight size={20} strokeWidth={2.5} />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-px bg-gray-200 border-2 border-gray-200 rounded-[2rem] overflow-hidden shadow-xl bg-opacity-50">
+          {weekDays.map(day => (
+            <div key={day} className="bg-gray-50/80 backdrop-blur-sm py-4 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-200">
+              {day}
+            </div>
+          ))}
+          {calendarDays.map((day, i) => {
+            const dayHolidays = yearlyHolidays.filter(h => isSameDay(day, h.date));
+            const dayOrders = artOrders.filter(o => {
+              const parts = o.deadline.split('/');
+              if (parts.length !== 3) return false;
+              const orderDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+              return isSameDay(day, orderDate);
+            });
+
+            const isCurrentMonth = isSameMonth(day, monthStart);
+            const isToday = isSameDay(day, new Date());
+
+            return (
+              <div 
+                key={i} 
+                className={cn(
+                  "min-h-[130px] p-2.5 bg-white flex flex-col gap-1.5 transition-all group relative",
+                  !isCurrentMonth && "bg-gray-50/40 opacity-30 grayscale-[0.5]",
+                  isToday && "bg-indigo-50/30"
+                )}
+              >
+                {/* Visual indicator for today */}
+                {isToday && (
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.4)]" />
+                )}
+
+                <div className="flex justify-between items-start mb-1">
+                  <span className={cn(
+                    "text-lg font-black tracking-tighter leading-none transition-colors",
+                    isToday ? "text-indigo-600" : isCurrentMonth ? "text-gray-900" : "text-gray-300"
+                  )}>
+                    {format(day, 'dd')}
+                  </span>
+                  
+                  <div className="flex gap-1">
+                    {dayHolidays.length > 0 && (
+                      <div className={cn(
+                        "w-2.5 h-2.5 rounded-full shadow-sm ring-2 ring-white",
+                        dayHolidays.some(h => h.type === 'holiday') ? "bg-rose-500 animate-pulse" : "bg-amber-400"
+                      )} />
+                    )}
+                    {dayOrders.length > 0 && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-slate-300 ring-2 ring-white" />
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-1.5 overflow-y-auto no-scrollbar scroll-smooth">
+                  {/* Holidays Card */}
+                  {dayHolidays.map((holiday, idx) => (
+                    <div 
+                      key={`h-${idx}`}
+                      className={cn(
+                        "text-[9px] p-2 rounded-xl font-black leading-none shadow-sm border-l-4 transition-transform hover:scale-[1.02]",
+                        holiday.type === 'holiday' 
+                          ? "bg-rose-50 text-rose-700 border-rose-500" 
+                          : "bg-amber-50 text-amber-700 border-amber-400"
+                      )}
+                    >
+                      {holiday.name}
+                    </div>
+                  ))}
+                  
+                  {/* Orders Summary */}
+                  {dayOrders.length > 0 && isCurrentMonth && (
+                    <div className="mt-auto space-y-1">
+                      <div className="flex items-center gap-1.5 opacity-60">
+                        <div className="h-px flex-1 bg-gray-200" />
+                        <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">{dayOrders.length} Tarefa(s)</span>
+                        <div className="h-px flex-1 bg-gray-200" />
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {dayOrders.map(order => (
+                          <div 
+                            key={order.id}
+                            className={cn(
+                              "w-full text-[8px] px-2 py-1 rounded-lg font-bold truncate",
+                              order.status === 'done' ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-500"
+                            )}
+                            title={order.title}
+                          >
+                            {order.title}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-8 px-8 py-5 bg-white rounded-3xl border-2 border-gray-100 shadow-sm">
+           <div className="flex items-center gap-3 group cursor-default">
+             <div className="w-5 h-5 rounded-full bg-rose-500 shadow-lg shadow-rose-100 animate-pulse" />
+             <div className="flex flex-col">
+               <span className="text-[10px] font-black text-gray-900 uppercase tracking-widest">Feriado Nacional</span>
+               <span className="text-[9px] text-gray-400 font-medium italic -mt-0.5">Prazo de entrega bloqueado</span>
+             </div>
+           </div>
+           
+           <div className="flex items-center gap-3 group cursor-default">
+             <div className="w-5 h-5 rounded-full bg-amber-400 shadow-lg shadow-amber-100" />
+             <div className="flex flex-col">
+               <span className="text-[10px] font-black text-gray-900 uppercase tracking-widest">Data Comemorativa</span>
+               <span className="text-[9px] text-gray-400 font-medium italic -mt-0.5">Oportunidade p/ campanhas</span>
+             </div>
+           </div>
+
+           <div className="flex items-center gap-3 group cursor-default ml-auto">
+             <div className="w-5 h-5 rounded-full bg-slate-300 shadow-lg shadow-slate-100" />
+             <div className="flex flex-col">
+               <span className="text-[10px] font-black text-gray-900 uppercase tracking-widest">Job Delivery</span>
+               <span className="text-[9px] text-gray-400 font-medium italic -mt-0.5">Prazos de entrega do designer</span>
+             </div>
+           </div>
+        </div>
+      </div>
+    );
+  };
+
+  const handleOpenWhatsappModal = (e: React.MouseEvent, order: ArtOrder) => {
+    e.stopPropagation();
+    setOrderToApprove(order);
+    setWhatsappImageBase64('');
+    setWhatsappModalOpen(true);
+  };
+
+  const confirmSendToWhatsapp = async () => {
+    if (!orderToApprove) return;
+    const client = clients.find(c => c.id === orderToApprove.clientId);
+    if (!client || !client.phone) {
+      alert('Cliente sem telefone cadastrado ou não encontrado.');
       return;
     }
 
-    setSendingId(id);
-    
-    // Simulação de chamada de API
-    setTimeout(() => {
-      setArtOrders(orders => orders.map(o => {
-        if (o.id === id) {
-          const now = new Date();
-          const timestamp = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth()+1).toString().padStart(2, '0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-          return { 
-            ...o, 
-            status: 'review', 
-            approvalStatus: 'pending',
-            whatsappSentAt: timestamp
-          };
-        }
-        return o;
-      }));
-      setSendingId(null);
-    }, 1500);
-  };
+    try {
+      const message = `Olá, *${client.name}*! A arte *${orderToApprove.title}* está pronta para sua análise. 🎨✨\n\nPor favor, vote na enquete abaixo para nos enviar seu feedback instantaneamente!`;
+      
+      const poll = {
+        name: `Aprovação: ${orderToApprove.title}`,
+        options: ['🟢 Aprovar Arte', '🔴 Solicitar Ajustes'],
+        orderId: orderToApprove.id
+      };
 
-  const handleSimulateResponse = (e: React.MouseEvent, id: string, status: ApprovalStatus) => {
-    e.stopPropagation();
-    setArtOrders(orders => orders.map(o => o.id === id ? { 
-      ...o, 
-      approvalStatus: status,
-      status: status === 'approved' ? 'done' : 'production',
-      progress: status === 'approved' ? 100 : 80
-    } : o));
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: client.phone, message, poll, mediaBase64: whatsappImageBase64 || undefined })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setArtOrders(prev => prev.map(o => 
+          o.id === orderToApprove.id 
+            ? { ...o, approvalStatus: 'pending', whatsappSentAt: new Date().toLocaleString('pt-BR') } 
+            : o
+        ));
+        alert('Mensagem e enquete de aprovação enviadas com sucesso via WhatsApp!');
+        setWhatsappModalOpen(false);
+      } else {
+        alert('Erro ao enviar WhatsApp: ' + (data.error || 'Verifique se o WhatsApp está conectado no painel Admin.'));
+      }
+    } catch (error) {
+      console.error('Erro ao enviar WhatsApp:', error);
+      alert('Erro na comunicação com o servidor.');
+    }
   };
 
   return (
@@ -274,7 +575,7 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
           return (
             <div 
               key={order.id} 
-              onClick={() => handleEditOrder(order)}
+              onClick={(e) => handleEditOrder(e, order)}
               className="bg-white rounded-2xl border border-gray-200 p-6 hover:border-indigo-200 transition-all group shadow-sm hover:shadow-md cursor-pointer"
             >
               <div className="flex items-start justify-between mb-4">
@@ -342,15 +643,7 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Progresso da Tarefa</span>
-                    <button 
-                      onClick={(e) => handleIncreaseProgress(e, order.id)}
-                      className="p-1 text-indigo-500 hover:bg-indigo-50 rounded transition-colors"
-                    >
-                      <ArrowUpCircle size={14} />
-                    </button>
-                  </div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Progresso da Tarefa</span>
                   <span className="text-sm font-bold text-indigo-500">{order.progress}%</span>
                 </div>
                 <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
@@ -362,15 +655,24 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
               </div>
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
-                <div>
+                <div className="text-xs text-gray-500 italic max-w-sm">
+                  {order.observation && <p className="line-clamp-2" title={order.observation}>Obs: {order.observation}</p>}
                   {order.whatsappSentAt && (
-                    <div className="flex items-center gap-2 text-emerald-600 text-[10px] font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-2 text-emerald-600 font-bold uppercase tracking-wider mt-1">
                       <MessageSquare size={12} />
                       Enviado WhatsApp: {order.whatsappSentAt}
                     </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
+                  {order.status === 'review' && (
+                    <button 
+                      onClick={(e) => handleOpenWhatsappModal(e, order)}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold hover:bg-emerald-600 transition-all shadow-sm flex-1 sm:flex-none"
+                    >
+                      <Send size={14} /> Enviar para Aprovação
+                    </button>
+                  )}
                   {order.status === 'review' && order.approvalStatus === 'pending' && (
                     <div className="flex gap-1 mr-2 bg-gray-50 p-1 rounded-lg border border-gray-100">
                       <button 
@@ -389,21 +691,6 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                       </button>
                     </div>
                   )}
-                  <button 
-                    onClick={(e) => handleSendToWhatsapp(e, order.id)}
-                    disabled={sendingId === order.id || order.status === 'done' || order.approvalStatus === 'approved'}
-                    className={cn(
-                      "flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex-1 sm:flex-initial",
-                      (order.status === 'done' || order.approvalStatus === 'approved')
-                      ? "bg-gray-50 text-gray-400 cursor-not-allowed border border-gray-100"
-                      : sendingId === order.id 
-                        ? "bg-indigo-50 text-indigo-400 animate-pulse border border-indigo-100"
-                        : "bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
-                    )}
-                  >
-                    <MessageSquare size={14} />
-                    {sendingId === order.id ? 'Iniciando WhatsApp...' : 'Enviar p/ Aprovação (WPP)'}
-                  </button>
                 </div>
               </div>
             </div>
@@ -437,7 +724,7 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Título do Job</label>
                 <input 
                   type="text" 
-                  value={formData.title}
+                  value={formData.title || ''}
                   onChange={e => setFormData({...formData, title: e.target.value})}
                   className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 shadow-sm"
                   placeholder="Ex: Post Carrossel Instagram"
@@ -447,7 +734,7 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cliente</label>
                   <select 
-                    value={formData.clientId}
+                    value={formData.clientId || ''}
                     onChange={e => setFormData({...formData, clientId: e.target.value})}
                     className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
                   >
@@ -462,7 +749,7 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                      </div>
                    ) : (
                      <select 
-                       value={formData.designerId}
+                       value={formData.designerId || ''}
                        onChange={e => {
                          const d = designers.find(u => u.id === e.target.value);
                          setFormData({...formData, designerId: e.target.value, designerName: d?.name || ''});
@@ -478,7 +765,7 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Prazo</label>
                   <input 
                     type="text" 
-                    value={formData.deadline}
+                    value={formData.deadline || ''}
                     onChange={e => setFormData({...formData, deadline: e.target.value})}
                     className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 shadow-sm"
                     placeholder="dd/mm/aaaa"
@@ -487,7 +774,7 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Prioridade</label>
                   <select 
-                    value={formData.priority}
+                    value={formData.priority || 'medium'}
                     onChange={e => setFormData({...formData, priority: e.target.value as any})}
                     className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm"
                   >
@@ -496,6 +783,17 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
                     <option value="high">Alta</option>
                   </select>
                 </div>
+                 <div className="col-span-2 space-y-1">
+                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Observações ({formData.observation?.length || 0}/300)</label>
+                   <textarea 
+                     value={formData.observation || ''}
+                     onChange={e => setFormData({...formData, observation: e.target.value})}
+                     maxLength={300}
+                     className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 shadow-sm"
+                     placeholder="Alguma observação importante para o designer?"
+                     rows={3}
+                   />
+                </div>
              </div>
           </form>
         </Modal>
@@ -503,34 +801,53 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
         {/* Sidebar Widgets */}
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm transition-all duration-300">
-            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 transition-colors">
-               <Clock size={18} className="text-indigo-500" />
-               Feriados do Mês
-            </h3>
-            <div className="space-y-3">
-               {holidays.map((h, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white border border-gray-100 transition-colors">
-                     <div className="flex flex-col items-center justify-center w-10 h-10 bg-indigo-50 rounded-lg border border-indigo-100 shadow-sm transition-colors">
-                        <span className="text-[10px] font-bold text-indigo-500 uppercase">Abr</span>
-                        <span className="text-sm font-bold text-gray-900 leading-none">{h.date.split('/')[0]}</span>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2 transition-colors">
+                 <Clock size={18} className="text-indigo-500" />
+                 Próximos de {monthShortNames[currentCalendarDate.getMonth()]}
+              </h3>
+            </div>
+            <div className="space-y-3 max-h-[350px] overflow-y-auto no-scrollbar pr-1">
+               {sidebarHolidays.map((h, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white border border-gray-100 hover:border-indigo-100 transition-all">
+                     <div className={cn(
+                       "flex flex-col items-center justify-center w-10 h-10 rounded-lg border shadow-sm transition-colors",
+                       h.type === 'holiday' ? "bg-rose-50 border-rose-100" : "bg-amber-50 border-amber-100"
+                     )}>
+                        <span className={cn(
+                          "text-[9px] font-bold uppercase",
+                          h.type === 'holiday' ? "text-rose-500" : "text-amber-500"
+                        )}>{monthShortNames[h.date.getMonth()]}</span>
+                        <span className={cn(
+                          "text-sm font-bold leading-none",
+                          h.type === 'holiday' ? "text-rose-600" : "text-amber-600"
+                        )}>{h.date.getDate()}</span>
                      </div>
-                     <div>
-                        <p className="text-xs font-bold text-gray-900 transition-colors">{h.name}</p>
-                        <p className="text-[10px] text-gray-400">Ponto facultativo</p>
+                     <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-gray-900 truncate transition-colors">{h.name}</p>
+                        <p className="text-[10px] text-gray-400 font-medium capitalize">
+                          {h.type === 'holiday' ? 'Feriado Nacional' : 'Data Comemorativa'}
+                        </p>
                      </div>
                   </div>
                ))}
-               {holidays.length === 0 && <p className="text-xs text-gray-400 italic">Sem feriados previstos.</p>}
+               {sidebarHolidays.length === 0 && (
+                 <div className="py-8 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                   <p className="text-xs text-gray-400 italic">Sem eventos previstos para este mês.</p>
+                 </div>
+               )}
             </div>
-            <button className="w-full mt-6 py-2 rounded-xl text-xs font-bold text-indigo-500 border border-indigo-100 hover:bg-indigo-50 transition-all">
-               Ver calendário completo
+            <button onClick={handleShowCalendar} className="w-full mt-6 py-2 rounded-xl text-xs font-bold text-indigo-500 border border-indigo-100 hover:bg-indigo-50 transition-all">
+               Calendário Completo
             </button>
           </div>
 
           <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm transition-all duration-300">
              <h3 className="font-bold text-gray-900 mb-2 transition-colors">Dica do Pro</h3>
              <p className="text-xs text-gray-500 leading-relaxed transition-colors">
-                Designer, lembre-se de verificar as referências do cliente antes de iniciar a produção. Isso reduz o retrabalho em até 40%.
+                • <b>Reflexão:</b> Verifique o guia de marca antes de iniciar.<br/>
+                • <b>Organização:</b> Nomeie bem suas camadas e arquivos.<br/>
+                • <b>Feedback:</b> A aprovação via WhatsApp agiliza muito o processo, seja claro na mensagem.
              </p>
           </div>
         </div>
@@ -634,6 +951,77 @@ export default function DesignView({ artOrders, setArtOrders, clients, holidays,
               )) || <p className="col-span-5 text-sm text-gray-400 italic text-center">Nenhuma cor definida.</p>}
             </div>
             <p className="text-[10px] text-gray-400 text-center italic">Clique no card da cor para copiar o código HEX.</p>
+          </div>
+        </div>
+      </Modal>
+      <Modal 
+        isOpen={isCalendarModalOpen} 
+        onClose={() => setIsCalendarModalOpen(false)} 
+        title="Calendário Completo"
+      >
+        <div className="p-2">
+           {renderCalendar()}
+        </div>
+      </Modal>
+
+      <Modal 
+        isOpen={whatsappModalOpen} 
+        onClose={() => setWhatsappModalOpen(false)} 
+        title="Enviar p/ Aprovação (WhatsApp)"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button 
+              onClick={() => setWhatsappModalOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={confirmSendToWhatsapp}
+              className="px-6 py-2 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-xl transition-colors shadow-sm"
+            >
+              Confirmar Envio
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Você está prestes a enviar a arte <strong>{orderToApprove?.title}</strong> ao cliente <strong>{clients.find(c => c.id === orderToApprove?.clientId)?.name}</strong>.
+          </p>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Anexar Arte Pronta (Opcional)</label>
+            <div className="relative">
+              <input 
+                type="file" 
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setWhatsappImageBase64(reader.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                className="block w-full text-sm text-gray-500
+                  file:mr-4 file:py-2 file:px-4
+                  file:rounded-xl file:border-0
+                  file:text-sm file:font-semibold
+                  file:bg-emerald-50 file:text-emerald-700
+                  hover:file:bg-emerald-100 transition-colors"
+              />
+            </div>
+            {whatsappImageBase64 && (
+              <div className="mt-4 text-xs text-emerald-600 font-bold uppercase tracking-wider flex items-center gap-1 bg-emerald-50 p-2 rounded-lg justify-center border border-emerald-100">
+                <CheckCircle2 size={14} />
+                Imagem anexada
+              </div>
+            )}
+            <p className="text-[10px] text-gray-400 italic mt-2">
+              Se anexar uma imagem, o WhatsApp enviará primeiro a arte, e logo em seguida a enquete de aprovação.
+            </p>
           </div>
         </div>
       </Modal>

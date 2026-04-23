@@ -3,6 +3,7 @@ import { Handshake, ExternalLink, Plus, MoreHorizontal, Briefcase, Mail, Trash2,
 import { PartnerRequest, PartnerRequestStatus, Partner, User, ArtOrder, Client } from '../types';
 import Modal from './Modal';
 import { cn } from '../lib/utils';
+import { api } from '../services/api';
 
 interface PartnersViewProps {
   partnerRequests: PartnerRequest[];
@@ -42,20 +43,35 @@ export default function PartnersView({
   const isAdmin = currentUser.role === 'ADMIN';
   const isPartner = currentUser.role === 'PARTNER';
 
-  const [teamFormData, setTeamFormData] = useState<Partial<User>>({
+  const initialTeamFormData: Partial<User> = {
     name: '',
     email: '',
     role: 'EDITOR'
-  });
+  };
 
-  const [agencyFormData, setAgencyFormData] = useState<Partial<Partner>>({
+  const initialAgencyFormData: Partial<Partner> = {
     name: '',
     agencyName: '',
     email: '',
     phone: '',
     commissionType: 'percentage',
     commissionValue: 10
-  });
+  };
+
+  const initialRequestFormData: Partial<PartnerRequest> = {
+    clientName: '',
+    serviceType: '',
+    cost: 0,
+    status: 'pending',
+    partnerId: '',
+    partnerName: ''
+  };
+
+  const [teamFormData, setTeamFormData] = useState<Partial<User>>(initialTeamFormData);
+
+  const [agencyFormData, setAgencyFormData] = useState<Partial<Partner>>(initialAgencyFormData);
+
+  const [formData, setFormData] = useState<Partial<PartnerRequest>>(initialRequestFormData);
 
   const filteredRequests = currentUser.role === 'PARTNER' 
     ? partnerRequests.filter(r => r.partnerId === currentUser.id)
@@ -64,10 +80,7 @@ export default function PartnersView({
   const handleAddRequest = () => {
     setEditingRequest(null);
     setFormData({
-      clientName: '',
-      serviceType: '',
-      cost: 0,
-      status: 'pending',
+      ...initialRequestFormData,
       partnerId: isAdmin ? (partners[0]?.id || '') : currentUser.id,
       partnerName: isAdmin ? (partners[0]?.name || '') : currentUser.name
     });
@@ -76,14 +89,7 @@ export default function PartnersView({
 
   const handleAddAgency = () => {
     setEditingAgency(null);
-    setAgencyFormData({
-      name: '',
-      agencyName: '',
-      email: '',
-      phone: '',
-      commissionType: 'percentage',
-      commissionValue: 10
-    });
+    setAgencyFormData(initialAgencyFormData);
     setIsAgencyModalOpen(true);
   };
 
@@ -103,91 +109,102 @@ export default function PartnersView({
 
   const handleAddTeamMember = () => {
     setEditingTeamMember(null);
-    setTeamFormData({ name: '', email: '', role: 'EDITOR' });
+    setTeamFormData(initialTeamFormData);
     setIsTeamModalOpen(true);
   };
 
-  const handleTeamSubmit = (e: React.FormEvent) => {
+  const handleTeamSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingTeamMember) {
-      setUsers(users.map(u => u.id === editingTeamMember.id ? { ...u, ...teamFormData } as User : u));
-    } else {
-      const newUser: User = {
-        ...teamFormData,
-        id: Math.random().toString(36).substr(2, 9),
-        role: teamFormData.role || 'EDITOR',
-        ownerId: currentUser.id
-      } as User;
-      setUsers([...users, newUser]);
+    try {
+      if (editingTeamMember) {
+        const updated = await api.updateUser(editingTeamMember.id, teamFormData);
+        setUsers(users.map(u => u.id === editingTeamMember.id ? { ...u, ...updated } : u));
+      } else {
+        const newUser: User = {
+          ...teamFormData,
+          id: Math.random().toString(36).substr(2, 9),
+          role: teamFormData.role || 'EDITOR',
+          ownerId: currentUser.id
+        } as User;
+        const created = await api.createUser(newUser);
+        setUsers([...users, created]);
+      }
+      setIsTeamModalOpen(false);
+    } catch (err: any) {
+      alert('Erro ao salvar membro da equipe: ' + err.message);
     }
-    setIsTeamModalOpen(false);
   };
 
-  const handleDeleteTeamMember = (id: string) => {
-    if (window.confirm('Excluir este membro da equipe?')) {
+  const handleDeleteTeamMember = async (id: string) => {
+    try {
+      await api.deleteUser(id);
       setUsers(users.filter(u => u.id !== id));
+    } catch (err: any) {
+      alert('Erro ao excluir membro: ' + err.message);
     }
   };
 
   const myTeam = users.filter(u => u.ownerId === currentUser.id);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingRequest) {
-      setPartnerRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...formData } : r));
-    } else {
-      const requestId = 'pr' + Math.random().toString(36).substring(2, 9);
-      const newRequest: PartnerRequest = {
-        id: requestId,
-        partnerId: formData.partnerId || 'unknown',
-        partnerName: formData.partnerName || 'Agência Externa',
-        clientName: formData.clientName || '',
-        serviceType: formData.serviceType || '',
-        cost: formData.cost || 0,
-        status: formData.status as PartnerRequestStatus || 'pending'
-      };
-      setPartnerRequests(prev => [...prev, newRequest]);
-
-      // Automatically push to Design Workflow (ArtOrder)
-      // First, check/create client if needed
-      let clientId = clients.find(c => c.name === formData.clientName)?.id;
-      if (!clientId) {
-        clientId = 'c' + Math.random().toString(36).substring(2, 9);
-        const newClient: Client = {
-          id: clientId,
-          name: formData.clientName || '',
-          status: 'active',
-          monthlyValue: formData.cost || 0,
-          renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
-          contactEmail: '',
-          partnerId: formData.partnerId
+    try {
+      if (editingRequest) {
+        const updated = await api.updatePartnerRequest(editingRequest.id, formData);
+        setPartnerRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...updated } : r));
+      } else {
+        const requestId = 'pr' + Math.random().toString(36).substring(2, 9);
+        const newRequestData: any = {
+          ...formData,
+          id: requestId,
+          partnerId: formData.partnerId || 'unknown',
+          partnerName: formData.partnerName || 'Agência Externa',
+          clientName: formData.clientName || '',
+          serviceType: formData.serviceType || '',
+          cost: formData.cost || 0,
+          status: formData.status as PartnerRequestStatus || 'pending'
         };
-        setClients(prev => [...prev, newClient]);
+        const createdRequest = await api.createPartnerRequest(newRequestData);
+        setPartnerRequests(prev => [...prev, createdRequest]);
+
+        // Automatically push to Design Workflow (ArtOrder)
+        // First, check/create client if needed
+        let clientId = clients.find(c => c.name === formData.clientName)?.id;
+        if (!clientId) {
+          clientId = 'c' + Math.random().toString(36).substring(2, 9);
+          const newClient: Client = {
+            id: clientId,
+            name: formData.clientName || '',
+            status: 'active',
+            monthlyValue: formData.cost || 0,
+            renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
+            contactEmail: '',
+            partnerId: formData.partnerId
+          };
+          const createdClient = await api.createClient(newClient);
+          setClients(prev => [...prev, createdClient]);
+        }
+
+        const designers = users.filter(u => u.role === 'DESIGNER');
+        const newOrder: ArtOrder = {
+          id: 'ao' + Math.random().toString(36).substring(2, 9),
+          title: formData.serviceType || 'Novo Job',
+          clientId: clientId,
+          designerId: designers[0]?.id || 'unknown',
+          designerName: designers[0]?.name || 'Pendente',
+          deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
+          priority: 'medium',
+          progress: 0,
+          status: 'queue'
+        };
+        const createdOrder = await api.createArtOrder(newOrder);
+        setArtOrders(prev => [...prev, createdOrder]);
       }
-
-      const designers = users.filter(u => u.role === 'DESIGNER');
-      const newOrder: ArtOrder = {
-        id: 'ao' + Math.random().toString(36).substring(2, 9),
-        title: formData.serviceType || 'Novo Job',
-        clientId: clientId,
-        designerId: designers[0]?.id || 'unknown',
-        designerName: designers[0]?.name || 'Pendente',
-        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
-        priority: 'medium',
-        progress: 0,
-        status: 'queue'
-      };
-      setArtOrders(prev => [...prev, newOrder]);
+      setIsModalOpen(false);
+    } catch (err: any) {
+      alert('Erro ao salvar solicitação: ' + err.message);
     }
-    setIsModalOpen(false);
   };
-
-  const [formData, setFormData] = useState<Partial<PartnerRequest>>({
-    clientName: '',
-    serviceType: '',
-    cost: 0,
-    status: 'pending'
-  });
 
   return (
     <div className="space-y-6">
@@ -615,7 +632,7 @@ export default function PartnersView({
               <input 
                 type="text" 
                 required
-                value={agencyFormData.agencyName}
+                value={agencyFormData.agencyName || ''}
                 onChange={e => setAgencyFormData({...agencyFormData, agencyName: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
                 placeholder="Ex: Agência Digital X"
@@ -626,7 +643,7 @@ export default function PartnersView({
               <input 
                 type="text" 
                 required
-                value={agencyFormData.name}
+                value={agencyFormData.name || ''}
                 onChange={e => setAgencyFormData({...agencyFormData, name: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
                 placeholder="Ex: João Silva"
@@ -638,7 +655,7 @@ export default function PartnersView({
             <input 
               type="email" 
               required
-              value={agencyFormData.email}
+              value={agencyFormData.email || ''}
               onChange={e => setAgencyFormData({...agencyFormData, email: e.target.value})}
               className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
             />
@@ -647,9 +664,9 @@ export default function PartnersView({
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tipo de Comissão</label>
               <select 
-                value={agencyFormData.commissionType}
+                value={agencyFormData.commissionType || 'percentage'}
                 onChange={e => setAgencyFormData({...agencyFormData, commissionType: e.target.value as any})}
-                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm h-[42px]"
+                className="w-full px-4 py-2 rounded-xl border border-gray-100 focus:outline-none h-[42px] text-sm"
               >
                 <option value="percentage">Porcentagem (%)</option>
                 <option value="fixed">Valor Fixo (BRL)</option>
@@ -659,7 +676,7 @@ export default function PartnersView({
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Valor</label>
               <input 
                 type="number" 
-                value={agencyFormData.commissionValue}
+                value={agencyFormData.commissionValue || 0}
                 onChange={e => setAgencyFormData({...agencyFormData, commissionValue: Number(e.target.value)})}
                 className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
               />
@@ -683,15 +700,15 @@ export default function PartnersView({
         <form className="space-y-4">
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nome Completo</label>
-            <input type="text" value={teamFormData.name} onChange={e => setTeamFormData({...teamFormData, name: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm" />
+            <input type="text" value={teamFormData.name || ''} onChange={e => setTeamFormData({...teamFormData, name: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm" />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Email de Acesso</label>
-            <input type="email" value={teamFormData.email} onChange={e => setTeamFormData({...teamFormData, email: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm" />
+            <input type="email" value={teamFormData.email || ''} onChange={e => setTeamFormData({...teamFormData, email: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm" />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cargo/Permissão</label>
-            <select value={teamFormData.role} onChange={e => setTeamFormData({...teamFormData, role: e.target.value as any})} className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm">
+            <select value={teamFormData.role || 'EDITOR'} onChange={e => setTeamFormData({...teamFormData, role: e.target.value as any})} className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm">
               <option value="EDITOR">EDITOR (Vídeos)</option>
               {isAdmin && <option value="DESIGNER">DESIGNER (Artes)</option>}
               {isAdmin && <option value="PARTNER">PARCEIRO</option>}

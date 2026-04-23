@@ -3,6 +3,7 @@ import { Search, Plus, Filter, MoreVertical, LayoutGrid, List, MessageSquare, Ex
 import { cn } from '../lib/utils';
 import { Client, ClientStatus, User, Partner } from '../types';
 import Modal from './Modal';
+import { api } from '../services/api';
 
 interface ClientsViewProps {
   clients: Client[];
@@ -17,10 +18,11 @@ export default function ClientsView({ clients, setClients, users, partners, curr
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   
-  const [formData, setFormData] = useState<Partial<Client>>({
+  const initialFormData: Partial<Client> = {
     name: '',
     contactEmail: '',
     phone: '',
+    pixKey: '',
     monthlyValue: 0,
     renewalDate: '',
     status: 'active',
@@ -31,7 +33,9 @@ export default function ClientsView({ clients, setClients, users, partners, curr
       colors: ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
       logo: ''
     }
-  });
+  };
+
+  const [formData, setFormData] = useState<Partial<Client>>(initialFormData);
 
   const designers = users.filter(u => u.role === 'DESIGNER');
   const isPartner = currentUser.role === 'PARTNER';
@@ -43,48 +47,51 @@ export default function ClientsView({ clients, setClients, users, partners, curr
 
   const handleAddClient = () => {
     setEditingClient(null);
-    setFormData({
-      name: '',
-      contactEmail: '',
-      phone: '',
-      monthlyValue: 0,
+    setFormData(initialFormData);
+    setFormData(prev => ({
+      ...prev,
       renewalDate: new Date().toLocaleDateString('pt-BR'),
-      status: 'active',
-      assignedDesignerId: '',
-      partnerId: isPartner ? currentUser.id : '',
-      designerPayout: 0,
-      branding: {
-        colors: ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
-        logo: ''
-      }
-    });
+      partnerId: isPartner ? currentUser.id : ''
+    }));
     setIsModalOpen(true);
   };
 
   const handleEditClient = (client: Client) => {
     setEditingClient(client);
-    setFormData(client);
+    setFormData({
+      ...initialFormData,
+      ...client
+    });
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingClient) {
-      setClients(clients.map(c => c.id === editingClient.id ? { ...c, ...formData } as Client : c));
-    } else {
-      const newClient: Client = {
-        ...formData,
-        id: Math.random().toString(36).substr(2, 9),
-        status: formData.status || 'active'
-      } as Client;
-      setClients([...clients, newClient]);
+    try {
+      if (editingClient) {
+        const updated = await api.updateClient(editingClient.id, formData);
+        setClients(clients.map(c => c.id === editingClient.id ? { ...c, ...updated } : c));
+      } else {
+        const newClientData: any = {
+          ...formData,
+          id: 'c' + Math.random().toString(36).substr(2, 9),
+          status: formData.status || 'active'
+        };
+        const created = await api.createClient(newClientData);
+        setClients([...clients, created]);
+      }
+      setIsModalOpen(false);
+    } catch (err: any) {
+      alert('Erro ao salvar cliente: ' + err.message);
     }
-    setIsModalOpen(false);
   };
 
-  const handleDeleteClient = (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este cliente?')) {
+  const handleDeleteClient = async (id: string) => {
+    try {
+      await api.deleteClient(id);
       setClients(clients.filter(c => c.id !== id));
+    } catch (err: any) {
+      alert('Erro ao excluir cliente: ' + err.message);
     }
   };
 
@@ -290,6 +297,16 @@ export default function ClientsView({ clients, setClients, users, partners, curr
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 space-y-1">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Chave PIX</label>
+              <input 
+                type="text" 
+                value={formData.pixKey || ''}
+                onChange={e => setFormData({...formData, pixKey: e.target.value})}
+                className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300"
+                placeholder="Ex: CPF, E-mail ou Chave Aleatória"
+              />
+            </div>
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">E-mail</label>
               <input 
@@ -346,14 +363,33 @@ export default function ClientsView({ clients, setClients, users, partners, curr
               <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-4">Branding do Cliente</h4>
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">URL da Logo</label>
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Logo do Cliente (Upload)</label>
                   <input 
-                    type="text" 
-                    value={formData.branding?.logo}
-                    onChange={e => setFormData({...formData, branding: { ...formData.branding!, logo: e.target.value }})}
-                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
-                    placeholder="https://exemplo.com/logo.png"
+                    type="file" 
+                    accept="image/png, image/jpeg, image/svg+xml"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setFormData({...formData, branding: { ...formData.branding!, logo: reader.result as string }});
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-2xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all cursor-pointer"
                   />
+                  {formData.branding?.logo && formData.branding.logo.startsWith('data:image') && (
+                    <div className="mt-2 flex items-center justify-between p-2 bg-gray-50 rounded-xl border border-gray-100">
+                       <img src={formData.branding.logo} alt="Preview" className="w-10 h-10 object-contain rounded bg-white shadow-sm" />
+                       <button 
+                         type="button" 
+                         onClick={() => setFormData({...formData, branding: { ...formData.branding!, logo: '' }})} 
+                         className="text-xs font-bold text-rose-500 hover:text-rose-600"
+                       >
+                         Remover Logo
+                       </button>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cores da Marca (Até 5)</label>

@@ -1,9 +1,144 @@
-import React, { useState } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw } from 'lucide-react';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import { IntegrationConfig, Lead, Client, ArtOrder, Receivable, User } from '../types';
 import Modal from './Modal';
+
+// Componente Interno para Gestão do QR do WhatsApp Cloud
+function N8nLogs() {
+  const [logs, setLogs] = useState<string>('');
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const res = await fetch('/api/n8n/logs');
+        if (res.ok) setLogs(await res.text());
+      } catch (err) {}
+    };
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 5000);
+    return () => clearInterval(interval);
+  }, []);
+  return (
+    <div className="font-mono text-[10px] text-indigo-400">
+      {logs ? logs.split('\n').map((line, i) => <div key={i}>{line}</div>) : 'Nenhum log disponível...'}
+    </div>
+  );
+}
+
+function WhatsAppConfig() {
+  const [status, setStatus] = useState<'disconnected' | 'qr' | 'connected'>('disconnected');
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<string>('');
+
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch('/api/whatsapp/status');
+      if (res.ok) {
+        const data = await res.json();
+        setStatus(data.status);
+        setQrCode(data.qr);
+      }
+      
+      const logsRes = await fetch('/api/whatsapp/logs');
+      if (logsRes.ok) {
+        const text = await logsRes.text();
+        setLogs(text);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar status do WhatsApp', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    // Polls only if waiting for QR code to be scanned or to update logs
+    const interval = setInterval(() => {
+      fetchStatus();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleLogout = async () => {
+    setLoading(true);
+    await fetch('/api/whatsapp/logout', { method: 'POST' });
+    await fetchStatus();
+  };
+
+  if (loading) {
+     return <div className="flex justify-center p-10"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div></div>;
+  }
+
+  return (
+    <div className="space-y-6">
+       <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
+          <div className="flex items-center gap-3">
+             <div className={cn("w-3 h-3 rounded-full animate-pulse", status === 'connected' ? 'bg-emerald-500' : 'bg-amber-500')}></div>
+             <div>
+                <p className="text-sm font-bold text-gray-900">Status da API Interna</p>
+                <p className="text-xs text-gray-500">
+                  {status === 'connected' ? 'WhatsApp Autenticado e Pronto' : 
+                   status === 'qr' ? 'Aguardando Leitura do QR Code' : 
+                   'Motor Desconectado'}
+                </p>
+             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={fetchStatus} className="p-2 text-gray-400 hover:text-emerald-500 transition-colors">
+               <RefreshCcw size={16} />
+            </button>
+            {status === 'connected' && (
+              <button onClick={handleLogout} className="px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold text-xs rounded-xl transition-all">
+                  Desconectar Dispositivo
+              </button>
+            )}
+          </div>
+       </div>
+
+       {status === 'qr' && qrCode && (
+         <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-200 rounded-3xl bg-white">
+            <h4 className="font-bold text-gray-900 mb-2">Leia o QR Code</h4>
+            <p className="text-sm text-gray-500 mb-6 text-center max-w-sm">Abra o WhatsApp no seu celular, vá em "Aparelhos Conectados" e aponte a câmera para este código.</p>
+            <div className="p-4 bg-white shadow-xl rounded-2xl border border-gray-100">
+               <img src={qrCode} alt="WhatsApp QR Code" className="w-64 h-64" />
+            </div>
+         </div>
+       )}
+
+       {status === 'disconnected' && !qrCode && (
+         <div className="flex flex-col items-center justify-center p-12 text-center bg-gray-50 rounded-3xl">
+           <AlertTriangle size={48} className="text-amber-400 mb-4" />
+           <p className="font-bold text-gray-900">Serviço de WhatsApp Offline</p>
+           <p className="text-sm text-gray-500 mt-2 max-w-sm">O motor interno fechou a conexão. Isso costuma ocorrer quando você desloga do aparelho ou quando a internet cai. Aguarde a auto-reconexão ou reinicie o App pelo ZimaOS.</p>
+           <button onClick={fetchStatus} className="mt-6 flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 shadow-sm rounded-xl font-bold text-gray-600 text-xs hover:bg-gray-50">
+             <RefreshCcw size={14} /> Atualizar Agora
+           </button>
+         </div>
+       )}
+
+       {/* Logs Area */}
+       <div className="mt-8 space-y-3">
+          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <Activity size={12} /> Log de Interações Recentes
+          </h4>
+          <div className="bg-gray-900 rounded-2xl p-4 font-mono text-[10px] text-emerald-400 h-48 overflow-y-auto border border-gray-800 shadow-inner">
+            {logs ? (
+              logs.split('\n').map((line, i) => (
+                <div key={i} className="mb-1 leading-relaxed">
+                  <span className="opacity-40">{i+1}</span> {line}
+                </div>
+              ))
+            ) : (
+              <div className="text-gray-600 italic">Nenhum log disponível...</div>
+            )}
+          </div>
+       </div>
+    </div>
+  );
+}
 
 interface AdminViewProps {
   integrations: IntegrationConfig[];
@@ -14,6 +149,8 @@ interface AdminViewProps {
   receivables?: Receivable[];
   users: User[];
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+  agencyConfig?: { name: string, primaryColor: string, currency: string, locale: string, logoUrl?: string, logoBgColor?: string };
+  setAgencyConfig?: React.Dispatch<React.SetStateAction<any>>;
 }
 
 export default function AdminView({ 
@@ -24,9 +161,11 @@ export default function AdminView({
   artOrders = [],
   receivables = [],
   users,
-  setUsers
+  setUsers,
+  agencyConfig,
+  setAgencyConfig
 }: AdminViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database'>('integrations');
+  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'personalizacao'>('integrations');
   const [copied, setCopied] = useState<string | null>(null);
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditResults, setAuditResults] = useState<any>(null);
@@ -83,9 +222,14 @@ export default function AdminView({
     }
   };
 
-  const handleRemoveUser = (id: string) => {
-    if (confirm('Deseja realmente remover este usuário?')) {
+  const handleRemoveUser = async (id: string) => {
+    console.log(`[DEBUG] Tentando remover usuário com ID: ${id}`);
+    try {
+      await api.deleteUser(id);
       setUsers(prev => prev.filter(u => u.id !== id));
+    } catch (err: any) {
+      console.error(`[DEBUG] Erro ao remover usuário:`, err);
+      alert('Erro ao remover usuário: ' + err.message);
     }
   };
 
@@ -222,7 +366,7 @@ export default function AdminView({
               activeSubTab === 'integrations' ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-50"
             )}
           >
-            <Link size={18} /> Integrações n8n / Zapier
+            <Link size={18} /> Integrações
           </button>
           <button 
             onClick={() => setActiveSubTab('users')}
@@ -240,154 +384,100 @@ export default function AdminView({
               activeSubTab === 'database' ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-50"
             )}
           >
-            <Database size={18} /> Backup & Banco de Dados
+            <Database size={18} /> Banco de Dados
           </button>
-          <button className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-600 hover:bg-gray-50 font-semibold text-sm text-left transition-colors opacity-50 cursor-not-allowed">
-            <Globe size={18} /> White-label & Domínio
+          <button 
+            onClick={() => setActiveSubTab('personalizacao')}
+            className={cn(
+              "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-colors",
+              activeSubTab === 'personalizacao' ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-50"
+            )}
+          >
+            <Globe size={18} /> Personalização
           </button>
         </div>
 
         {/* Content Area */}
         <div className="lg:col-span-2 space-y-6">
-          {activeSubTab === 'integrations' && integrations.map((integration) => (
-            <div key={integration.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden transition-colors duration-300">
-               {/* ... rest of integration card ... */}
-              <div className="p-6 border-b border-gray-50 bg-gray-50/30 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center text-gray-900 shadow-sm transition-colors duration-300">
-                    <Code size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">{integration.service}</h3>
-                    <p className="text-xs text-gray-500 font-medium">Status: 
-                      <span className={cn("ml-1", integration.isActive ? "text-emerald-600" : "text-gray-400 italic")}>
-                        {integration.isActive ? 'Conectado' : 'Aguardando Configuração'}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                   <button className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1">
-                      Docs de API <ExternalLink size={12} />
-                   </button>
-                </div>
-              </div>
-
-              <div className="p-8 space-y-6">
-                {integration.type === 'whatsapp' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        ID do Número de Telefone
-                      </label>
-                      <input 
-                        type="text" 
-                        placeholder="Ex: 123456789012345"
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-mono text-gray-600 focus:outline-none transition-colors duration-300"
-                        value={integration.whatsappConfig?.phoneNumberId || ''}
-                        onChange={(e) => handleUpdateWhatsAppConfig(integration.id, 'phoneNumberId', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        ID da Conta Business
-                      </label>
-                      <input 
-                        type="text" 
-                        placeholder="Ex: 987654321098765"
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-mono text-gray-600 focus:outline-none transition-colors duration-300"
-                        value={integration.whatsappConfig?.businessAccountId || ''}
-                        onChange={(e) => handleUpdateWhatsAppConfig(integration.id, 'businessAccountId', e.target.value)}
-                      />
-                    </div>
-                    <div className="md:col-span-2 space-y-2">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        Token de Acesso Temporário ou Permanente
-                      </label>
-                      <div className="relative group">
-                        <input 
-                          type="password" 
-                          placeholder="Token da API do Facebook Graph"
-                          className="w-full pl-4 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-mono text-gray-600 focus:outline-none transition-colors duration-300"
-                          value={integration.whatsappConfig?.accessToken || ''}
-                          onChange={(e) => handleUpdateWhatsAppConfig(integration.id, 'accessToken', e.target.value)}
-                        />
-                        <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-white rounded-lg text-gray-400 hover:text-indigo-600 transition-all">
-                          <Key size={14} />
-                        </button>
+          {activeSubTab === 'integrations' && (
+            <div className="space-y-6">
+              {integrations.map((integration) => (
+                <div key={integration.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden transition-colors duration-300">
+                  <div className="p-6 border-b border-gray-50 bg-gray-50/30 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center text-gray-900 shadow-sm transition-colors duration-300">
+                        {integration.type === 'whatsapp' ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> : <Code size={24} />}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900">{integration.type === 'whatsapp' ? 'WhatsApp (QR)' : integration.service}</h3>
+                        <p className="text-xs text-gray-500 font-medium">Status: 
+                          <span className={cn("ml-1", integration.isActive ? "text-emerald-600" : "text-gray-400 italic")}>
+                            {integration.isActive ? 'Conectado' : 'Aguardando Configuração'}
+                          </span>
+                        </p                >
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        <Globe size={12} /> Webhook URL
-                      </label>
-                      <div className="relative group">
-                        <input 
-                          type="text" 
-                          readOnly={true}
-                          value={integration.webhookUrl || 'https://seu-vps-n8n.com/webhook/agencyflow-trigger'} 
-                          className="w-full pl-3 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-mono text-gray-600 focus:outline-none transition-all duration-300"
-                        />
+                  <div className="p-8">
+                     {integration.type === 'whatsapp' ? (
+                       <div className="space-y-4">
+                         <WhatsAppConfig />
+                         <a 
+                           href="https://web.whatsapp.com" 
+                           target="_blank" 
+                           rel="noopener noreferrer"
+                           className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
+                         >
+                            <ExternalLink size={16} /> Abrir WhatsApp Web em nova aba
+                         </a>
+                         <p className="text-[10px] text-gray-400 italic">Por segurança, não é possível embutir o WhatsApp Web diretamente no CRM. Use o botão acima para abrir em nova aba.</p>
+                       </div>
+                     ) : (
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-1">
+                           <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Webhook URL (n8n)</label>
+                           <input 
+                             type="text" 
+                             value={integration.webhookUrl || ''}
+                             onChange={e => setIntegrations(prev => prev.map(i => i.id === integration.id ? {...i, webhookUrl: e.target.value} : i))}
+                             placeholder="https://n8n.seusite.com/webhook/..."
+                             className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 text-sm"
+                           />
+                        </div>
+                        <div className="space-y-1">
+                           <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">API Key</label>
+                           <input 
+                             type="password" 
+                             value={integration.apiKey || ''}
+                             onChange={e => setIntegrations(prev => prev.map(i => i.id === integration.id ? {...i, apiKey: e.target.value} : i))}
+                             placeholder="n8n_..."
+                             className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 text-sm"
+                           />
+                        </div>
                         <button 
-                          onClick={() => handleCopy(integration.webhookUrl || 'https://seu-vps-n8n.com/webhook/agencyflow-trigger', 'url-' + integration.id)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-white rounded-lg text-gray-400 hover:text-indigo-600 transition-all"
+                            onClick={async () => {
+                                try {
+                                    await fetch(`/api/integrations/${integration.id}/trigger`, {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({ test: true })
+                                    });
+                                    alert('Simulação de gatilho enviada com sucesso!');
+                                } catch (e) {
+                                    alert('Erro ao disparar gatilho.');
+                                }
+                            }}
+                            className="col-span-2 flex items-center justify-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-semibold hover:bg-indigo-600 transition-colors shadow-sm"
                         >
-                          {copied === 'url-' + integration.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                            <Activity size={16} /> Disparar teste
                         </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        <Key size={12} /> API Key / Secret
-                      </label>
-                      <div className="relative group">
-                        <input 
-                          type="password" 
-                          readOnly={true}
-                          value="••••••••••••••••••••••••" 
-                          className="w-full pl-3 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-mono text-gray-600 focus:outline-none transition-all duration-300"
-                        />
-                        <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-white rounded-lg text-gray-400 hover:text-indigo-600 transition-all">
-                          <Key size={14} />
-                        </button>
-                      </div>
-                    </div>
+                       </div>
+                     )}
                   </div>
-                )}
-
-                <div className="pt-6 border-t border-gray-50 flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs",
-                      integration.type === 'whatsapp' ? "bg-emerald-100 text-emerald-600" : "bg-indigo-100 text-indigo-600"
-                    )}>
-                      {integration.type === 'whatsapp' ? 'WPP' : 'n8n'}
-                    </div>
-                    <p className="text-xs text-gray-500 max-w-[250px]">
-                      {integration.type === 'whatsapp' 
-                        ? 'Envie artes para aprovação e receba feedback automático via API oficial do WhatsApp.' 
-                        : 'Use esta URL no seu workflow do n8n para receber notificações de novos leads e pedidos de arte.'}
-                    </p>
-                  </div>
-                  <button 
-                    onClick={() => handleToggleIntegration(integration.id)}
-                    className={cn(
-                      "flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm",
-                      integration.isActive 
-                        ? "bg-indigo-600 text-white hover:bg-indigo-700" 
-                        : "bg-indigo-100 text-indigo-600 hover:bg-indigo-200"
-                    )}
-                  >
-                    {integration.isActive ? 'Desativar Integração' : 'Ativar Integração'}
-                  </button>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
+          )}
 
           {activeSubTab === 'users' && (
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
@@ -417,6 +507,7 @@ export default function AdminView({
                          "px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border",
                          user.role === 'ADMIN' ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
                          user.role === 'DESIGNER' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                         user.role === 'EDITOR' ? "bg-purple-50 text-purple-600 border-purple-100" :
                          "bg-emerald-50 text-emerald-600 border-emerald-100"
                        )}>
                          {user.role}
@@ -435,45 +526,134 @@ export default function AdminView({
           )}
 
           {activeSubTab === 'database' && (
-            <div className="space-y-6">
-              <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center text-gray-900 transition-colors duration-300">
-                 <div className="w-16 h-16 rounded-3xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto mb-4 transition-colors">
-                    <Database size={32} />
-                 </div>
-                 <h3 className="font-bold text-xl mb-2">Monitoramento de Postgres</h3>
-                 <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
-                    Seu banco de dados está sincronizado e operando no servidor externo.
-                 </p>
-                 <div className="flex flex-col gap-2 mb-8 items-center">
-                    <div className="flex items-center gap-2 text-[10px] font-mono bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
-                       <span className="text-gray-400">IP Interno:</span>
-                       <span className="text-indigo-600 font-bold">{import.meta.env.VITE_SERVER_INTERNAL_IP || '192.168.3.6'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px] font-mono bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
-                       <span className="text-gray-400">IP Externo:</span>
-                       <span className="text-indigo-600 font-bold">{import.meta.env.VITE_SERVER_EXTERNAL_IP || '45.167.187.80'}</span>
-                    </div>
-                 </div>
-                 <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
-                    <button className="px-6 py-3 bg-white border border-gray-100 rounded-2xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all flex items-center justify-center gap-2">
-                       <Download size={16} /> Exportar SQL
-                    </button>
-                    <button className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm">
-                       Forçar Snapshot
-                    </button>
-                 </div>
-              </div>
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center text-gray-900">
+               <div className="w-16 h-16 rounded-3xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 mx-auto mb-4">
+                  <Activity size={32} />
+               </div>
+               <h3 className="font-bold text-xl mb-2">Conexão</h3>
+               <p className="text-emerald-600 font-bold text-lg">Status: OK</p>
+            </div>
+          )}
 
-              <div className="bg-amber-50 rounded-3xl p-6 border border-amber-100 flex items-start gap-4 transition-colors">
-                <div className="p-2 bg-white rounded-xl text-amber-600 shadow-sm transition-colors"><Database size={20} /></div>
-                <div className="space-y-1">
-                    <h4 className="font-bold text-amber-900">Auto-Hospedagem Docker</h4>
-                    <p className="text-sm text-amber-800/70 leading-relaxed">
-                      Seu banco de dados PostgreSQL está sendo executado em modo persistente. 
-                      Para exportar seus dados, utilize o comando <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-xs">docker exec crm-db pg_dump</code>.
-                    </p>
-                </div>
-              </div>
+          {activeSubTab === 'whatsapp' && (
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+               <div className="p-6 border-b border-gray-50 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> 
+                       Configuração do WhatsApp Cloud
+                    </h3>
+                    <p className="text-sm text-gray-400 mt-1">Vincule seu WhatsApp corporativo lendo o QR Code para enviar propostas e artes via sistema.</p>
+                  </div>
+               </div>
+               <div className="p-8">
+                 <WhatsAppConfig />
+               </div>
+            </div>
+          )}
+
+          {activeSubTab === 'personalizacao' && agencyConfig && setAgencyConfig && (
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+               <div className="p-6 border-b border-gray-50">
+                  <h3 className="font-bold text-gray-900 flex items-center gap-2"><Palette size={20} className="text-indigo-500" /> Personalização do Painel</h3>
+                  <p className="text-sm text-gray-400 mt-1">Altere o nome e as cores para adequar o CRM à sua marca.</p>
+               </div>
+               <div className="p-8 space-y-6">
+                  <div className="space-y-2">
+                     <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nome da Empresa</label>
+                     <input 
+                       type="text" 
+                       value={agencyConfig.name}
+                       onChange={e => {
+                         const next = { ...agencyConfig, name: e.target.value };
+                         setAgencyConfig(next);
+                         localStorage.setItem('agency_config', JSON.stringify(next));
+                       }}
+                       className="w-full max-w-sm px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm text-gray-900 focus:outline-none transition-colors duration-300"
+                       placeholder="Sua Agência Ltda"
+                     />
+                  </div>
+                  <div className="space-y-2">
+                     <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Logo da Agência (Upload PNG/SVG)</label>
+                     <input 
+                       type="file" 
+                       accept="image/png, image/jpeg, image/svg+xml"
+                       onChange={e => {
+                         const file = e.target.files?.[0];
+                         if (!file) return;
+                         const reader = new FileReader();
+                         reader.onloadend = () => {
+                           const next = { ...agencyConfig, logoUrl: reader.result as string };
+                           setAgencyConfig(next);
+                           localStorage.setItem('agency_config', JSON.stringify(next));
+                         };
+                         reader.readAsDataURL(file);
+                       }}
+                       className="w-full max-w-sm px-4 py-2 border border-gray-200 rounded-2xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all cursor-pointer"
+                     />
+                     {agencyConfig.logoUrl && agencyConfig.logoUrl.startsWith('data:image') && (
+                       <div className="mt-2 flex items-center justify-between p-2 bg-gray-50 rounded-xl border border-gray-100 max-w-sm">
+                          <div className="p-2 rounded flex items-center justify-center bg-white shadow-sm border border-gray-100" style={{ backgroundColor: agencyConfig.logoBgColor || agencyConfig.primaryColor }}>
+                             <img src={agencyConfig.logoUrl} alt="Preview" className="w-8 h-8 object-contain" />
+                          </div>
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              const next = { ...agencyConfig, logoUrl: '' };
+                              setAgencyConfig(next);
+                              localStorage.setItem('agency_config', JSON.stringify(next));
+                            }} 
+                            className="text-xs font-bold text-rose-500 hover:text-rose-600 px-3 py-1 bg-rose-50 rounded-lg"
+                          >
+                            Remover Logo
+                          </button>
+                         <div className="col-span-2 mt-4 space-y-3">
+                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                              <Activity size={12} /> Log de Interações n8n Recentes
+                            </h4>
+                            <div className="bg-gray-900 rounded-2xl p-4 font-mono text-[10px] h-32 overflow-y-auto border border-gray-800 shadow-inner">
+                              <N8nLogs />
+                            </div>
+                         </div>
+                        </div>
+                     )}
+                     <p className="text-[10px] text-gray-400">Recomendado: Imagens transparentes em formato quadrado (1:1)</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-sm">
+                    <div className="space-y-2">
+                       <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cor Primária</label>
+                       <div className="flex items-center gap-4">
+                          <input 
+                            type="color" 
+                            value={agencyConfig.primaryColor}
+                            onChange={e => {
+                              const next = { ...agencyConfig, primaryColor: e.target.value };
+                              setAgencyConfig(next);
+                              localStorage.setItem('agency_config', JSON.stringify(next));
+                            }}
+                            className="w-12 h-12 rounded-xl cursor-pointer bg-white border border-gray-200 p-1"
+                          />
+                          <span className="text-xs font-mono text-gray-500">{agencyConfig.primaryColor}</span>
+                       </div>
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cor Fundo (Logo)</label>
+                       <div className="flex items-center gap-4">
+                          <input 
+                            type="color" 
+                            value={agencyConfig.logoBgColor || agencyConfig.primaryColor}
+                            onChange={e => {
+                              const next = { ...agencyConfig, logoBgColor: e.target.value };
+                              setAgencyConfig(next);
+                              localStorage.setItem('agency_config', JSON.stringify(next));
+                            }}
+                            className="w-12 h-12 rounded-xl cursor-pointer bg-white border border-gray-200 p-1"
+                          />
+                          <span className="text-xs font-mono text-gray-500">{agencyConfig.logoBgColor || agencyConfig.primaryColor}</span>
+                       </div>
+                    </div>
+                  </div>
+               </div>
             </div>
           )}
         </div>
@@ -569,6 +749,7 @@ export default function AdminView({
               className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
             >
               <option value="DESIGNER">Designer</option>
+              <option value="EDITOR" disabled>Editor de Vídeo (Em breve)</option>
               <option value="PARTNER">Parceiro</option>
               <option value="ADMIN">Administrador</option>
             </select>
