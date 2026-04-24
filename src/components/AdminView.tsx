@@ -26,6 +26,67 @@ function N8nLogs() {
   );
 }
 
+function DatabaseStatus() {
+  const [status, setStatus] = useState<'loading' | 'connected' | 'error'>('loading');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch('/api/health/supabase');
+        const data = await res.json();
+        if (data.connected) {
+          setStatus('connected');
+        } else {
+          setStatus('error');
+          setMessage(data.message || 'Erro desconhecido ao conectar com Supabase');
+        }
+      } catch (err) {
+        setStatus('error');
+        setMessage('Falha ao comunicar com o servidor');
+      }
+    };
+    checkStatus();
+  }, []);
+
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 text-center transition-all duration-300">
+      <div className={cn(
+        "w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-4 transition-colors",
+        status === 'connected' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
+        status === 'loading' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" :
+        "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400"
+      )}>
+        <Activity size={32} className={cn(status === 'loading' && "animate-spin")} />
+      </div>
+      <h3 className="font-bold text-xl mb-2 dark:text-gray-100 transition-colors uppercase tracking-tight">Banco de Dados Cloud</h3>
+      
+      {status === 'connected' && (
+        <>
+          <p className="text-emerald-600 dark:text-emerald-400 font-bold text-lg transition-colors">Status: Operacional</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 transition-colors">Sincronização em tempo real ativa e segura via Supabase.</p>
+        </>
+      )}
+      
+      {status === 'loading' && (
+        <p className="text-indigo-600 dark:text-indigo-400 font-bold text-lg animate-pulse">Verificando conexão...</p>
+      )}
+      
+      {status === 'error' && (
+        <>
+          <p className="text-rose-600 dark:text-rose-400 font-bold text-lg">Status: Falha na Conexão</p>
+          <div className="mt-4 p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-xl">
+            <p className="text-xs text-rose-700 dark:text-rose-300 font-mono break-all">{message}</p>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
+            Dica: Verifique se a URL do Supabase está correta nas configurações (Segredos) e se termina em <span className="font-bold">.co</span> e não em .com.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function WhatsAppConfig() {
   const [status, setStatus] = useState<'disconnected' | 'qr' | 'connected'>('disconnected');
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -539,14 +600,7 @@ export default function AdminView({
           )}
 
           {activeSubTab === 'database' && (
-            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 text-center text-gray-900 transition-all duration-300">
-               <div className="w-16 h-16 rounded-3xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mx-auto mb-4 transition-colors">
-                  <Activity size={32} />
-               </div>
-               <h3 className="font-bold text-xl mb-2 dark:text-gray-100 transition-colors uppercase tracking-tight">Banco de Dados Cloud</h3>
-               <p className="text-emerald-600 dark:text-emerald-400 font-bold text-lg transition-colors">Status: Operacional</p>
-               <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 transition-colors">Sincronização em tempo real ativa e segura.</p>
-            </div>
+            <DatabaseStatus />
           )}
 
           {activeSubTab === 'whatsapp' && (

@@ -177,6 +177,17 @@ async function startServer() {
     res.json({ status: "ok", message: "Amplifica CRM API is active" });
   });
 
+  app.get("/api/health/supabase", async (req, res) => {
+    try {
+      const { data, error } = await supabase.from('users').select('id').limit(1);
+      if (error) throw error;
+      res.json({ status: "ok", connected: true });
+    } catch (err: any) {
+      console.error("[HEALTH] Supabase connection failed:", err.message);
+      res.status(500).json({ status: "error", connected: false, message: err.message });
+    }
+  });
+
   app.post("/api/signup", async (req, res) => {
     let { name, email, password } = req.body;
     if (!name || !email || !password) {
@@ -207,9 +218,10 @@ async function startServer() {
       if (error) throw error;
       
       res.json({ success: true, user: data });
-    } catch (err) {
+    } catch (err: any) {
       console.error("[AUTH] Erro no signup:", err);
-      res.status(500).json({ error: "Erro ao criar conta" });
+      // Return the actual error message for easier debugging of connection issues
+      res.status(500).json({ error: `Erro ao criar conta: ${err.message || 'Erro desconhecido'}` });
     }
   });
 
@@ -235,7 +247,10 @@ async function startServer() {
         
       if (error) {
         console.log(`[AUTH] Falha no login: ${email}`, error.message);
-        return res.status(401).json({ error: "E-mail ou senha incorretos" });
+        // If it's a real database error (not just not found), return more detail
+        const isNotFound = error.code === 'PGRST116';
+        const msg = isNotFound ? "E-mail ou senha incorretos" : `Erro de banco de dados: ${error.message}`;
+        return res.status(isNotFound ? 401 : 500).json({ error: msg });
       }
       
       console.log(`[AUTH] Login bem-sucedido: ${email}`);
