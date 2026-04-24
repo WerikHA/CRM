@@ -161,7 +161,11 @@ async function startServer() {
       }
     },
     async (phone: string, message: string) => {
-        return whatsappService.sendMessage(phone, message);
+        const { data: owner } = await supabase.from('users').select('id').eq('role', 'OWNER').limit(1).single();
+        if (owner) {
+            return whatsappService.sendMessage(owner.id, phone, message);
+        }
+        console.error("No OWNER found to send WhatsApp message");
     }
   );
 

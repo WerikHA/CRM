@@ -22,7 +22,6 @@ export default function ClientsView({ clients, setClients, users, partners, curr
     name: '',
     contactEmail: '',
     phone: '',
-    pixKey: '',
     monthlyValue: 0,
     renewalDate: '',
     status: 'active',
@@ -304,16 +303,6 @@ export default function ClientsView({ clients, setClients, users, partners, curr
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 space-y-1">
-              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Chave PIX</label>
-              <input 
-                type="text" 
-                value={formData.pixKey || ''}
-                onChange={e => setFormData({...formData, pixKey: e.target.value})}
-                className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
-                placeholder="Ex: CPF, E-mail ou Chave Aleatória"
-              />
-            </div>
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">E-mail</label>
               <input 

@@ -631,7 +631,7 @@ export default function AdminView({
                   </div>
                </div>
                <div className="p-8">
-                 <WhatsAppConfig />
+                 <WhatsAppConfig ownerId={currentUser.id} isOwner={isOwner} />
                </div>
             </div>
           )}
