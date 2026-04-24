@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { Receivable, Client, FinanceConfig } from '../types';
+import { Receivable, Client, FinanceConfig } from '../types.ts';
 // In a real DB, you'd fetch this from a config table
 let financeConfig: FinanceConfig = {
     pixKey: '',

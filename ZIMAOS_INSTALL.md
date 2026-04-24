@@ -13,19 +13,20 @@ Este CRM foi preparado para rodar em containers Docker, garantindo persistência
 3. **Importar Compose**: Clique em "Import" e selecione o arquivo `docker-compose.yml` deste projeto.
 4. **Configurar Variáveis**:
    - `VITE_COMPANY_NAME`: O nome da sua agência (White Label).
-   - `DB_PASSWORD`: Uma senha segura para seu banco de dados.
+   - `SUPABASE_URL`: A URL do seu projeto no Supabase.
+   - `SUPABASE_ANON_KEY`: A chave anônima (anon key) do Supabase.
    - `GEMINI_API_KEY`: Sua chave da API Gemini (opcional).
 5. **Instalar**: Clique em "Install".
 
 ## Ferramentas Incluídas
 - **App Principal**: `http://<IP-DO-ZIMAOS>:3000`
-- **Gestor de Banco (pgAdmin)**: `http://<IP-DO-ZIMAOS>:8080`
+- **Gestor de Banco Local**: Embora a aplicação use Supabase, o `docker-compose` inclui um PostgreSQL local para backups e integração futura.
+  - **pgAdmin**: `http://<IP-DO-ZIMAOS>:8080`
   - *Login padrão:* `admin@agency.com` / `admin`
-  - *Use para visualizar e editar tabelas manualmente.*
 
 ## Banco de Dados
-- As tabelas são criadas automaticamente no primeiro boot usando o arquivo `db/init.sql`.
-- Os dados são persistidos no volume `agencyflow_postgres_data`.
+- Atualmente a aplicação salva os dados no **Supabase** (Remoto).
+- O arquivo `db/init.sql` serve como referência do schema se você quiser migrar para o Postgres local ou fazer sync automático.
 
 ## Acesso
 - A aplicação estará disponível em `http://<IP-DO-ZIMAOS>:3000`.

@@ -13,16 +13,17 @@ FROM node:22-slim
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --production
+
+# In a real production, you might compile server.ts to JS, 
+# but Node 22 + tsx works great for this setup.
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.ts ./
+COPY --from=builder /app/src ./src
 COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/db ./db
-
-# Install tsx for running typescript server in production if needed, 
-# or pre-compile it. We will use tsx as per package.json.
-RUN npm install -g tsx
 
 EXPOSE 3000
 
 ENV NODE_ENV=production
-CMD ["tsx", "server.ts"]
+# We use npx tsx to ensure we use the version in node_modules
+CMD ["npx", "tsx", "server.ts"]

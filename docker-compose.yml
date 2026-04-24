@@ -3,7 +3,7 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    image: SEU_USUARIO_DOCKER_HUB/agencyflow-crm:latest
     container_name: agencyflow-app
     # Acesso via ZimaClient (rede local). O Cloudflare Tunnel (cloudflared) faz o roteamento externo.
     # NENHUMA PORTA será exposta no seu roteador diretamente.
@@ -12,22 +12,19 @@ services:
     environment:
       - NODE_ENV=production
       - VITE_COMPANY_NAME=AgencyFlow
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_USER=agency_admin
-      - DB_NAME=agencyflow_db
     # Injetamos os secrets no runtime para evitar deixar senhas no YAML ou depender do .env
     command: >
       sh -c '
-      export DB_PASSWORD=$$(cat /run/secrets/db_password) &&
+      export SUPABASE_URL=$$(cat /run/secrets/supabase_url) &&
+      export SUPABASE_ANON_KEY=$$(cat /run/secrets/supabase_anon_key) &&
       export GEMINI_API_KEY=$$(cat /run/secrets/gemini_api_key) &&
-      export DATABASE_URL="postgresql://agency_admin:$${DB_PASSWORD}@db:5432/agencyflow_db" &&
       npm start
       '
     networks:
       - agency_net
     secrets:
-      - db_password
+      - supabase_url
+      - supabase_anon_key
       - gemini_api_key
     # Segurança de Contêineres no App
     security_opt:
@@ -112,9 +109,13 @@ networks:
     driver: bridge
 
 secrets:
-  db_password:
-    file: ./secrets/db_password.txt
+  supabase_url:
+    file: ./secrets/supabase_url.txt
+  supabase_anon_key:
+    file: ./secrets/supabase_anon_key.txt
   gemini_api_key:
     file: ./secrets/gemini_api_key.txt
+  db_password:
+    file: ./secrets/db_password.txt
   pgadmin_password:
     file: ./secrets/pgadmin_password.txt

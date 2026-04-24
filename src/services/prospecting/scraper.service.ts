@@ -1,6 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { ProspectLead } from '../../types';
+import { ProspectLead } from '../../types.ts';
 
 export const scraperService = {
   async scrapeGoogleMaps(nicho: string, cidade: string): Promise<ProspectLead[]> {
