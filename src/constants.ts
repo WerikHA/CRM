@@ -1,7 +1,7 @@
 import { Lead, Client, Receivable, ArtOrder, PartnerRequest, IntegrationConfig, User, Partner } from './types';
 
 export const INITIAL_USERS: User[] = [
-  { id: 'u1', name: 'Werik Admin', email: 'admin@agency.com', role: 'ADMIN' },
+  { id: 'u1', name: 'Werik Admin', email: 'admin@amplifica.com', role: 'ADMIN' },
   { id: 'u2', name: 'Lucas Andrade', email: 'lucas@design.com', role: 'DESIGNER' },
   { id: 'u3', name: 'Mariana Costa', email: 'mariana@design.com', role: 'DESIGNER' },
   { id: 'u4', name: 'Agência Vídeo Pro', email: 'contato@videopro.com', role: 'PARTNER' },
@@ -40,8 +40,8 @@ export const INITIAL_INTEGRATIONS: IntegrationConfig[] = [
     id: 'i1', 
     service: 'n8n Automações', 
     isActive: true, 
-    webhookUrl: 'https://n8n.seu-servidor.com/webhook/agencyflow-leads', 
-    apiKey: 'sk_live_n8n_prod_agency_config', 
+    webhookUrl: 'https://n8n.seu-servidor.com/webhook/amplifica-leads', 
+    apiKey: 'sk_live_n8n_prod_amplifica_config', 
     accessUrl: 'http://45.167.187.80:5678', 
     type: 'generic' 
   },

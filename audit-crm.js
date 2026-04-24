@@ -1,5 +1,5 @@
 /**
- * AgencyFlow CRM Logic Audit & Validation Script
+ * Amplifica CRM Logic Audit & Validation Script
  * This script serves as a blueprint for automated testing of the CRM's business logic.
  */
 
@@ -21,7 +21,7 @@ function checkFileExists(filename) {
 }
 
 function audit() {
-  console.log("--- AgencyFlow CRM Audit ---");
+  console.log("--- Amplifica CRM Audit ---");
   
   VIEWS.forEach(view => {
     if (checkFileExists(view)) {

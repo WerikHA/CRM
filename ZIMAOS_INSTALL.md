@@ -1,4 +1,4 @@
-# AgencyFlow CRM - Guia de Instalação ZimaOS / CasaOS
+# Amplifica CRM - Guia de Instalação ZimaOS / CasaOS
 
 Este CRM foi preparado para rodar em containers Docker, garantindo persistência e facilidade de atualização.
 

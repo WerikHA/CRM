@@ -1,4 +1,4 @@
-# Dockerfile for AgencyFlow CRM (Full-Stack Vite + Express)
+# Dockerfile for Amplifica CRM (Full-Stack Vite + Express)
 
 # Stage 1: Build Frontend
 FROM node:22-slim AS builder

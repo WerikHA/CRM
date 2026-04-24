@@ -1,17 +1,17 @@
-# AgencyFlow CRM - Docker Compose for ZimaOS
+# Amplifica CRM - Docker Compose for ZimaOS
 version: '3.8'
 
 services:
   app:
-    image: SEU_USUARIO_DOCKER_HUB/agencyflow-crm:latest
-    container_name: agencyflow-app
+    image: SEU_USUARIO_DOCKER_HUB/amplifica-crm:latest
+    container_name: amplifica-app
     # Acesso via ZimaClient (rede local). O Cloudflare Tunnel (cloudflared) faz o roteamento externo.
     # NENHUMA PORTA será exposta no seu roteador diretamente.
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - VITE_COMPANY_NAME=AgencyFlow
+      - VITE_COMPANY_NAME=Amplifica CRM
     # Injetamos os secrets no runtime para evitar deixar senhas no YAML ou depender do .env
     command: >
       sh -c '
@@ -38,10 +38,10 @@ services:
 
   db:
     image: postgres:15-alpine
-    container_name: agencyflow-db
+    container_name: amplifica-db
     environment:
-      - POSTGRES_USER=agency_admin
-      - POSTGRES_DB=agencyflow_db
+      - POSTGRES_USER=amplifica_admin
+      - POSTGRES_DB=amplifica_db
       - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -56,7 +56,7 @@ services:
     cap_drop:
       - ALL
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agency_admin -d agencyflow_db"]
+      test: ["CMD-SHELL", "pg_isready -U amplifica_admin -d amplifica_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -64,9 +64,9 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: agencyflow-pgadmin
+    container_name: amplifica-pgadmin
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@agency.com
+      - PGADMIN_DEFAULT_EMAIL=admin@amplifica.com
       - PGADMIN_DEFAULT_PASSWORD_FILE=/run/secrets/pgadmin_password
     ports:
       # OBRIGATÓRIO: Restrito a localhost.
@@ -87,7 +87,7 @@ services:
   # Túnel Reverso da Cloudflare - Sem furos no roteador!
   cloudflared:
     image: cloudflare/cloudflared:latest
-    container_name: agencyflow-tunnel
+    container_name: amplifica-tunnel
     command: tunnel run
     environment:
       # INSIRA SEU TOKEN AQUI! (Não usa .env)

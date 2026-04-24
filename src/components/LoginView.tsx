@@ -41,7 +41,7 @@ export default function LoginView({ onLogin, onSignup, isLoading }: LoginViewPro
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-indigo-600 text-white shadow-xl shadow-indigo-200 mb-6 group transition-transform hover:scale-110">
             <Zap className="w-8 h-8 group-hover:animate-pulse" />
           </div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-2">AgencyFlow <span className="text-indigo-600">CRM</span></h1>
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-2">Amplifica <span className="text-indigo-600">CRM</span></h1>
           <p className="text-gray-500 font-medium">
             {mode === 'login' ? 'Acesso restrito para parceiros e admins' : 'Crie sua conta administrativa (OWNER)'}
           </p>

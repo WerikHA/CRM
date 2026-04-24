@@ -1,5 +1,5 @@
 /**
- * AgencyFlow CRM Audit Script
+ * Amplifica CRM Audit Script
  * This script reviews the codebase and generates a report on the current state of features.
  */
 
@@ -8,7 +8,7 @@ const path = require('path');
 
 const report = {
   timestamp: new Date().toISOString(),
-  projectName: "AgencyFlow CRM",
+  projectName: "Amplifica CRM",
   status: "Reviewing...",
   features: [
     {
@@ -71,7 +71,7 @@ function performCheck() {
 
   // Generate Report File
   const reportPath = path.join(__dirname, 'CRM_AUDIT_REPORT.md');
-  let markdown = `# Relatório de Auditoria CRM - AgencyFlow\n\n`;
+  let markdown = `# Relatório de Auditoria CRM - Amplifica\n\n`;
   markdown += `*Gerado em: ${new Date().toLocaleString('pt-BR')}*\n\n`;
   
   markdown += `## Status das Funcionalidades\n\n`;

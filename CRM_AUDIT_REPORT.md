@@ -1,4 +1,4 @@
-# Relatório de Auditoria CRM - AgencyFlow
+# Relatório de Auditoria CRM - Amplifica
 
 *Gerado em: 22/04/2026, 05:25:00*
 

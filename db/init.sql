@@ -1,4 +1,4 @@
--- AgencyFlow CRM - Initial Database Schema
+-- Amplifica CRM - Initial Database Schema
 -- Optimized for PostgreSQL
 
 -- Users Table (Admin, Designers, Partners)
@@ -144,11 +144,11 @@ CREATE TABLE IF NOT EXISTS video_orders (
 
 -- Initial Data (Bootstrap)
 INSERT INTO users (id, name, email, password, role) VALUES 
-('u1', 'Werik Admin', 'admin@agency.com', 'admin123', 'ADMIN'),
+('u1', 'Werik Admin', 'admin@amplifica.com', 'admin123', 'ADMIN'),
 ('u_main', 'Werik User', 'werikplaystore@gmail.com', 'admin123', 'ADMIN'),
 ('u2', 'Lucas Andrade', 'lucas@design.com', 'design123', 'DESIGNER'),
 ('u3', 'Mariana Costa', 'mariana@design.com', 'design123', 'DESIGNER'),
-('u4', 'Roberto Financeiro', 'finance@agency.com', 'finance123', 'ADMIN'),
+('u4', 'Roberto Financeiro', 'finance@amplifica.com', 'finance123', 'ADMIN'),
 ('u5', 'Agência Video Pro', 'parceiro@videopro.com', 'partner123', 'PARTNER'),
 ('u6', 'Fernanda Lima', 'fernanda@design.com', 'design123', 'DESIGNER'),
 ('u7', 'Eduardo Santos', 'edu@design.com', 'design123', 'DESIGNER')

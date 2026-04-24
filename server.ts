@@ -174,7 +174,7 @@ async function startServer() {
 
   // Health check
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", message: "AgencyFlow API is active" });
+    res.json({ status: "ok", message: "Amplifica CRM API is active" });
   });
 
   app.post("/api/signup", async (req, res) => {
@@ -412,7 +412,7 @@ async function startServer() {
           responseMsg = '✅ Muito obrigado pela aprovação! Já vamos finalizar o processo.';
         } else {
           // GENERATE THE LINK AUTOMATICALLY
-          let appUrl = process.env.APP_URL || 'https://agencyflow.app';
+          let appUrl = process.env.APP_URL || 'https://amplifica.app';
           // Ensure it doesn't end with a slash for consistent construction
           appUrl = appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl;
           
@@ -468,7 +468,7 @@ async function startServer() {
   }
 
   app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`🚀 AgencyFlow rodando em http://localhost:${PORT}`);
+    console.log(`🚀 Amplifica CRM rodando em http://localhost:${PORT}`);
   });
 }
 
