@@ -48,7 +48,6 @@ import DesignView from './components/DesignView';
 import PartnersView from './components/PartnersView';
 import AdminView from './components/AdminView';
 import LoginView from './components/LoginView';
-import ProspectionView from './components/ProspectionView';
 import SupportView from './components/SupportView';
 import ProspectingView from './components/prospecting/ProspectingView';
 import VideoWorkflowView from './components/VideoWorkflowView';
