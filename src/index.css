@@ -6,13 +6,15 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 body {
-  @apply font-sans transition-colors duration-300;
+  @apply font-sans transition-colors duration-300 bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100;
 }
 
 @layer base {
   * {
-    @apply border-gray-200;
+    @apply border-gray-200 dark:border-gray-800;
   }
 }
 
@@ -27,11 +29,15 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-200 rounded-full hover:bg-gray-300 transition-colors;
+  @apply bg-gray-200 dark:bg-gray-800 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors;
 }
 
 /* For Firefox */
 * {
   scrollbar-width: thin;
   scrollbar-color: theme('colors.gray.200') transparent;
+}
+
+.dark * {
+  scrollbar-color: theme('colors.gray.800') transparent;
 }

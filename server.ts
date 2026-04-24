@@ -4,10 +4,10 @@ import { fileURLToPath } from "url";
 import pg from "pg";
 import fs from "fs";
 import dotenv from "dotenv";
-import { whatsappService } from "./src/services/whatsappService";
-import { scraperService } from "./src/services/prospecting/scraper.service";
-import { startBackupScheduler } from "./src/services/backupService";
-import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } from "./src/services/paymentReminderService";
+import { whatsappService } from "./src/services/whatsappService.ts";
+import { scraperService } from "./src/services/prospecting/scraper.service.ts";
+import { startBackupScheduler } from "./src/services/backupService.ts";
+import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } from "./src/services/paymentReminderService.ts";
 
 dotenv.config();
 
@@ -23,14 +23,16 @@ const __dirname = path.dirname(__filename);
 // Database Pool Configuration
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://agency_admin:agency_secure_password@45.167.187.80:5432/agencyflow_db",
-  connectionTimeoutMillis: 10000, // Increased timeout for external server
+  connectionTimeoutMillis: 15000, 
 });
 
-// Mock database fallback for environments without Postgres (like AI Studio preview)
-let useFallback = false;
+// Mock database fallback default to true to avoid initial connection hangs
+let useFallback = true;
+let isDbInitializing = true;
 const mockData: any = {
   users: [
     { id: 'u1', name: 'Werik Admin', email: 'admin@agency.com', password: 'admin123', role: 'ADMIN' },
+    { id: 'u_main', name: 'Werik User', email: 'werikplaystore@gmail.com', password: 'admin123', role: 'ADMIN' },
     { id: 'u2', name: 'Lucas Andrade', email: 'lucas@design.com', password: 'design123', role: 'DESIGNER' },
     { id: 'u3', name: 'Mariana Costa', email: 'mariana@design.com', password: 'design123', role: 'DESIGNER' },
     { id: 'u4', name: 'Roberto Financeiro', email: 'finance@agency.com', password: 'finance123', role: 'ADMIN' },
@@ -44,8 +46,8 @@ const mockData: any = {
     { id: 'part3', name: 'Marcos Dev', agency_name: 'Code Hub', email: 'marcos@codehub.com', commission_type: 'percentage', commission_value: 15 }
   ],
   clients: [
-    { id: 'c1', name: 'Global Fitness', status: 'active', monthly_value: 3500, renewal_date: '10/05/2026', contact_email: 'mkt@globalfitness.com', assigned_designer_id: 'u2', partner_id: 'part1', designer_payout: 450 },
-    { id: 'c2', name: 'Eco Vida', status: 'active', monthly_value: 2800, renewal_date: '01/06/2026', contact_email: 'contato@ecovida.org', assigned_designer_id: 'u3', partner_id: 'part2', designer_payout: 380 },
+    { id: 'c1', name: 'Global Fitness', status: 'active', monthly_value: 3500, renewal_date: '10/05/2026', contact_email: 'mkt@globalfitness.com', assigned_designer_id: 'u2', partner_id: 'part1', designer_payout: 450, demand_config: { enabled: true, type: 'art', quantity: 3, frequency: 'weekly' } },
+    { id: 'c2', name: 'Eco Vida', status: 'active', monthly_value: 2800, renewal_date: '01/06/2026', contact_email: 'contato@ecovida.org', assigned_designer_id: 'u3', partner_id: 'part2', designer_payout: 380, demand_config: { enabled: true, type: 'video', quantity: 2, frequency: 'weekly' } },
     { id: 'c3', name: 'Hotel Paradiso', status: 'active', monthly_value: 4200, renewal_date: '15/05/2026', contact_email: 'reservas@paradiso.com', assigned_designer_id: 'u6', partner_id: 'part1', designer_payout: 600 },
     { id: 'c4', name: 'Boutique Glamour', status: 'active', monthly_value: 2200, renewal_date: '20/05/2026', contact_email: 'vendas@glamour.com', assigned_designer_id: 'u7', partner_id: null, designer_payout: 300 },
     { id: 'c5', name: 'Sacolão do Bairro', status: 'paused', monthly_value: 1500, renewal_date: '05/06/2026', contact_email: 'contato@sacolao.com', assigned_designer_id: 'u2', partner_id: null, designer_payout: 200 }
@@ -86,25 +88,91 @@ const mockData: any = {
   video_orders: [
     { id: 'v1', title: 'Edição Workshop Fit', client_id: 'c1', editor_id: 'u5', deadline: '28/04/2026', priority: 'high', progress: 30, status: 'production' },
     { id: 'v2', title: 'Motion Graphics Logo', client_id: 'c3', editor_id: 'u5', deadline: '02/05/2026', priority: 'medium', progress: 0, status: 'queue' }
+  ],
+  demand_tasks: [
+    { id: 'dem-test-1', client_id: 'c1', type: 'art', quantity: 3, period_start: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), period_end: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(), status: 'todo', created_at: new Date().toISOString() },
+    { id: 'dem-test-2', client_id: 'c2', type: 'video', quantity: 2, period_start: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), period_end: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(), status: 'done', created_at: new Date().toISOString() },
+    { id: 'dem-test-3', client_id: 'c1', type: 'art', quantity: 5, period_start: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(), period_end: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), status: 'done', created_at: new Date().toISOString() }
   ]
 };
 
 async function initDb(retries = 2) {
+  isDbInitializing = true;
   while (retries > 0) {
     try {
       const client = await pool.connect();
       console.log("✅ Conectado ao banco de dados PostgreSQL");
       const initSql = fs.readFileSync(path.join(__dirname, "db", "init.sql"), "utf-8");
       await client.query(initSql);
+      
+      // Ensure new columns exist for existing databases
+      try {
+        await client.query("ALTER TABLE art_orders ADD COLUMN IF NOT EXISTS rejection_notes TEXT");
+        await client.query("ALTER TABLE art_orders ADD COLUMN IF NOT EXISTS feedback_requested BOOLEAN DEFAULT FALSE");
+        await client.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS demand_config JSONB DEFAULT '{\"enabled\": false, \"type\": \"art\", \"quantity\": 1, \"frequency\": \"weekly\"}'::jsonb");
+        await client.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS branding JSONB");
+        
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS demand_tasks (
+            id TEXT PRIMARY KEY,
+            client_id TEXT REFERENCES clients(id) ON DELETE CASCADE,
+            type TEXT NOT NULL,
+            quantity INTEGER DEFAULT 1,
+            period_start TIMESTAMP WITH TIME ZONE NOT NULL,
+            period_end TIMESTAMP WITH TIME ZONE NOT NULL,
+            status TEXT DEFAULT 'todo',
+            title TEXT,
+            observations TEXT,
+            materials_link TEXT,
+            post_date TEXT,
+            post_time TEXT,
+            editor_id TEXT,
+            attachments JSONB DEFAULT '[]',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        // Migration for new columns if table existed
+        await client.query("ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS title TEXT");
+        await client.query("ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS observations TEXT");
+        await client.query("ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS materials_link TEXT");
+        await client.query("ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS post_date TEXT");
+        await client.query("ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS post_time TEXT");
+        await client.query("ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS editor_id TEXT");
+        await client.query("ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'");
+
+        await client.query(`
+          INSERT INTO users (id, name, email, password, role)
+          VALUES ('u_main', 'Werik User', 'werikplaystore@gmail.com', 'admin123', 'ADMIN')
+          ON CONFLICT (id) DO NOTHING;
+        `);
+        
+        // Insert sample demands for testing if not exists
+        await client.query(`
+          INSERT INTO demand_tasks (id, client_id, type, quantity, period_start, period_end, status)
+          SELECT 'dem-1', 'c1', 'art', 3, NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', 'todo'
+          WHERE NOT EXISTS (SELECT 1 FROM demand_tasks WHERE id = 'dem-1');
+          
+          INSERT INTO demand_tasks (id, client_id, type, quantity, period_start, period_end, status)
+          SELECT 'dem-2', 'c2', 'video', 2, NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', 'done'
+          WHERE NOT EXISTS (SELECT 1 FROM demand_tasks WHERE id = 'dem-2');
+        `);
+      } catch (err) {
+        console.warn("⚠️ Avisos ao atualizar colunas da tabela: ", (err as Error).message);
+      }
+
       client.release();
       console.log("✅ Banco de dados inicializado com sucesso");
+      useFallback = false;
+      isDbInitializing = false;
       return;
     } catch (err) {
       retries--;
       console.error(`❌ Erro ao conectar ao banco de dados (${2 - retries}/2):`, (err as Error).message);
       if (retries === 0) {
-        console.warn("⚠️ Usando fallback em memória para desenvolvimento...");
+        console.warn("⚠️ Usando fallback em memória...");
         useFallback = true;
+        isDbInitializing = false;
       } else {
         console.log("Retentando em 2 segundos...");
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -120,15 +188,126 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // Initialize Database
-  await initDb();
+  // Initialize Database (non-blocking for startup)
+  initDb().catch(err => {
+    console.error("❌ Fatal error during DB initialization:", err);
+    useFallback = true;
+  });
 
   startBackupScheduler();
   
+  // Recurring Demands Logic
+  async function processDemands() {
+    console.log("[DEMANDS] Iniciando processamento de demandas recorrentes...");
+    let clients = [];
+    try {
+      if (useFallback || isDbInitializing) {
+        clients = mockData.clients;
+      } else {
+        clients = (await pool.query("SELECT * FROM clients")).rows;
+      }
+
+      const now = new Date();
+      for (const client of clients) {
+        // Enforce JSON parsing if it's a string from DB
+        const config = typeof client.demand_config === 'string' ? JSON.parse(client.demand_config) : client.demand_config;
+        if (!config || !config.enabled) continue;
+
+        let periodStart = new Date();
+        let periodEnd = new Date();
+
+        if (config.frequency === 'daily') {
+          periodStart.setHours(0, 0, 0, 0);
+          periodEnd.setHours(23, 59, 59, 999);
+        } else if (config.frequency === 'weekly') {
+          // Find last Monday
+          const day = now.getDay();
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+          periodStart = new Date(now.setDate(diff));
+          periodStart.setHours(0, 0, 0, 0);
+          
+          periodEnd = new Date(periodStart);
+          periodEnd.setDate(periodStart.getDate() + 6);
+          periodEnd.setHours(23, 59, 59, 999);
+        } else if (config.frequency === 'monthly') {
+          periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+          periodEnd.setHours(23, 59, 59, 999);
+        }
+
+        const startStr = periodStart.toISOString();
+        const endStr = periodEnd.toISOString();
+
+        // Check if task exists
+        let exists = false;
+        if (useFallback || isDbInitializing) {
+          exists = (mockData.demand_tasks || []).some((t: any) => 
+            t.client_id === client.id && t.period_start === startStr
+          );
+        } else {
+          const res = await pool.query(
+            "SELECT id FROM demand_tasks WHERE client_id = $1 AND period_start = $2",
+            [client.id, startStr]
+          );
+          exists = res.rows.length > 0;
+        }
+
+        if (!exists) {
+          const newTask = {
+            id: 'dem-' + Math.random().toString(36).substr(2, 9),
+            client_id: client.id,
+            type: config.type || 'art',
+            quantity: config.quantity || 1,
+            period_start: startStr,
+            period_end: endStr,
+            status: 'todo',
+            editor_id: config.defaultEditorId || '',
+            observations: '',
+            attachments: [],
+            created_at: new Date()
+          };
+
+          if (useFallback || isDbInitializing) {
+            if (!mockData.demand_tasks) mockData.demand_tasks = [];
+            mockData.demand_tasks.push(newTask);
+          } else {
+            await pool.query(
+              "INSERT INTO demand_tasks (id, client_id, type, quantity, period_start, period_end, status, editor_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+              [newTask.id, newTask.client_id, newTask.type, newTask.quantity, newTask.period_start, newTask.period_end, newTask.status, newTask.editor_id]
+            );
+          }
+          console.log(`[DEMANDS] Nova demanda gerada para ${client.name} (${config.frequency})`);
+        }
+      }
+    } catch (err) {
+      console.error("[DEMANDS] Erro ao processar demandas:", err);
+    }
+  }
+
+  // Run on start and then every hour
+  processDemands();
+  setInterval(processDemands, 1000 * 60 * 60);
+
   // Initialize Payment Reminder Scheduler
   startPaymentReminderScheduler(
-    async () => (await pool.query("SELECT * FROM receivables")).rows,
-    async () => (await pool.query("SELECT * FROM clients")).rows,
+    async () => {
+      if (useFallback || isDbInitializing) return mockData.receivables;
+      try {
+        return (await pool.query("SELECT * FROM receivables")).rows;
+      } catch (err) {
+        useFallback = true;
+        return mockData.receivables;
+      }
+    },
+    async () => {
+      if (useFallback || isDbInitializing) return mockData.clients;
+      try {
+        return (await pool.query("SELECT * FROM clients")).rows;
+      } catch (err) {
+        useFallback = true;
+        return mockData.clients;
+      }
+    },
     async (phone: string, message: string) => {
         return whatsappService.sendMessage(phone, message);
     }
@@ -146,6 +325,42 @@ async function startServer() {
     res.json({ status: "ok", message: "AgencyFlow API is active" });
   });
 
+  app.post("/api/signup", async (req, res) => {
+    let { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Todos os campos são obrigatórios" });
+    }
+
+    email = email.trim().toLowerCase();
+    const id = 'u-' + Math.random().toString(36).substr(2, 9);
+    const newUser = { id, name, email, password, role: 'OWNER' };
+
+    try {
+      if (useFallback || isDbInitializing) {
+        if (mockData.users.find((u: any) => u.email.toLowerCase() === email)) {
+          return res.status(400).json({ error: "E-mail já cadastrado" });
+        }
+        mockData.users.push(newUser);
+        const { password: _, ...userWithoutPassword } = newUser;
+        return res.json({ success: true, user: userWithoutPassword });
+      }
+
+      const check = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+      if (check.rows.length > 0) {
+        return res.status(400).json({ error: "E-mail já cadastrado" });
+      }
+
+      const result = await pool.query(
+        "INSERT INTO users (id, name, email, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, role, avatar",
+        [id, name, email, password, 'OWNER']
+      );
+      res.json({ success: true, user: result.rows[0] });
+    } catch (err) {
+      console.error("[AUTH] Erro no signup:", err);
+      res.status(500).json({ error: "Erro ao criar conta" });
+    }
+  });
+
   // Authentication
   app.post("/api/login", async (req, res) => {
     let { email, password } = req.body;
@@ -159,7 +374,7 @@ async function startServer() {
     console.log(`[AUTH] Tentativa de login para: ${email}`);
     
     try {
-      if (useFallback) {
+      if (useFallback || isDbInitializing) {
         const user = mockData.users.find((u: any) => u.email.toLowerCase() === email && u.password === password);
         if (user) {
           console.log(`[AUTH] Login bem-sucedido (Fallback): ${email}`);
@@ -178,6 +393,15 @@ async function startServer() {
         res.status(401).json({ error: "E-mail ou senha incorretos" });
       }
     } catch (err) {
+      if ((err as any).message?.includes('connect')) {
+        useFallback = true;
+        const user = mockData.users.find((u: any) => u.email.toLowerCase() === email && u.password === password);
+        if (user) {
+          console.log(`[AUTH] Login bem-sucedido (Fallback Triggered): ${email}`);
+          const { password: _, ...userWithoutPassword } = user;
+          return res.json({ success: true, user: userWithoutPassword });
+        }
+      }
       console.error(`[AUTH] Erro interno no login:`, err);
       res.status(500).json({ error: "Erro interno no servidor de autenticação" });
     }
@@ -188,10 +412,15 @@ async function startServer() {
     // GET
     app.get(`/api/${pathName}`, async (req, res) => {
       try {
-        if (useFallback) return res.json(mockData[mockArrayName]);
+        if (useFallback || isDbInitializing) return res.json(mockData[mockArrayName]);
         const result = await pool.query(`SELECT * FROM ${tableName}`);
         res.json(result.rows);
       } catch (err) {
+        // Automatically switch to fallback if query fails due to connection
+        if ((err as any).message?.includes('connect')) {
+           useFallback = true;
+           return res.json(mockData[mockArrayName]);
+        }
         res.status(500).json({ error: (err as Error).message });
       }
     });
@@ -200,7 +429,7 @@ async function startServer() {
     app.post(`/api/${pathName}`, async (req, res) => {
       try {
         const item = req.body;
-        if (useFallback) {
+        if (useFallback || isDbInitializing) {
           const newItem = { ...item, created_at: new Date() };
           (mockData[mockArrayName] as any[]).push(newItem);
           return res.json(newItem);
@@ -214,6 +443,13 @@ async function startServer() {
         );
         res.json(result.rows[0]);
       } catch (err) {
+        if ((err as any).message?.includes('connect')) {
+          useFallback = true;
+          const item = req.body;
+          const newItem = { ...item, created_at: new Date() };
+          (mockData[mockArrayName] as any[]).push(newItem);
+          return res.json(newItem);
+        }
         res.status(500).json({ error: (err as Error).message });
       }
     });
@@ -223,7 +459,7 @@ async function startServer() {
       try {
         const { id } = req.params;
         const updates = req.body;
-        if (useFallback) {
+        if (useFallback || isDbInitializing) {
           const arr = mockData[mockArrayName] as any[];
           const index = arr.findIndex((item: any) => item.id === id);
           if (index > -1) {
@@ -241,6 +477,17 @@ async function startServer() {
         );
         res.json(result.rows[0]);
       } catch (err) {
+        if ((err as any).message?.includes('connect')) {
+          useFallback = true;
+          const { id } = req.params;
+          const updates = req.body;
+          const arr = mockData[mockArrayName] as any[];
+          const index = arr.findIndex((item: any) => item.id === id);
+          if (index > -1) {
+            arr[index] = { ...arr[index], ...updates };
+            return res.json(arr[index]);
+          }
+        }
         res.status(500).json({ error: (err as Error).message });
       }
     });
@@ -249,15 +496,21 @@ async function startServer() {
     app.delete(`/api/${pathName}/:id`, async (req, res) => {
       try {
         const { id } = req.params;
-        if (useFallback) {
+        if (useFallback || isDbInitializing) {
           const arr = mockData[mockArrayName] as any[];
           mockData[mockArrayName] = arr.filter((item: any) => item.id !== id) as any;
           return res.json({ success: true });
         }
         await pool.query(`DELETE FROM ${tableName} WHERE id = $1`, [id]);
-        console.log(`[DEBUG] Executed DELETE FROM ${tableName} WHERE id = ${id}`);
         res.json({ success: true });
       } catch (err) {
+        if ((err as any).message?.includes('connect')) {
+          useFallback = true;
+          const { id } = req.params;
+          const arr = mockData[mockArrayName] as any[];
+          mockData[mockArrayName] = arr.filter((item: any) => item.id !== id) as any;
+          return res.json({ success: true });
+        }
         res.status(500).json({ error: (err as Error).message });
       }
     });
@@ -272,6 +525,82 @@ async function startServer() {
   setupCrud("support-tickets", "support_tickets", "support_tickets");
   setupCrud("video-orders", "video_orders", "video_orders");
   setupCrud("users", "users", "users");
+  app.put("/api/demand-tasks/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+    try {
+      let updatedTask;
+      if (useFallback) {
+        const idx = mockData.demand_tasks.findIndex((t: any) => t.id === id);
+        if (idx === -1) return res.status(404).json({ error: "Task not found" });
+        updatedTask = { ...mockData.demand_tasks[idx], ...updates };
+        mockData.demand_tasks[idx] = updatedTask;
+      } else {
+        const keys = Object.keys(updates);
+        const values = Object.values(updates);
+        const setStmt = keys.map((k, i) => `${k.replace(/[A-Z]/g, (m: any) => `_${m.toLowerCase()}`)} = $${i + 1}`).join(', ');
+        const result = await pool.query(
+          `UPDATE demand_tasks SET ${setStmt} WHERE id = $${keys.length + 1} RETURNING *`,
+          [...values, id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: "Task not found" });
+        updatedTask = result.rows[0];
+      }
+
+      // Special logic: if status set to 'done' and type is 'recording', create a video order
+      if (updates.status === 'done' && updatedTask.type === 'recording') {
+        const clientRes = useFallback ? 
+          { rows: [mockData.clients.find((c: any) => c.id === updatedTask.client_id)] } : 
+          await pool.query("SELECT * FROM clients WHERE id = $1", [updatedTask.client_id]);
+        
+        const client = clientRes.rows[0];
+        
+        // Calculate deadline: 12 hours before postTime on postDate
+        let deadlineStr = 'Imediato';
+        if (updatedTask.post_date) {
+            try {
+                const [year, month, day] = updatedTask.post_date.split('-').map(Number);
+                const [hour, minute] = (updatedTask.post_time || '00:00').split(':').map(Number);
+                
+                const postDateObj = new Date(year, month - 1, day, hour, minute);
+                const deadlineObj = new Date(postDateObj.getTime() - (12 * 60 * 60 * 1000));
+                
+                deadlineStr = `${deadlineObj.getDate().toString().padStart(2, '0')}/${(deadlineObj.getMonth() + 1).toString().padStart(2, '0')}/${deadlineObj.getFullYear()} às ${deadlineObj.getHours().toString().padStart(2, '0')}:${deadlineObj.getMinutes().toString().padStart(2, '0')}`;
+            } catch (e) {
+                deadlineStr = updatedTask.post_date;
+            }
+        }
+
+        const newVideoOrder = {
+          id: 'v-' + Math.random().toString(36).substr(2, 9),
+          title: `Edição: ${updatedTask.title || updatedTask.observations || 'Sem título'}`,
+          client_id: updatedTask.client_id,
+          editor_id: updatedTask.editor_id || client.demand_config?.defaultEditorId || '',
+          editor_name: '', // Will be resolved by client if needed
+          deadline: deadlineStr,
+          priority: 'high',
+          progress: 0,
+          status: 'queue'
+        };
+
+        if (useFallback) {
+          mockData.video_orders.push(newVideoOrder);
+        } else {
+          await pool.query(
+            "INSERT INTO video_orders (id, title, client_id, editor_id, deadline, priority, progress, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            [newVideoOrder.id, newVideoOrder.title, newVideoOrder.client_id, newVideoOrder.editor_id, newVideoOrder.deadline, newVideoOrder.priority, newVideoOrder.progress, newVideoOrder.status]
+          );
+        }
+        console.log(`[DEMANDS] Video order created automatically for Recording Demand ${id}`);
+      }
+
+      res.json(updatedTask);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  setupCrud("demand-tasks", "demand_tasks", "demand_tasks");
 
   // --- PROSPECTING ROUTES ---
   app.post("/api/prospecting/scrape", async (req, res) => {
@@ -279,9 +608,9 @@ async function startServer() {
     try {
       let leads = [];
       if (source === 'google') {
-          leads = await scraperService.scrapeGoogleMaps(query, location);
+        leads = await scraperService.scrapeGoogleMaps(query, location);
       } else if (source === 'instagram') {
-          leads = await scraperService.scrapeInstagram(query);
+        leads = await scraperService.scrapeInstagram(query);
       }
       res.json({ success: true, leads });
     } catch (err: any) {
@@ -361,29 +690,61 @@ async function startServer() {
 
     if (newStatus && orderId) {
       try {
-        if (useFallback) {
+        const feedbackRequested = newStatus === 'rejected';
+        // When rejected, approval_status stays pending until the link is filled, 
+        // but we need to track that the link was sent.
+        // Actually, the user wants: "status only changes to rejected when they fill the link".
+        // So here we just set feedback_requested = true and keep approvalStatus = pending.
+        
+        if (useFallback || isDbInitializing) {
           const order = mockData.art_orders.find((o: any) => o.id === orderId);
           if (order) {
-            order.approval_status = newStatus;
-            order.status = newStatus === 'approved' ? 'done' : 'production';
+            if (newStatus === 'approved') {
+              order.approval_status = 'approved';
+              order.status = 'done';
+              order.feedback_requested = false;
+            } else {
+              order.feedback_requested = true;
+              order.approval_status = 'pending'; // Keep pending until link is filled
+            }
           }
         } else {
-          await pool.query(
-            "UPDATE art_orders SET approval_status = $1, status = $2 WHERE id = $3",
-            [newStatus, newStatus === 'approved' ? 'done' : 'production', orderId]
-          );
+          if (newStatus === 'approved') {
+            await pool.query(
+              "UPDATE art_orders SET approval_status = 'approved', status = 'done', feedback_requested = false WHERE id = $1",
+              [orderId]
+            );
+          } else {
+            await pool.query(
+              "UPDATE art_orders SET feedback_requested = true, approval_status = 'pending' WHERE id = $1",
+              [orderId]
+            );
+          }
         }
-        console.log(`[CRM] Arte ${orderId} atualizada para ${newStatus}`);
+        console.log(`[CRM] Arte ${orderId} atualizada. Status: ${newStatus}`);
         
         // Optionally send a confirmation back to the user
-        const responseMsg = newStatus === 'approved' 
-          ? '✅ Muito obrigado pela aprovação! Já vamos finalizar o processo.'
-          : '📝 Entendido! Nossa equipe entrará em contato para entender os ajustes necessários.';
+        let responseMsg = '';
+        if (newStatus === 'approved') {
+          responseMsg = '✅ Muito obrigado pela aprovação! Já vamos finalizar o processo.';
+        } else {
+          // GENERATE THE LINK AUTOMATICALLY
+          let appUrl = process.env.APP_URL || 'https://agencyflow.app';
+          // Ensure it doesn't end with a slash for consistent construction
+          appUrl = appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl;
+          
+          const link = `${appUrl}/?refuseOrderId=${orderId}`;
+          responseMsg = `📝 Entendido! Para que possamos fazer os ajustes exatamente como você deseja, por favor preencha este rápido formulário:\n\n${link}\n\nAguardamos seu feedback!`;
+        }
         
+        console.log(`[CRM] Enviando resposta automática via WhatsApp para ${phone}: ${newStatus}`);
         await whatsappService.sendMessage(phone, responseMsg);
+        console.log(`[CRM] Mensagem enviada com sucesso para ${phone}`);
       } catch (err) {
         console.error('[CRM] Erro ao atualizar status via WhatsApp:', err);
       }
+    } else {
+      console.warn(`[CRM] Voto recebido mas ignorado: Status=${newStatus}, OrderId=${orderId}`);
     }
   });
   // --- FIM WHATSAPP ROUTES ---

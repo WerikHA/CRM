@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'DESIGNER' | 'PARTNER' | 'EDITOR';
+export type UserRole = 'OWNER' | 'ADMIN' | 'DESIGNER' | 'PARTNER' | 'EDITOR';
 
 export interface User {
   id: string;
@@ -47,6 +47,32 @@ export interface Client {
   partnerId?: string; // Parceiro que trouxe o cliente
   designerPayout?: number; // Quanto o designer ganha por este cliente
   branding?: ClientBranding;
+  demandConfig?: {
+    enabled: boolean;
+    type: 'art' | 'video' | 'recording';
+    quantity: number;
+    frequency: 'daily' | 'weekly' | 'monthly';
+    defaultEditorId?: string;
+  };
+}
+
+export interface DemandTask {
+  id: string;
+  clientId: string;
+  clientName?: string;
+  type: 'art' | 'video' | 'recording';
+  quantity: number;
+  periodStart: string; // ISO date
+  periodEnd: string; // ISO date
+  status: 'todo' | 'done';
+  createdAt: string;
+  title?: string;
+  observations?: string;
+  materialsLink?: string;
+  postDate?: string;
+  postTime?: string;
+  editorId?: string;
+  attachments?: string[];
 }
 
 export interface SupportTicket {
@@ -95,6 +121,8 @@ export interface ArtOrder {
   approvalStatus?: ApprovalStatus;
   whatsappSentAt?: string; // dd/mm/aaaa hh:mm
   observation?: string; // Limite de 300 caracteres
+  rejectionNotes?: string; // Observações de reprovação do cliente
+  feedbackRequested?: boolean; // Flag para indicar que o link de ajustes foi enviado
 }
 
 export type PartnerRequestStatus = 'pending' | 'ongoing' | 'completed' | 'requested' | 'delivered';

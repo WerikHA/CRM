@@ -38,6 +38,25 @@ CREATE TABLE IF NOT EXISTS clients (
     assigned_designer_id TEXT REFERENCES users(id),
     partner_id TEXT REFERENCES partners(id),
     designer_payout NUMERIC(10, 2) DEFAULT 0,
+    branding JSONB,
+    demand_config JSONB DEFAULT '{"enabled": false, "type": "art", "quantity": 1, "frequency": "weekly"}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Demandas Table (Kanban for recurring tasks)
+CREATE TABLE IF NOT EXISTS demand_tasks (
+    id TEXT PRIMARY KEY,
+    client_id TEXT REFERENCES clients(id) ON DELETE CASCADE,
+    type TEXT NOT NULL, -- 'art', 'video', 'recording'
+    quantity INTEGER DEFAULT 1,
+    period_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    period_end TIMESTAMP WITH TIME ZONE NOT NULL,
+    status TEXT DEFAULT 'todo', -- 'todo', 'done'
+    observations TEXT,
+    post_date TEXT,
+    post_time TEXT,
+    editor_id TEXT,
+    attachments JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -68,6 +87,8 @@ CREATE TABLE IF NOT EXISTS art_orders (
     status TEXT DEFAULT 'queue', -- 'queue', 'production', 'review', 'done'
     approval_status TEXT DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
     whatsapp_sent_at TEXT,
+    rejection_notes TEXT,
+    feedback_requested BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -124,6 +145,7 @@ CREATE TABLE IF NOT EXISTS video_orders (
 -- Initial Data (Bootstrap)
 INSERT INTO users (id, name, email, password, role) VALUES 
 ('u1', 'Werik Admin', 'admin@agency.com', 'admin123', 'ADMIN'),
+('u_main', 'Werik User', 'werikplaystore@gmail.com', 'admin123', 'ADMIN'),
 ('u2', 'Lucas Andrade', 'lucas@design.com', 'design123', 'DESIGNER'),
 ('u3', 'Mariana Costa', 'mariana@design.com', 'design123', 'DESIGNER'),
 ('u4', 'Roberto Financeiro', 'finance@agency.com', 'finance123', 'ADMIN'),

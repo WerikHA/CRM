@@ -65,6 +65,8 @@ export default function DesignView({
 
   const isDesigner = currentUser.role === 'DESIGNER';
   const isAdmin = currentUser.role === 'ADMIN';
+  const isOwner = currentUser.role === 'OWNER';
+  const isAdminOrOwner = isAdmin || isOwner;
   const isPartner = currentUser.role === 'PARTNER';
 
   const designers = users.filter(u => u.role === 'DESIGNER');
@@ -95,10 +97,10 @@ export default function DesignView({
   }, [artOrders, isDesigner, isPartner, currentUser.id, clients, designerFilter]);
 
   const partnerClients = useMemo(() => {
-    if (isAdmin) return clients;
+    if (isAdminOrOwner) return clients;
     if (isPartner) return clients.filter(c => c.partnerId === currentUser.id);
     return [];
-  }, [clients, isAdmin, isPartner, currentUser.id]);
+  }, [clients, isAdminOrOwner, isPartner, currentUser.id]);
 
   const monthShortNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -145,7 +147,8 @@ export default function DesignView({
     }
   };
 
-  const getApprovalLabel = (status?: ApprovalStatus) => {
+  const getApprovalLabel = (status?: ApprovalStatus, feedbackRequested?: boolean) => {
+    if (feedbackRequested) return 'Link de Ajustes Enviado';
     switch (status) {
       case 'approved': return 'Aprovado pelo Cliente';
       case 'rejected': return 'Reprovado (Ajustes)';
@@ -164,7 +167,7 @@ export default function DesignView({
       return;
     }
 
-    const assigned = (isPartner || isAdmin) ? getDesignerWithLowestLoad() : { id: designers[0]?.id || '', name: designers[0]?.name || '' };
+    const assigned = (isPartner || isAdminOrOwner) ? getDesignerWithLowestLoad() : { id: designers[0]?.id || '', name: designers[0]?.name || '' };
 
     setEditingOrder(null);
     setFormData({
@@ -274,6 +277,20 @@ export default function DesignView({
   const handleSimulateResponse = async (e: React.MouseEvent, id: string, status: ApprovalStatus) => {
     e.stopPropagation();
     try {
+      if (status === 'rejected') {
+        const updates = { 
+          feedbackRequested: true,
+          approvalStatus: 'pending' as ApprovalStatus
+        };
+        await api.updateArtOrder(id, updates);
+        setArtOrders(orders => orders.map(o => o.id === id ? { ...o, ...updates } : o));
+        
+        const link = `${window.location.origin}/?refuseOrderId=${id}`;
+        copyToClipboard(link);
+        alert('Link de ajustes gerado e copiado para o cliente:\n' + link + '\n\nO status no CRM mudará para "Reprovado" somente após o cliente preencher os ajustes.');
+        return;
+      }
+
       const updates = { 
         approvalStatus: status,
         status: status === 'approved' ? 'done' as WorkStatus : 'production' as WorkStatus,
@@ -313,30 +330,30 @@ export default function DesignView({
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 px-2">
           <div className="space-y-0.5">
-            <h3 className="text-4xl font-black text-gray-900 capitalize tracking-tighter">
+            <h3 className="text-4xl font-black text-gray-900 dark:text-gray-100 capitalize tracking-tighter">
               {format(currentCalendarDate, 'MMMM', { locale: ptBR })}
               <span className="text-indigo-500 ml-2">{format(currentCalendarDate, 'yyyy')}</span>
             </h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">Feriados e Planejamento Mensal</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-400 font-bold uppercase tracking-[0.2em]">Feriados e Planejamento Mensal</p>
           </div>
           
-          <div className="flex items-center gap-1.5 bg-gray-100 p-1.5 rounded-2xl border border-gray-200 shadow-sm">
+          <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 p-1.5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
             <button 
               onClick={() => setCurrentCalendarDate(subMonths(currentCalendarDate, 1))}
-              className="p-2 hover:bg-white hover:text-indigo-600 rounded-xl text-gray-500 transition-all hover:shadow-sm"
+              className="p-2 hover:bg-white dark:hover:bg-gray-900 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-xl text-gray-500 dark:text-gray-400 transition-all hover:shadow-sm"
               title="Mês Anterior"
             >
                <ChevronLeft size={20} strokeWidth={2.5} />
             </button>
             <button 
               onClick={() => setCurrentCalendarDate(new Date())}
-              className="px-4 py-2 text-[10px] font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all uppercase tracking-widest shadow-md shadow-indigo-100"
+              className="px-4 py-2 text-[10px] font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all uppercase tracking-widest shadow-md shadow-indigo-100 dark:shadow-indigo-900"
             >
                Hoje
             </button>
             <button 
               onClick={() => setCurrentCalendarDate(addMonths(currentCalendarDate, 1))}
-              className="p-2 hover:bg-white hover:text-indigo-600 rounded-xl text-gray-500 transition-all hover:shadow-sm"
+              className="p-2 hover:bg-white dark:hover:bg-gray-900 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-xl text-gray-500 dark:text-gray-400 transition-all hover:shadow-sm"
               title="Próximo Mês"
             >
                <ChevronRight size={20} strokeWidth={2.5} />
@@ -344,9 +361,9 @@ export default function DesignView({
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-px bg-gray-200 border-2 border-gray-200 rounded-[2rem] overflow-hidden shadow-xl bg-opacity-50">
+        <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-800 rounded-[2rem] overflow-hidden shadow-xl bg-opacity-50">
           {weekDays.map(day => (
-            <div key={day} className="bg-gray-50/80 backdrop-blur-sm py-4 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-200">
+            <div key={day} className="bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm py-4 text-center text-[10px] font-black text-gray-400 dark:text-gray-400 uppercase tracking-widest border-b border-gray-200 dark:border-gray-800">
               {day}
             </div>
           ))}
@@ -366,9 +383,9 @@ export default function DesignView({
               <div 
                 key={i} 
                 className={cn(
-                  "min-h-[130px] p-2.5 bg-white flex flex-col gap-1.5 transition-all group relative",
-                  !isCurrentMonth && "bg-gray-50/40 opacity-30 grayscale-[0.5]",
-                  isToday && "bg-indigo-50/30"
+                  "min-h-[130px] p-2.5 bg-white dark:bg-gray-900 flex flex-col gap-1.5 transition-all group relative",
+                  !isCurrentMonth && "bg-gray-50/40 dark:bg-gray-800/20 opacity-30 grayscale-[0.5]",
+                  isToday && "bg-indigo-50/30 dark:bg-indigo-500/10"
                 )}
               >
                 {/* Visual indicator for today */}
@@ -379,7 +396,7 @@ export default function DesignView({
                 <div className="flex justify-between items-start mb-1">
                   <span className={cn(
                     "text-lg font-black tracking-tighter leading-none transition-colors",
-                    isToday ? "text-indigo-600" : isCurrentMonth ? "text-gray-900" : "text-gray-300"
+                    isToday ? "text-indigo-600 dark:text-indigo-400" : isCurrentMonth ? "text-gray-900 dark:text-gray-100" : "text-gray-300 dark:text-gray-700"
                   )}>
                     {format(day, 'dd')}
                   </span>
@@ -387,12 +404,12 @@ export default function DesignView({
                   <div className="flex gap-1">
                     {dayHolidays.length > 0 && (
                       <div className={cn(
-                        "w-2.5 h-2.5 rounded-full shadow-sm ring-2 ring-white",
+                        "w-2.5 h-2.5 rounded-full shadow-sm ring-2 ring-white dark:ring-gray-900",
                         dayHolidays.some(h => h.type === 'holiday') ? "bg-rose-500 animate-pulse" : "bg-amber-400"
                       )} />
                     )}
                     {dayOrders.length > 0 && (
-                      <div className="w-2.5 h-2.5 rounded-full bg-slate-300 ring-2 ring-white" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-gray-700 ring-2 ring-white dark:ring-gray-900" />
                     )}
                   </div>
                 </div>
@@ -405,8 +422,8 @@ export default function DesignView({
                       className={cn(
                         "text-[9px] p-2 rounded-xl font-black leading-none shadow-sm border-l-4 transition-transform hover:scale-[1.02]",
                         holiday.type === 'holiday' 
-                          ? "bg-rose-50 text-rose-700 border-rose-500" 
-                          : "bg-amber-50 text-amber-700 border-amber-400"
+                          ? "bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500" 
+                          : "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-400"
                       )}
                     >
                       {holiday.name}
@@ -417,9 +434,9 @@ export default function DesignView({
                   {dayOrders.length > 0 && isCurrentMonth && (
                     <div className="mt-auto space-y-1">
                       <div className="flex items-center gap-1.5 opacity-60">
-                        <div className="h-px flex-1 bg-gray-200" />
-                        <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">{dayOrders.length} Tarefa(s)</span>
-                        <div className="h-px flex-1 bg-gray-200" />
+                        <div className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
+                        <span className="text-[7px] font-black text-gray-400 dark:text-gray-400 uppercase tracking-widest">{dayOrders.length} Tarefa(s)</span>
+                        <div className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {dayOrders.map(order => (
@@ -427,7 +444,7 @@ export default function DesignView({
                             key={order.id}
                             className={cn(
                               "w-full text-[8px] px-2 py-1 rounded-lg font-bold truncate",
-                              order.status === 'done' ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-500"
+                              order.status === 'done' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
                             )}
                             title={order.title}
                           >
@@ -443,28 +460,28 @@ export default function DesignView({
           })}
         </div>
         
-        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-8 px-8 py-5 bg-white rounded-3xl border-2 border-gray-100 shadow-sm">
+        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-8 px-8 py-5 bg-white dark:bg-gray-900 rounded-3xl border-2 border-gray-100 dark:border-gray-800 shadow-sm">
            <div className="flex items-center gap-3 group cursor-default">
-             <div className="w-5 h-5 rounded-full bg-rose-500 shadow-lg shadow-rose-100 animate-pulse" />
+             <div className="w-5 h-5 rounded-full bg-rose-500 shadow-lg shadow-rose-100 dark:shadow-rose-900 animate-pulse" />
              <div className="flex flex-col">
-               <span className="text-[10px] font-black text-gray-900 uppercase tracking-widest">Feriado Nacional</span>
-               <span className="text-[9px] text-gray-400 font-medium italic -mt-0.5">Prazo de entrega bloqueado</span>
+               <span className="text-[10px] font-black text-gray-900 dark:text-gray-100 uppercase tracking-widest">Feriado Nacional</span>
+               <span className="text-[9px] text-gray-400 dark:text-gray-300 font-medium italic -mt-0.5">Prazo de entrega bloqueado</span>
              </div>
            </div>
            
            <div className="flex items-center gap-3 group cursor-default">
-             <div className="w-5 h-5 rounded-full bg-amber-400 shadow-lg shadow-amber-100" />
+             <div className="w-5 h-5 rounded-full bg-amber-400 shadow-lg shadow-amber-100 dark:shadow-amber-900" />
              <div className="flex flex-col">
-               <span className="text-[10px] font-black text-gray-900 uppercase tracking-widest">Data Comemorativa</span>
-               <span className="text-[9px] text-gray-400 font-medium italic -mt-0.5">Oportunidade p/ campanhas</span>
+               <span className="text-[10px] font-black text-gray-900 dark:text-gray-100 uppercase tracking-widest">Data Comemorativa</span>
+               <span className="text-[9px] text-gray-400 dark:text-gray-300 font-medium italic -mt-0.5">Oportunidade p/ campanhas</span>
              </div>
            </div>
 
            <div className="flex items-center gap-3 group cursor-default ml-auto">
-             <div className="w-5 h-5 rounded-full bg-slate-300 shadow-lg shadow-slate-100" />
+             <div className="w-5 h-5 rounded-full bg-slate-300 dark:bg-gray-700 shadow-lg shadow-slate-100 dark:shadow-slate-900" />
              <div className="flex flex-col">
-               <span className="text-[10px] font-black text-gray-900 uppercase tracking-widest">Job Delivery</span>
-               <span className="text-[9px] text-gray-400 font-medium italic -mt-0.5">Prazos de entrega do designer</span>
+               <span className="text-[10px] font-black text-gray-900 dark:text-gray-100 uppercase tracking-widest">Job Delivery</span>
+               <span className="text-[9px] text-gray-400 dark:text-gray-300 font-medium italic -mt-0.5">Prazos de entrega do designer</span>
              </div>
            </div>
         </div>
@@ -524,10 +541,10 @@ export default function DesignView({
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight transition-all duration-300">Workflow de Design</h1>
-          <p className="text-sm text-gray-500 font-medium">Acompanhe a produção de artes e aprovações via WhatsApp.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight transition-all duration-300">Workflow de Design</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-300 font-medium">Acompanhe a produção de artes e aprovações via WhatsApp.</p>
         </div>
-        {(isPartner || isAdmin) && (
+        {(isPartner || isAdminOrOwner) && (
           <button 
             onClick={handleAddOrder}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-semibold hover:bg-indigo-600 transition-all shadow-[0_4px_12px_rgba(99,102,241,0.15)]"
@@ -542,9 +559,14 @@ export default function DesignView({
         {['queue', 'production', 'review', 'done'].map((status) => {
           const count = filteredOrders.filter(o => o.status === status).length;
           return (
-            <div key={status} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between transition-all duration-300">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">{getStatusLabel(status)}</span>
-              <span className={cn("inline-flex items-center justify-center w-6 h-6 rounded-lg font-bold text-xs transition-colors duration-300", getStatusColor(status))}>
+            <div key={status} className="bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 flex items-center justify-between transition-all duration-300">
+              <span className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest leading-none">{getStatusLabel(status)}</span>
+              <span className={cn("inline-flex items-center justify-center w-6 h-6 rounded-lg font-bold text-xs transition-colors duration-300", 
+                  status === 'queue' ? "text-slate-400 bg-slate-50 dark:bg-slate-500/10" :
+                  status === 'production' ? "text-sky-600 bg-sky-50 dark:bg-sky-500/10" :
+                  status === 'review' ? "text-amber-600 bg-amber-50 dark:bg-amber-500/10" :
+                  "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10"
+              )}>
                 {count}
               </span>
             </div>
@@ -554,16 +576,16 @@ export default function DesignView({
 
       {/* Task List Header */}
       <div className="flex items-center justify-between">
-        <h2 className="font-bold text-gray-900 transition-colors duration-300">Lista de Tarefas</h2>
+        <h2 className="font-bold text-gray-900 dark:text-gray-100 transition-colors duration-300">Lista de Tarefas</h2>
         <div className="flex items-center gap-2">
-           <Filter size={14} className="text-gray-400" />
+           <Filter size={14} className="text-gray-400 dark:text-gray-400" />
            <select 
-             value={designerFilter}
+             value={designerFilter || 'all'}
              onChange={(e) => setDesignerFilter(e.target.value)}
-             className="bg-transparent text-xs font-bold text-gray-500 border-none focus:ring-0 cursor-pointer transition-colors duration-300"
+             className="bg-transparent text-xs font-bold text-gray-500 dark:text-gray-300 border-none focus:ring-0 cursor-pointer transition-colors duration-300"
            >
-              <option value="all">Todos os Designers</option>
-              {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              <option value="all" className="dark:bg-gray-900">Todos os Designers</option>
+              {designers.map(d => <option key={d.id} value={d.id} className="dark:bg-gray-900">{d.name}</option>)}
            </select>
         </div>
       </div>
@@ -576,7 +598,7 @@ export default function DesignView({
             <div 
               key={order.id} 
               onClick={(e) => handleEditOrder(e, order)}
-              className="bg-white rounded-2xl border border-gray-200 p-6 hover:border-indigo-200 transition-all group shadow-sm hover:shadow-md cursor-pointer"
+              className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 hover:border-indigo-200 dark:hover:border-indigo-500/50 transition-all group shadow-sm hover:shadow-md cursor-pointer"
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="space-y-1">
@@ -585,80 +607,91 @@ export default function DesignView({
                       "w-2 h-2 rounded-full",
                       order.priority === 'high' ? "bg-rose-500" : order.priority === 'medium' ? "bg-amber-500" : "bg-sky-500"
                     )} />
-                    <h3 className="font-bold text-gray-900 leading-tight group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{order.title}</h3>
+                    <h3 className="font-bold text-gray-900 dark:text-gray-100 leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors uppercase tracking-tight">{order.title}</h3>
                   </div>
-                  <p className="text-xs font-medium text-gray-400 italic">Cliente: {client?.name}</p>
+                  <p className="text-xs font-medium text-gray-400 dark:text-gray-400 italic">Cliente: {client?.name}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button 
                     onClick={(e) => handleShowBranding(e, client)}
                     title="Ver Branding do Cliente"
-                    className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all"
+                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-all"
                   >
                     <Eye size={16} />
                   </button>
-                  <select 
-                    value={order.status}
+                   <select 
+                    value={order.status || 'queue'}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => handleUpdateStatus(order.id, e.target.value as WorkStatus)}
-                    className={cn("px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border focus:outline-none transition-all duration-300", getStatusColor(order.status))}
+                    className={cn("px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border focus:outline-none transition-all duration-300", 
+                        order.status === 'queue' ? "text-slate-400 bg-slate-50 dark:bg-slate-500/10 border-slate-100 dark:border-slate-500/20" :
+                        order.status === 'production' ? "text-sky-600 bg-sky-50 dark:bg-sky-500/10 border-sky-100 dark:border-sky-500/20" :
+                        order.status === 'review' ? "text-amber-600 bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20" :
+                        "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20"
+                    )}
                   >
-                    <option value="queue">Na Fila</option>
-                    <option value="production">Em Produção</option>
-                    <option value="review">Aprovação</option>
-                    <option value="done">Finalizado</option>
+                    <option value="queue" className="dark:bg-gray-900">Na Fila</option>
+                    <option value="production" className="dark:bg-gray-900">Em Produção</option>
+                    <option value="review" className="dark:bg-gray-900">Aprovação</option>
+                    <option value="done" className="dark:bg-gray-900">Finalizado</option>
                   </select>
                   <button 
                     onClick={(e) => handleDeleteOrder(e, order.id)}
-                    className="p-1.5 text-gray-300 hover:text-rose-500 transition-colors"
+                    className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-rose-500 transition-colors"
                   >
                     <Trash2 size={14} />
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-4 py-4 border-y border-gray-50 mb-4 transition-colors">
-                <div className="flex items-center gap-2 text-gray-500">
+              <div className="flex flex-wrap items-center gap-4 py-4 border-y border-gray-50 dark:border-gray-800 mb-4 transition-colors">
+                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-300">
                   <UserIcon size={14} />
                   <span className="text-xs font-semibold">{order.designerName || 'Sem Responsável'}</span>
                 </div>
-                <div className="flex items-center gap-2 text-gray-400">
+                <div className="flex items-center gap-2 text-gray-400 dark:text-gray-400">
                   <Clock size={14} />
                   <span className="text-xs font-medium">{order.deadline}</span>
                 </div>
                 {order.approvalStatus && (
                   <div className={cn(
                     "flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                    order.approvalStatus === 'approved' ? "bg-emerald-100 text-emerald-700" :
-                    order.approvalStatus === 'rejected' ? "bg-rose-100 text-rose-700" :
-                    "bg-amber-100 text-amber-700"
+                    order.approvalStatus === 'approved' ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400" :
+                    order.approvalStatus === 'rejected' ? "bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400" :
+                    "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400"
                   )}>
                     {order.approvalStatus === 'approved' ? <CheckCircle2 size={10} /> : 
                      order.approvalStatus === 'rejected' ? <AlertCircle size={10} /> :
                      <RefreshCcw size={10} className="animate-spin-slow text-amber-500" />}
-                    {getApprovalLabel(order.approvalStatus)}
+                    {getApprovalLabel(order.approvalStatus, order.feedbackRequested)}
                   </div>
                 )}
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Progresso da Tarefa</span>
-                  <span className="text-sm font-bold text-indigo-500">{order.progress}%</span>
+                  <span className="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Progresso da Tarefa</span>
+                  <span className="text-sm font-bold text-indigo-500 dark:text-indigo-400">{order.progress}%</span>
                 </div>
-                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                   <div 
-                    className="h-full bg-indigo-500 rounded-full transition-all duration-700 ease-out shadow-[0_0_8px_rgba(79,70,229,0.3)]" 
+                    className="h-full bg-indigo-500 dark:bg-indigo-600 rounded-full transition-all duration-700 ease-out shadow-[0_0_8px_rgba(79,70,229,0.3)]" 
                     style={{ width: `${order.progress}%` }} 
                   />
                 </div>
               </div>
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
-                <div className="text-xs text-gray-500 italic max-w-sm">
+                <div className="text-xs text-gray-500 dark:text-gray-300 italic max-w-sm">
                   {order.observation && <p className="line-clamp-2" title={order.observation}>Obs: {order.observation}</p>}
+                  {order.rejectionNotes && (
+                    <div className="mt-2 p-2 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-lg">
+                      <p className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-widest mb-1">Ajustes Solicitados:</p>
+                      <p className="not-italic text-gray-700 dark:text-gray-300">{order.rejectionNotes}</p>
+                    </div>
+                  )}
                   {order.whatsappSentAt && (
-                    <div className="flex items-center gap-2 text-emerald-600 font-bold uppercase tracking-wider mt-1">
+                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider mt-1">
                       <MessageSquare size={12} />
                       Enviado WhatsApp: {order.whatsappSentAt}
                     </div>
@@ -673,23 +706,35 @@ export default function DesignView({
                       <Send size={14} /> Enviar para Aprovação
                     </button>
                   )}
-                  {order.status === 'review' && order.approvalStatus === 'pending' && (
-                    <div className="flex gap-1 mr-2 bg-gray-50 p-1 rounded-lg border border-gray-100">
+                  {order.status === 'review' && order.approvalStatus === 'pending' && !order.feedbackRequested && (
+                    <div className="flex gap-1 mr-2 bg-gray-50 dark:bg-gray-800 p-1 rounded-lg border border-gray-100 dark:border-gray-700">
                       <button 
                         onClick={(e) => handleSimulateResponse(e, order.id, 'approved')}
                         title="Simular Aprovação"
-                        className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-md transition-colors"
+                        className="p-1.5 bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/30 rounded-md transition-colors"
                       >
                         <Check size={14} />
                       </button>
                       <button 
                         onClick={(e) => handleSimulateResponse(e, order.id, 'rejected')}
-                        title="Simular Reprovação"
-                        className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-md transition-colors"
+                        title="Simular Reprovação (Gera Link de Ajustes)"
+                        className="p-1.5 bg-rose-50 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/30 rounded-md transition-colors"
                       >
                         <XIcon size={14} />
                       </button>
                     </div>
+                  )}
+                  {order.feedbackRequested && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        copyToClipboard(`${window.location.origin}/?refuseOrderId=${order.id}`);
+                        alert('Link de ajustes copiado!');
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-lg text-[10px] font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-all mr-2"
+                    >
+                      <Copy size={12} /> Copiar Link de Ajustes
+                    </button>
                   )}
                 </div>
               </div>
@@ -706,7 +751,7 @@ export default function DesignView({
             <div className="flex justify-end gap-3">
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+                className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
               >
                 Cancelar
               </button>
@@ -721,30 +766,30 @@ export default function DesignView({
         >
           <form className="space-y-4">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Título do Job</label>
+                <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Título do Job</label>
                 <input 
                   type="text" 
                   value={formData.title || ''}
                   onChange={e => setFormData({...formData, title: e.target.value})}
-                  className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 shadow-sm"
+                  className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100 shadow-sm"
                   placeholder="Ex: Post Carrossel Instagram"
                 />
              </div>
              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cliente</label>
+                  <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Cliente</label>
                   <select 
                     value={formData.clientId || ''}
                     onChange={e => setFormData({...formData, clientId: e.target.value})}
-                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+                    className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
                   >
-                    {partnerClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {partnerClients.map(c => <option key={c.id} value={c.id} className="dark:bg-gray-900">{c.name}</option>)}
                   </select>
                 </div>
                  <div className="space-y-1">
-                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Responsável</label>
+                   <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Responsável</label>
                    {isPartner ? (
-                     <div className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 text-sm text-gray-500 font-medium">
+                     <div className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400 font-medium">
                        Atribuição Automática
                      </div>
                    ) : (
@@ -754,42 +799,42 @@ export default function DesignView({
                          const d = designers.find(u => u.id === e.target.value);
                          setFormData({...formData, designerId: e.target.value, designerName: d?.name || ''});
                        }}
-                       className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm"
+                       className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm text-gray-900 dark:text-gray-100"
                      >
-                       <option value="">Selecione um designer...</option>
-                       {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                       <option value="" className="dark:bg-gray-900">Selecione um designer...</option>
+                       {designers.map(d => <option key={d.id} value={d.id} className="dark:bg-gray-900">{d.name}</option>)}
                      </select>
                    )}
                  </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Prazo</label>
+                  <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Prazo</label>
                   <input 
                     type="text" 
                     value={formData.deadline || ''}
                     onChange={e => setFormData({...formData, deadline: e.target.value})}
-                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 shadow-sm"
+                    className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100 shadow-sm"
                     placeholder="dd/mm/aaaa"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Prioridade</label>
+                  <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Prioridade</label>
                   <select 
                     value={formData.priority || 'medium'}
                     onChange={e => setFormData({...formData, priority: e.target.value as any})}
-                    className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm"
+                    className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm text-gray-900 dark:text-gray-100"
                   >
-                    <option value="low">Baixa</option>
-                    <option value="medium">Média</option>
-                    <option value="high">Alta</option>
+                    <option value="low" className="dark:bg-gray-900">Baixa</option>
+                    <option value="medium" className="dark:bg-gray-900">Média</option>
+                    <option value="high" className="dark:bg-gray-900">Alta</option>
                   </select>
                 </div>
                  <div className="col-span-2 space-y-1">
-                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Observações ({formData.observation?.length || 0}/300)</label>
+                   <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Observações ({formData.observation?.length || 0}/300)</label>
                    <textarea 
                      value={formData.observation || ''}
                      onChange={e => setFormData({...formData, observation: e.target.value})}
                      maxLength={300}
-                     className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 shadow-sm"
+                     className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100 shadow-sm"
                      placeholder="Alguma observação importante para o designer?"
                      rows={3}
                    />
@@ -800,19 +845,19 @@ export default function DesignView({
 
         {/* Sidebar Widgets */}
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm transition-all duration-300">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 shadow-sm transition-all duration-300">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900 flex items-center gap-2 transition-colors">
+              <h3 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2 transition-colors">
                  <Clock size={18} className="text-indigo-500" />
                  Próximos de {monthShortNames[currentCalendarDate.getMonth()]}
               </h3>
             </div>
             <div className="space-y-3 max-h-[350px] overflow-y-auto no-scrollbar pr-1">
                {sidebarHolidays.map((h, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white border border-gray-100 hover:border-indigo-100 transition-all">
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 hover:border-indigo-100 transition-all">
                      <div className={cn(
                        "flex flex-col items-center justify-center w-10 h-10 rounded-lg border shadow-sm transition-colors",
-                       h.type === 'holiday' ? "bg-rose-50 border-rose-100" : "bg-amber-50 border-amber-100"
+                       h.type === 'holiday' ? "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20" : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20"
                      )}>
                         <span className={cn(
                           "text-[9px] font-bold uppercase",
@@ -820,31 +865,31 @@ export default function DesignView({
                         )}>{monthShortNames[h.date.getMonth()]}</span>
                         <span className={cn(
                           "text-sm font-bold leading-none",
-                          h.type === 'holiday' ? "text-rose-600" : "text-amber-600"
+                          h.type === 'holiday' ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"
                         )}>{h.date.getDate()}</span>
                      </div>
                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-gray-900 truncate transition-colors">{h.name}</p>
-                        <p className="text-[10px] text-gray-400 font-medium capitalize">
+                        <p className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate transition-colors">{h.name}</p>
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 font-medium capitalize">
                           {h.type === 'holiday' ? 'Feriado Nacional' : 'Data Comemorativa'}
                         </p>
                      </div>
                   </div>
                ))}
                {sidebarHolidays.length === 0 && (
-                 <div className="py-8 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                   <p className="text-xs text-gray-400 italic">Sem eventos previstos para este mês.</p>
+                 <div className="py-8 text-center bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
+                   <p className="text-xs text-gray-400 dark:text-gray-500 italic">Sem eventos previstos para este mês.</p>
                  </div>
                )}
             </div>
-            <button onClick={handleShowCalendar} className="w-full mt-6 py-2 rounded-xl text-xs font-bold text-indigo-500 border border-indigo-100 hover:bg-indigo-50 transition-all">
+            <button onClick={handleShowCalendar} className="w-full mt-6 py-2 rounded-xl text-xs font-bold text-indigo-500 border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-50 dark:hover:bg-indigo-500/5 transition-all">
                Calendário Completo
             </button>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm transition-all duration-300">
-             <h3 className="font-bold text-gray-900 mb-2 transition-colors">Dica do Pro</h3>
-             <p className="text-xs text-gray-500 leading-relaxed transition-colors">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 shadow-sm transition-all duration-300">
+             <h3 className="font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors">Dica do Pro</h3>
+             <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed transition-colors">
                 • <b>Reflexão:</b> Verifique o guia de marca antes de iniciar.<br/>
                 • <b>Organização:</b> Nomeie bem suas camadas e arquivos.<br/>
                 • <b>Feedback:</b> A aprovação via WhatsApp agiliza muito o processo, seja claro na mensagem.
@@ -854,25 +899,25 @@ export default function DesignView({
       </div>
 
       {/* Performance Summary */}
-      <div className="bg-white rounded-3xl p-8 border border-gray-100 relative overflow-hidden transition-all duration-500 shadow-sm">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-100 dark:border-gray-800 relative overflow-hidden transition-all duration-500 shadow-sm">
         <div className="absolute right-0 top-0 p-8 opacity-[0.03] pointer-events-none">
-          <Palette size={200} className="text-indigo-600" />
+          <Palette size={200} className="text-indigo-600 dark:text-indigo-400" />
         </div>
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8">
           <div>
-            <h4 className="text-indigo-600 text-xs font-bold uppercase tracking-widest mb-2">Média de Entrega</h4>
-            <p className="text-3xl font-bold tracking-tight text-gray-900">4.2 Dias</p>
-            <p className="text-gray-500 text-xs mt-1 font-medium italic">85% das artes entregues no prazo</p>
+            <h4 className="text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-widest mb-2">Média de Entrega</h4>
+            <p className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">4.2 Dias</p>
+            <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 font-medium italic">85% das artes entregues no prazo</p>
           </div>
           <div>
-            <h4 className="text-indigo-600 text-xs font-bold uppercase tracking-widest mb-2">Capacidade Atual</h4>
-            <p className="text-3xl font-bold tracking-tight text-gray-900">{Math.round((filteredOrders.filter(o => o.status !== 'done').length / (filteredOrders.length || 1)) * 100)}%</p>
-            <p className="text-gray-500 text-xs mt-1 font-medium italic">Fluxo de trabalho baseado em pedidos ativos</p>
+            <h4 className="text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-widest mb-2">Capacidade Atual</h4>
+            <p className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">{Math.round((filteredOrders.filter(o => o.status !== 'done').length / (filteredOrders.length || 1)) * 100)}%</p>
+            <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 font-medium italic">Fluxo de trabalho baseado em pedidos ativos</p>
           </div>
           <div>
-            <h4 className="text-indigo-600 text-xs font-bold uppercase tracking-widest mb-2">Pendência de Aprovação</h4>
-            <p className="text-3xl font-bold tracking-tight text-gray-900">{filteredOrders.filter(o => o.status === 'review').length} Artes</p>
-            <p className="text-gray-500 text-xs mt-1 font-medium italic">Aguardando feedback do cliente (WPP)</p>
+            <h4 className="text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-widest mb-2">Pendência de Aprovação</h4>
+            <p className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">{filteredOrders.filter(o => o.status === 'review').length} Artes</p>
+            <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 font-medium italic">Aguardando feedback do cliente (WPP)</p>
           </div>
         </div>
       </div>
@@ -896,11 +941,11 @@ export default function DesignView({
         <div className="space-y-8 py-4">
           {/* Logo Section */}
           <div className="space-y-4">
-            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <h4 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
               <Palette size={12} className="text-indigo-500" />
               Logotipo Principal
             </h4>
-            <div className="bg-gray-50 rounded-2xl p-8 flex flex-col items-center justify-center border border-dashed border-gray-200 group relative">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-8 flex flex-col items-center justify-center border border-dashed border-gray-200 dark:border-gray-700 group relative">
               {selectedBrandClient?.branding?.logo ? (
                 <>
                   <img src={selectedBrandClient.branding.logo} className="max-h-32 object-contain transition-transform group-hover:scale-105" alt="Logo" />
@@ -909,20 +954,20 @@ export default function DesignView({
                     download 
                     target="_blank"
                     rel="noreferrer"
-                    className="absolute top-4 right-4 p-2 bg-white rounded-xl shadow-sm text-gray-400 hover:text-indigo-500 transition-all opacity-0 group-hover:opacity-100"
+                    className="absolute top-4 right-4 p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm text-gray-400 hover:text-indigo-500 transition-all opacity-0 group-hover:opacity-100"
                   >
                     <Download size={18} />
                   </a>
                 </>
               ) : (
-                <p className="text-sm text-gray-400 italic">Nenhuma logo cadastrada para este cliente.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500 italic">Nenhuma logo cadastrada para este cliente.</p>
               )}
             </div>
           </div>
 
           {/* Colors Section */}
           <div className="space-y-4">
-            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <h4 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
               <CheckCircle2 size={12} className="text-emerald-500" />
               Paleta de Cores
             </h4>
@@ -934,7 +979,7 @@ export default function DesignView({
                   className="group flex flex-col gap-2 items-center focus:outline-none"
                 >
                   <div 
-                    className="w-full aspect-square rounded-2xl border border-gray-100 shadow-sm transition-transform active:scale-95 group-hover:shadow-md relative"
+                    className="w-full aspect-square rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm transition-transform active:scale-95 group-hover:shadow-md relative"
                     style={{ backgroundColor: color }}
                   >
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl">
@@ -942,15 +987,15 @@ export default function DesignView({
                     </div>
                   </div>
                   <div className="flex flex-col items-center">
-                    <span className="text-[9px] font-mono font-bold text-gray-900 uppercase">{color}</span>
+                    <span className="text-[9px] font-mono font-bold text-gray-900 dark:text-gray-100 uppercase">{color}</span>
                     {copyFeedback === color && (
                       <span className="text-[8px] font-bold text-emerald-500 uppercase animate-bounce mt-1">Copiado!</span>
                     )}
                   </div>
                 </button>
-              )) || <p className="col-span-5 text-sm text-gray-400 italic text-center">Nenhuma cor definida.</p>}
+              )) || <p className="col-span-5 text-sm text-gray-400 dark:text-gray-500 italic text-center">Nenhuma cor definida.</p>}
             </div>
-            <p className="text-[10px] text-gray-400 text-center italic">Clique no card da cor para copiar o código HEX.</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center italic">Clique no card da cor para copiar o código HEX.</p>
           </div>
         </div>
       </Modal>
@@ -972,7 +1017,7 @@ export default function DesignView({
           <div className="flex justify-end gap-3">
             <button 
               onClick={() => setWhatsappModalOpen(false)}
-              className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+              className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
             >
               Cancelar
             </button>
@@ -986,11 +1031,11 @@ export default function DesignView({
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Você está prestes a enviar a arte <strong>{orderToApprove?.title}</strong> ao cliente <strong>{clients.find(c => c.id === orderToApprove?.clientId)?.name}</strong>.
           </p>
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Anexar Arte Pronta (Opcional)</label>
+            <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Anexar Arte Pronta (Opcional)</label>
             <div className="relative">
               <input 
                 type="file" 
@@ -1005,21 +1050,21 @@ export default function DesignView({
                     reader.readAsDataURL(file);
                   }
                 }}
-                className="block w-full text-sm text-gray-500
+                className="block w-full text-sm text-gray-500 dark:text-gray-400
                   file:mr-4 file:py-2 file:px-4
                   file:rounded-xl file:border-0
                   file:text-sm file:font-semibold
-                  file:bg-emerald-50 file:text-emerald-700
+                  file:bg-emerald-50 dark:file:bg-emerald-500/10 file:text-emerald-700 dark:file:text-emerald-400
                   hover:file:bg-emerald-100 transition-colors"
               />
             </div>
             {whatsappImageBase64 && (
-              <div className="mt-4 text-xs text-emerald-600 font-bold uppercase tracking-wider flex items-center gap-1 bg-emerald-50 p-2 rounded-lg justify-center border border-emerald-100">
+              <div className="mt-4 text-xs text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1 bg-emerald-50 dark:bg-emerald-500/10 p-2 rounded-lg justify-center border border-emerald-100 dark:border-emerald-500/20">
                 <CheckCircle2 size={14} />
                 Imagem anexada
               </div>
             )}
-            <p className="text-[10px] text-gray-400 italic mt-2">
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 italic mt-2">
               Se anexar uma imagem, o WhatsApp enviará primeiro a arte, e logo em seguida a enquete de aprovação.
             </p>
           </div>

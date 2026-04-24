@@ -204,8 +204,26 @@ export const api = {
     return request(`/users/${id}`, 'DELETE');
   },
 
+  // DEMAND TASKS
+  async getDemandTasks(): Promise<any[]> {
+    return request('/demand-tasks', 'GET');
+  },
+  async createDemandTask(task: any): Promise<any> {
+    return request('/demand-tasks', 'POST', task);
+  },
+  async updateDemandTask(id: string, task: any): Promise<any> {
+    return request(`/demand-tasks/${id}`, 'PUT', task);
+  },
+  async deleteDemandTask(id: string): Promise<void> {
+    return request(`/demand-tasks/${id}`, 'DELETE');
+  },
+
   async login(email: string, password: string): Promise<{ success: boolean; user: User }> {
     return request('/login', 'POST', { email, password });
+  },
+
+  async signup(name: string, email: string, password: string): Promise<{ success: boolean; user: User }> {
+    return request('/signup', 'POST', { name, email, password });
   },
 
   async triggerIntegration(integrationId: string, payload: any): Promise<void> {

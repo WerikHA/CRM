@@ -17,8 +17,10 @@ import path from "path";
 import { EventEmitter } from "events";
 import pino from "pino";
 import crypto from "crypto";
+import NodeCache from "node-cache";
 
-const logger = pino({ level: "info" });
+const logger = pino({ level: "silent" });
+const msgRetryCounterCache = new NodeCache();
 
 interface SentPollData {
   orderId: string;
@@ -66,6 +68,15 @@ export class WhatsAppService extends EventEmitter {
     try {
       console.log("[WHATSAPP] Iniciando serviço...");
 
+      // Clean up previous socket if any
+      if (this.socket) {
+        try {
+          this.socket.ev.removeAllListeners();
+          this.socket.end(undefined);
+        } catch (e) {}
+        this.socket = null;
+      }
+
       if (!fs.existsSync(this.authDir)) {
         fs.mkdirSync(this.authDir, { recursive: true });
       }
@@ -83,13 +94,19 @@ export class WhatsAppService extends EventEmitter {
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
-        browser: Browsers.ubuntu("Chrome"), // More compatible
+        browser: Browsers.ubuntu("Chrome"),
         syncFullHistory: false,
+        shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 0,
-        keepAliveIntervalMs: 10000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 30000,
+        retryRequestDelayMs: 5000,
+        msgRetryCounterCache,
         logger,
+        qrTimeout: 180000,
+        generateHighQualityLinkPreview: false,
+        linkPreviewImageThumbnailWidth: 192,
       });
 
       this.socket.ev.on("creds.update", saveCreds);
@@ -122,12 +139,19 @@ export class WhatsAppService extends EventEmitter {
           }
 
           if (connection === "close") {
-            const statusCode = (lastDisconnect?.error as any)?.output
-              ?.statusCode;
+            const error = lastDisconnect?.error;
+            const statusCode = (error as any)?.output?.statusCode;
+            const message = error?.message || error?.stack || "";
+            const isServerTerminated = message.includes("Connection Terminated by Server") || 
+                                     message.includes("Stream Errored") ||
+                                     statusCode === 440 || 
+                                     statusCode === 515 || 
+                                     statusCode === 408;
+            
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
             console.log(
-              `[WHATSAPP] Conexão fechada. Motivo: ${statusCode}. Reconectar: ${shouldReconnect}`,
+              `[WHATSAPP] Conexão fechada. Código: ${statusCode}, Erro: ${message.substring(0, 100)}... Reconectar: ${shouldReconnect}`,
             );
 
             this.status = "disconnected";
@@ -142,8 +166,14 @@ export class WhatsAppService extends EventEmitter {
             }
 
             this.isInitializing = false;
-            // Transient issues or intentional reconnects
-            setTimeout(() => this.init(), 5000);
+            
+            // Reconnect logic with backoff
+            if (shouldReconnect) {
+              // Delay for server termination/timeouts to allow network to stabilize
+              const delay = isServerTerminated ? 5000 : (message.includes("QR refs attempts ended") ? 1000 : 3000);
+              console.log(`[WHATSAPP] Aguardando ${delay}ms para reconectar...`);
+              setTimeout(() => this.init(), delay);
+            }
           } else if (connection === "open") {
             console.log("[WHATSAPP] Conexão estabelecida com sucesso!");
             this.status = "connected";
@@ -245,8 +275,8 @@ export class WhatsAppService extends EventEmitter {
                     }
                   }
 
-                  if (selectedOption) {
-                    console.log(`[WHATSAPP] Voto identificado: ${selectedOption} para ordem ${context.orderId}`);
+          if (selectedOption) {
+                    console.log(`[WHATSAPP] Voto identificado: ${selectedOption} para ordem ${context.orderId} do fone ${msg.key.remoteJid}`);
                     this.emit("pollVote", {
                       orderId: context.orderId,
                       option: selectedOption,
@@ -334,7 +364,7 @@ export class WhatsAppService extends EventEmitter {
     }
 
     const jid = `${formattedPhone}@s.whatsapp.net`;
-    console.log(`[WHATSAPP] Enviando mensagem para ${jid}`);
+    console.log(`[WHATSAPP] Enviando mensagem para ${jid} (original: ${phone})`);
 
     if (mediaBase64) {
       const buffer = Buffer.from(

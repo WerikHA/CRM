@@ -42,6 +42,8 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
   
   const isDesigner = currentUser.role === 'DESIGNER';
   const isAdmin = currentUser.role === 'ADMIN';
+  const isOwner = currentUser.role === 'OWNER';
+  const isAdminOrOwner = isAdmin || isOwner;
   const isEditor = currentUser.role === 'EDITOR';
 
   const filteredReceivables = (isDesigner || isEditor
@@ -172,11 +174,11 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight transition-colors">Financeiro</h1>
-          <p className="text-sm text-gray-500">Gestão de recebíveis, faturas e fluxo de caixa.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight transition-colors">Financeiro</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-300">Gestão de recebíveis, faturas e fluxo de caixa.</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="p-2.5 bg-white border border-gray-200 rounded-xl text-gray-400 hover:text-gray-600 transition-colors">
+          <button className="p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
             <Download size={18} />
           </button>
           <button 
@@ -191,30 +193,30 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CheckCircle2 size={18} /></div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner || isEditor ? 'Recebido' : 'Receita Total'}</span>
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg"><CheckCircle2 size={18} /></div>
+              <span className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">{isDesigner || isEditor ? 'Recebido' : 'Receita Total'}</span>
             </div>
-            <p className="text-2xl font-bold text-gray-900">R$ {totalAmount.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">R$ {totalAmount.toLocaleString()}</p>
           </div>
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><DollarSign size={18} /></div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{isDesigner || isEditor ? 'A Receber' : 'Pendentes'}</span>
+              <div className="p-2 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg"><DollarSign size={18} /></div>
+              <span className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">{isDesigner || isEditor ? 'A Receber' : 'Pendentes'}</span>
             </div>
-            <p className="text-2xl font-bold text-gray-900">R$ {totalPending.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">R$ {totalPending.toLocaleString()}</p>
           </div>
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-rose-50 text-rose-600 rounded-lg"><AlertCircle size={18} /></div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Em Atraso</span>
+              <div className="p-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-lg"><AlertCircle size={18} /></div>
+              <span className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Em Atraso</span>
             </div>
-            <p className="text-2xl font-bold text-gray-900">R$ {totalOverdue.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">R$ {totalOverdue.toLocaleString()}</p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm transition-colors flex flex-col items-center justify-center min-h-[160px]">
+        <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors flex flex-col items-center justify-center min-h-[160px]">
            {chartData.length > 0 ? (
              <div className="w-full h-full">
                 <ResponsiveContainer width="100%" height={100}>
@@ -239,21 +241,21 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                    {chartData.map(d => (
                      <div key={d.name} className="flex items-center gap-1">
                         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: d.color }} />
-                        <span className="text-[9px] font-bold text-gray-500 uppercase">{d.name}</span>
+                        <span className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase">{d.name}</span>
                      </div>
                    ))}
                 </div>
              </div>
            ) : (
-             <div className="text-gray-300 text-[10px] italic">Sem dados financeiros</div>
+             <div className="text-gray-300 dark:text-gray-600 text-[10px] italic">Sem dados financeiros</div>
            )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="font-bold text-gray-900 flex items-center gap-2">
+            <h2 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
               <BarChart3 size={18} className="text-indigo-500" />
               Volume Mensal
             </h2>
@@ -261,7 +263,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" className="dark:opacity-10" />
                 <XAxis 
                   dataKey="name" 
                   axisLine={false} 
@@ -275,7 +277,14 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                   tickFormatter={(value) => `R$ ${value}`}
                 />
                 <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '10px' }}
+                  contentStyle={{ 
+                    borderRadius: '12px', 
+                    border: 'none', 
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.05)', 
+                    fontSize: '10px',
+                    backgroundColor: 'white'
+                  }}
+                  itemStyle={{ color: '#6366f1' }}
                 />
                 <Bar 
                   dataKey="total" 
@@ -288,9 +297,9 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="font-bold text-gray-900 flex items-center gap-2">
+            <h2 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
               <Users size={18} className="text-emerald-500" />
               Top Clientes (Receita)
             </h2>
@@ -298,7 +307,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={clientRevenueData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" className="dark:opacity-10" />
                 <XAxis type="number" hide />
                 <YAxis 
                   dataKey="name" 
@@ -309,8 +318,15 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                   width={80}
                 />
                 <Tooltip 
-                  cursor={{ fill: '#f8fafc' }}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '10px' }}
+                  cursor={{ fill: '#f8fafc', opacity: 0.1 }}
+                  contentStyle={{ 
+                    borderRadius: '12px', 
+                    border: 'none', 
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.05)', 
+                    fontSize: '10px',
+                    backgroundColor: 'white'
+                  }}
+                  itemStyle={{ color: '#10b981' }}
                 />
                 <Bar 
                   dataKey="total" 
@@ -324,15 +340,15 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden transition-colors">
-        <div className="p-6 border-b border-gray-50 flex items-center justify-between">
-          <h2 className="font-bold text-gray-900">Transações Recentes</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-colors">
+        <div className="p-6 border-b border-gray-50 dark:border-gray-800 flex items-center justify-between">
+          <h2 className="font-bold text-gray-900 dark:text-gray-100">Transações Recentes</h2>
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setFilter('all')}
               className={cn(
                 "text-xs font-bold px-3 py-1.5 rounded-lg transition-colors",
-                filter === 'all' ? "text-indigo-600 bg-indigo-50" : "text-gray-400 hover:text-gray-600"
+                filter === 'all' ? "text-indigo-600 bg-indigo-50 dark:bg-indigo-500/10" : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
               )}
             >
               Tudo
@@ -341,7 +357,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
               onClick={() => setFilter('paid')}
               className={cn(
                 "text-xs font-bold px-3 py-1.5 rounded-lg transition-colors",
-                filter === 'paid' ? "text-emerald-600 bg-emerald-50" : "text-gray-400 hover:text-gray-600"
+                filter === 'paid' ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10" : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
               )}
             >
               Pagos
@@ -350,7 +366,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
               onClick={() => setFilter('pending')}
               className={cn(
                 "text-xs font-bold px-3 py-1.5 rounded-lg transition-colors",
-                filter === 'pending' ? "text-amber-600 bg-amber-50" : "text-gray-400 hover:text-gray-600"
+                filter === 'pending' ? "text-amber-600 bg-amber-50 dark:bg-amber-500/10" : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
               )}
             >
               Pendentes
@@ -360,63 +376,63 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-white border-b border-gray-100">
-                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cliente</th>
-                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Descrição</th>
-                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Vencimento</th>
-                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Valor</th>
-                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Chave PIX</th>
-                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</th>
+              <tr className="bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
+                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Cliente</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Descrição</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Vencimento</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Valor</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Chave PIX</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Status</th>
                 <th className="px-6 py-3 text-right"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
               {filteredReceivables.map((r) => {
                 const client = clients.find(c => c.id === r.clientId);
                 const displayAmount = isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount;
                 return (
-                  <tr key={r.id} className="hover:bg-gray-50/80 transition-colors group cursor-pointer" onClick={() => isAdmin && handleEditReceivable(r)}>
+                  <tr key={r.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/50 transition-colors group cursor-pointer" onClick={() => isAdminOrOwner && handleEditReceivable(r)}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 font-bold text-[10px] transition-colors">
+                        <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400 font-bold text-[10px] transition-colors">
                           {client?.name.substring(0, 2).toUpperCase() || '??'}
                         </div>
-                        <span className="font-bold text-gray-900 text-sm transition-colors">{client?.name || 'Cliente Removido'}</span>
+                        <span className="font-bold text-gray-900 dark:text-gray-100 text-sm transition-colors">{client?.name || 'Cliente Removido'}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-xs font-medium text-gray-500">{r.description}</td>
-                    <td className="px-6 py-4 text-xs font-medium text-gray-500">{r.dueDate}</td>
-                    <td className="px-6 py-4 text-sm font-bold text-gray-900">R$ {displayAmount.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-xs font-medium text-gray-500 dark:text-gray-300">{r.description}</td>
+                    <td className="px-6 py-4 text-xs font-medium text-gray-500 dark:text-gray-300">{r.dueDate}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-gray-100">R$ {displayAmount.toLocaleString()}</td>
                     <td className="px-6 py-4">
-                       <span className="text-[10px] font-mono text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-100">
+                       <span className="text-[10px] font-mono text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded border border-gray-100 dark:border-gray-700">
                          {client?.pixKey || 'N/A'}
                        </span>
                     </td>
                     <td className="px-6 py-4">
-                      {isAdmin ? (
+                      {isAdminOrOwner ? (
                         <select 
-                          value={r.status}
+                          value={r.status || 'pending'}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => {
                             setReceivables(prev => prev.map(item => item.id === r.id ? { ...item, status: e.target.value as any } : item));
                           }}
                           className={cn(
                             "inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-colors bg-transparent border focus:outline-none",
-                            r.status === 'paid' ? "border-emerald-100 text-emerald-600" : 
-                            r.status === 'overdue' ? "border-rose-100 text-rose-600" : 
-                            "border-amber-100 text-amber-600"
+                            r.status === 'paid' ? "border-emerald-100 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400" : 
+                            r.status === 'overdue' ? "border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400" : 
+                            "border-amber-100 dark:border-amber-500/20 text-amber-600 dark:text-amber-400"
                           )}
                         >
-                          <option value="paid">Pago</option>
-                          <option value="pending">Pendente</option>
-                          <option value="overdue">Atrasado</option>
+                          <option value="paid" className="dark:bg-gray-900">Pago</option>
+                          <option value="pending" className="dark:bg-gray-900">Pendente</option>
+                          <option value="overdue" className="dark:bg-gray-900">Atrasado</option>
                         </select>
                       ) : (
                         <span className={cn(
                           "inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider border",
-                          r.status === 'paid' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
-                          r.status === 'overdue' ? "bg-rose-50 text-rose-600 border-rose-100" : 
-                          "bg-amber-50 text-amber-600 border-amber-100"
+                          r.status === 'paid' ? "bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-500/20" : 
+                          r.status === 'overdue' ? "bg-rose-50 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-500/20" : 
+                          "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-500/20"
                         )}>
                           {r.status === 'paid' ? 'Recebido' : r.status === 'overdue' ? 'Atrasado' : 'A Receber'}
                         </span>
@@ -425,15 +441,15 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                     <td className="px-6 py-4 text-right">
                        <button 
                          onClick={(e) => { e.stopPropagation(); handleSendReminder(e, r.id); }}
-                         className="p-1.5 hover:bg-emerald-50 rounded-lg text-gray-400 hover:text-emerald-500 transition-all font-bold"
+                         className="p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg text-gray-400 dark:text-gray-500 hover:text-emerald-500 dark:hover:text-emerald-400 transition-all font-bold"
                          title="Enviar Lembrete"
                        >
                          <MessageSquare size={16} />
                        </button>
-                       {isAdmin && (
+                       {isAdminOrOwner && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleDeleteReceivable(r.id); }}
-                          className="p-1.5 hover:bg-rose-50 rounded-lg text-gray-400 hover:text-rose-500 transition-all font-bold"
+                          className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg text-gray-400 dark:text-gray-500 hover:text-rose-500 dark:hover:text-rose-400 transition-all font-bold"
                           title="Excluir Transação"
                         >
                           <Trash2 size={16} />
@@ -448,24 +464,36 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
         </div>
       </div>
       
-      {isAdmin && (
-      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-colors space-y-4">
-        <h2 className="font-bold text-gray-900 flex items-center gap-2">
+      {isAdminOrOwner && (
+      <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors space-y-4">
+        <h2 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <Settings size={18} className="text-indigo-500" />
             Configurações de Cobrança
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input type="text" placeholder="Chave PIX Global" value={financeConfig.pixKey} onChange={e => setFinanceConfig({...financeConfig, pixKey: e.target.value})} className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 text-sm" />
+            <input 
+              type="text" 
+              placeholder="Chave PIX Global" 
+              value={financeConfig.pixKey} 
+              onChange={e => setFinanceConfig({...financeConfig, pixKey: e.target.value})} 
+              className="px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 text-gray-900 dark:text-gray-100" 
+            />
             <label className="flex items-center gap-2">
-                <input type="checkbox" checked={financeConfig.enableReminders} onChange={e => setFinanceConfig({...financeConfig, enableReminders: e.target.checked})} />
-                <span className="text-sm font-medium">Habilitar lembretes automáticos</span>
+                <input type="checkbox" checked={financeConfig.enableReminders} onChange={e => setFinanceConfig({...financeConfig, enableReminders: e.target.checked})} className="rounded text-indigo-500" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Habilitar lembretes automáticos</span>
             </label>
-            <textarea placeholder="Mensagem de lembrete" value={financeConfig.reminderTemplate} onChange={e => setFinanceConfig({...financeConfig, reminderTemplate: e.target.value})} className="col-span-2 px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 text-sm" rows={2} />
+            <textarea 
+              placeholder="Mensagem de lembrete" 
+              value={financeConfig.reminderTemplate} 
+              onChange={e => setFinanceConfig({...financeConfig, reminderTemplate: e.target.value})} 
+              className="col-span-2 px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 text-gray-900 dark:text-gray-100" 
+              rows={2} 
+            />
         </div>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-500 dark:text-gray-300">
             Variáveis disponíveis: <code>{'{{clientName}}'}</code>, <code>{'{{description}}'}</code>, <code>{'{{amount}}'}</code>, <code>{'{{pixKey}}'}</code>.
         </p>
-        <button onClick={saveConfig} className="px-4 py-2 bg-indigo-500 text-white text-sm font-semibold rounded-xl hover:bg-indigo-600">Salvar Configurações</button>
+        <button onClick={saveConfig} className="px-4 py-2 bg-indigo-500 text-white text-sm font-semibold rounded-xl hover:bg-indigo-600 transition-colors">Salvar Configurações</button>
       </div>
       )}
 
@@ -477,7 +505,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
           <div className="flex justify-end gap-3">
             <button 
               onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+              className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
             >
               Cancelar
             </button>
@@ -492,56 +520,56 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
       >
         <form className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cliente</label>
+            <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Cliente</label>
             <select 
-              value={formData.clientId}
+              value={formData.clientId || ''}
               onChange={e => setFormData({...formData, clientId: e.target.value})}
-              className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+              className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
             >
-              <option value="">Selecione um cliente...</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <option value="" className="dark:bg-gray-900">Selecione um cliente...</option>
+              {clients.map(c => <option key={c.id} value={c.id} className="dark:bg-gray-900">{c.name}</option>)}
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Descrição / Referência</label>
+            <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Descrição / Referência</label>
             <input 
               type="text" 
               value={formData.description}
               onChange={e => setFormData({...formData, description: e.target.value})}
-              className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300"
+              className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
               placeholder="Ex: Gestão de Tráfego - Abril"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Valor (R$)</label>
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Valor (R$)</label>
               <input 
                 type="number" 
                 value={formData.amount}
                 onChange={e => setFormData({...formData, amount: Number(e.target.value)})}
-                className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300"
+                className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Vencimento</label>
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Vencimento</label>
               <input 
                 type="text" 
                 value={formData.dueDate}
                 onChange={e => setFormData({...formData, dueDate: e.target.value})}
-                className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300"
+                className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="dd/mm/aaaa"
               />
             </div>
             <div className="col-span-2 space-y-1">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Status Inicial</label>
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Status Inicial</label>
               <select 
-                value={formData.status}
+                value={formData.status || 'pending'}
                 onChange={e => setFormData({...formData, status: e.target.value as ReceivableStatus})}
-                className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
+                className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
               >
-                <option value="pending">Pendente</option>
-                <option value="paid">Pago</option>
-                <option value="overdue">Atrasado</option>
+                <option value="pending" className="dark:bg-gray-900">Pendente</option>
+                <option value="paid" className="dark:bg-gray-900">Pago</option>
+                <option value="overdue" className="dark:bg-gray-900">Atrasado</option>
               </select>
             </div>
           </div>

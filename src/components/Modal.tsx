@@ -28,13 +28,13 @@ export default function Modal({ isOpen, onClose, title, children, footer }: Moda
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-gray-100 overflow-hidden pointer-events-auto"
+              className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 overflow-hidden pointer-events-auto"
             >
-              <div className="flex items-center justify-between p-6 border-b border-gray-100">
-                <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+              <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">{title}</h3>
                 <button 
                   onClick={onClose}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors"
+                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-400 transition-colors"
                 >
                   <X size={20} />
                 </button>
@@ -45,7 +45,7 @@ export default function Modal({ isOpen, onClose, title, children, footer }: Moda
               </div>
 
               {footer && (
-                <div className="p-6 border-t border-gray-100 bg-gray-50/50">
+                <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30">
                   {footer}
                 </div>
               )}

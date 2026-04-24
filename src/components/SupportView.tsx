@@ -22,6 +22,7 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
 
   const isPartner = currentUser.role === 'PARTNER';
   const isAdmin = currentUser.role === 'ADMIN';
+  const isOwner = currentUser.role === 'OWNER';
 
   const filteredTickets = isPartner 
     ? tickets.filter(t => t.partnerId === currentUser.id)
@@ -83,6 +84,16 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
       setTickets(tickets.map(t => t.id === id ? updated : t));
     } catch (err: any) {
       alert('Erro ao fechar ticket: ' + err.message);
+    }
+  };
+
+  const handleDeleteTicket = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este ticket?')) return;
+    try {
+      await api.deleteSupportTicket(id);
+      setTickets(tickets.filter(t => t.id !== id));
+    } catch (err: any) {
+      alert('Erro ao excluir ticket: ' + err.message);
     }
   };
 
