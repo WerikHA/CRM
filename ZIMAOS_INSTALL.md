@@ -13,7 +13,7 @@ Este CRM foi preparado para rodar em containers Docker, garantindo persistência
 3. **Importar Compose**: Clique em "Import" e selecione o arquivo `docker-compose.yml` deste projeto.
 4. **Configurar Variáveis**:
    - `VITE_COMPANY_NAME`: O nome da sua agência (White Label).
-   - `SUPABASE_URL`: A URL do seu projeto no Supabase.
+   - `SUPABASE_URL`: A URL do seu projeto no Supabase (Ex: `https://xyz.supabase.co`). **Atenção**: Deve terminar em `.co`, não `.com`.
    - `SUPABASE_ANON_KEY`: A chave anônima (anon key) do Supabase.
    - `GEMINI_API_KEY`: Sua chave da API Gemini (opcional).
 5. **Instalar**: Clique em "Install".

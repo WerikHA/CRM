@@ -196,7 +196,7 @@ async function startServer() {
 
     email = email.trim().toLowerCase();
     const id = 'u-' + Math.random().toString(36).substr(2, 9);
-    const newUser = { id, name, email, password, role: 'OWNER' };
+    const newUser = { id, name, email, password, role: 'OWNER', owner_id: id };
 
     try {
       const { data: existingUser } = await supabase
@@ -338,7 +338,9 @@ async function startServer() {
 
   // --- WHATSAPP ROUTES ---
   app.get("/api/whatsapp/status", (req, res) => {
-    res.json(whatsappService.getStatus());
+    const { ownerId } = req.query;
+    if (!ownerId) return res.status(400).json({ error: "ownerId é obrigatório" });
+    res.json(whatsappService.getStatus(ownerId as string));
   });
 
   app.get("/api/whatsapp/logs", (req, res) => {
@@ -370,23 +372,25 @@ async function startServer() {
   });
 
   app.post("/api/whatsapp/logout", async (req, res) => {
-    await whatsappService.logout();
+    const { ownerId } = req.body;
+    if (!ownerId) return res.status(400).json({ error: "ownerId é obrigatório" });
+    await whatsappService.logout(ownerId);
     res.json({ success: true });
   });
 
   app.post("/api/whatsapp/send", async (req, res) => {
-    const { phone, message, poll, mediaBase64 } = req.body;
-    if (!phone || !message) {
-      return res.status(400).json({ error: 'Telefone e mensagem são obrigatórios.' });
+    const { ownerId, phone, message, poll, mediaBase64 } = req.body;
+    if (!ownerId || !phone || !message) {
+      return res.status(400).json({ error: 'OwnerId, telefone e mensagem são obrigatórios.' });
     }
     
     try {
       // Send the text message first
-      const sendResult = await whatsappService.sendMessage(phone, message, mediaBase64);
+      const sendResult = await whatsappService.sendMessage(ownerId, phone, message, mediaBase64);
       
       // If a poll is provided, send it right after the text message
       if (poll && poll.name && poll.options) {
-        await whatsappService.sendPoll(phone, poll.name, poll.options, poll.orderId);
+        await whatsappService.sendPoll(ownerId, phone, poll.name, poll.options, poll.orderId);
       }
       
       res.json({ success: true, messageId: sendResult?.key?.id });
@@ -396,8 +400,8 @@ async function startServer() {
     }
   });
 
-  whatsappService.on('pollVote', async ({ orderId, option, phone }) => {
-    console.log(`[CRM] Recebido voto para a arte ${orderId}: ${option}`);
+  whatsappService.on('pollVote', async ({ ownerId, orderId, option, phone }) => {
+    console.log(`[CRM][${ownerId}] Recebido voto para a arte ${orderId}: ${option}`);
     let newStatus = '';
     
     if (option.includes('Aprovar')) {
@@ -419,7 +423,7 @@ async function startServer() {
         
         if (error) throw error;
         
-        console.log(`[CRM] Arte ${orderId} atualizada. Status: ${newStatus}`);
+        console.log(`[CRM][${ownerId}] Arte ${orderId} atualizada. Status: ${newStatus}`);
         
         // Optionally send a confirmation back to the user
         let responseMsg = '';
@@ -428,21 +432,17 @@ async function startServer() {
         } else {
           // GENERATE THE LINK AUTOMATICALLY
           let appUrl = process.env.APP_URL || 'https://amplifica.app';
-          // Ensure it doesn't end with a slash for consistent construction
           appUrl = appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl;
           
           const link = `${appUrl}/?refuseOrderId=${orderId}`;
           responseMsg = `📝 Entendido! Para que possamos fazer os ajustes exatamente como você deseja, por favor preencha este rápido formulário:\n\n${link}\n\nAguardamos seu feedback!`;
         }
         
-        console.log(`[CRM] Enviando resposta automática via WhatsApp para ${phone}: ${newStatus}`);
-        await whatsappService.sendMessage(phone, responseMsg);
-        console.log(`[CRM] Mensagem enviada com sucesso para ${phone}`);
+        console.log(`[CRM][${ownerId}] Enviando resposta automática para ${phone}`);
+        await whatsappService.sendMessage(ownerId, phone, responseMsg);
       } catch (err) {
         console.error('[CRM] Erro ao atualizar status via WhatsApp:', err);
       }
-    } else {
-      console.warn(`[CRM] Voto recebido mas ignorado: Status=${newStatus}, OrderId=${orderId}`);
     }
   });
   // --- FIM WHATSAPP ROUTES ---
@@ -481,6 +481,26 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  // --- INICIALIZAÇÃO E CORREÇÃO DE DADOS ---
+  async function fixUserData() {
+    try {
+      const { data: users, error } = await supabase.from('users').select('*');
+      if (error) throw error;
+
+      for (const user of users) {
+        // Se for OWNER e não tiver owner_id, ou owner_id for diferente do próprio ID
+        if (user.role === 'OWNER' && (!user.owner_id || user.owner_id !== user.id)) {
+          await supabase.from('users').update({ owner_id: user.id }).eq('id', user.id);
+          console.log(`[FIX] Atualizado owner_id para o proprietário: ${user.name}`);
+        }
+      }
+    } catch (err) {
+      console.error('[FIX] Erro ao corrigir dados de usuários:', err);
+    }
+  }
+  fixUserData();
+  // --- FIM CORREÇÃO ---
 
   app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`🚀 Amplifica CRM rodando em http://localhost:${PORT}`);

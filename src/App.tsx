@@ -526,7 +526,7 @@ export default function App() {
                     perspective === 'OWNER' ? "bg-white text-blue-600 shadow-sm" : "text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 border border-transparent"
                   )}
                 >
-                  Dono
+                  Proprietário
                 </button>
                 <button 
                   onClick={() => { setPerspective('PARTNER'); setActiveView('dashboard'); }}
@@ -576,7 +576,7 @@ export default function App() {
                 <div className="flex flex-col">
                   <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate max-w-[120px]">{currentUser.name}</span>
                   <span className="text-[10px] text-gray-400 dark:text-gray-400 uppercase tracking-wider">
-                    {perspective ? `Visualizar: ${perspective}` : currentUser.role}
+                    {perspective ? `Visualizar: ${perspective === 'OWNER' ? 'Proprietário' : perspective}` : (currentUser.role === 'OWNER' ? 'PROPRIETÁRIO' : currentUser.role)}
                   </span>
                 </div>
               )}

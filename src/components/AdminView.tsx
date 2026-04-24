@@ -87,7 +87,7 @@ function DatabaseStatus() {
   );
 }
 
-function WhatsAppConfig() {
+function WhatsAppConfig({ ownerId, isOwner }: { ownerId: string, isOwner: boolean }) {
   const [status, setStatus] = useState<'disconnected' | 'qr' | 'connected'>('disconnected');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,17 +95,19 @@ function WhatsAppConfig() {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/whatsapp/status');
+      const res = await fetch(`/api/whatsapp/status?ownerId=${ownerId}`);
       if (res.ok) {
         const data = await res.json();
         setStatus(data.status);
         setQrCode(data.qr);
       }
       
-      const logsRes = await fetch('/api/whatsapp/logs');
-      if (logsRes.ok) {
-        const text = await logsRes.text();
-        setLogs(text);
+      if (isOwner) {
+        const logsRes = await fetch('/api/whatsapp/logs');
+        if (logsRes.ok) {
+          const text = await logsRes.text();
+          setLogs(text);
+        }
       }
     } catch (error) {
       console.error('Erro ao buscar status do WhatsApp', error);
@@ -116,16 +118,18 @@ function WhatsAppConfig() {
 
   useEffect(() => {
     fetchStatus();
-    // Polls only if waiting for QR code to be scanned or to update logs
-    const interval = setInterval(() => {
-      fetchStatus();
-    }, 5000);
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [ownerId]);
 
   const handleLogout = async () => {
+    if (!isOwner) return;
     setLoading(true);
-    await fetch('/api/whatsapp/logout', { method: 'POST' });
+    await fetch('/api/whatsapp/logout', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ownerId })
+    });
     await fetchStatus();
   };
 
@@ -139,11 +143,11 @@ function WhatsAppConfig() {
           <div className="flex items-center gap-3">
              <div className={cn("w-3 h-3 rounded-full animate-pulse transition-colors", status === 'connected' ? 'bg-emerald-500' : 'bg-amber-500')}></div>
              <div>
-                <p className="text-sm font-bold text-gray-900 dark:text-gray-100 transition-colors tracking-tight uppercase">Status da API Interna</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-gray-100 transition-colors tracking-tight uppercase">Status da Conexão</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 transition-colors">
                   {status === 'connected' ? 'WhatsApp Autenticado e Pronto' : 
                    status === 'qr' ? 'Aguardando Leitura do QR Code' : 
-                   'Motor Desconectado'}
+                   'Desconectado'}
                 </p>
              </div>
           </div>
@@ -151,15 +155,15 @@ function WhatsAppConfig() {
             <button onClick={fetchStatus} className="p-2 text-gray-400 dark:text-gray-500 hover:text-emerald-500 dark:hover:text-emerald-400 transition-all">
                <RefreshCcw size={16} />
             </button>
-            {status === 'connected' && (
+            {status === 'connected' && isOwner && (
               <button onClick={handleLogout} className="px-4 py-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 font-bold text-xs rounded-xl transition-all shadow-sm border border-rose-100 dark:border-rose-500/20">
-                  Desconectar Dispositivo
+                  Desconectar
               </button>
             )}
           </div>
        </div>
 
-       {status === 'qr' && qrCode && (
+       {status === 'qr' && qrCode && isOwner && (
          <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl bg-white dark:bg-gray-900 transition-colors">
             <h4 className="font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors uppercase tracking-tight">Leia o QR Code</h4>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 text-center max-w-sm transition-colors">Abra o WhatsApp no seu celular, vá em "Aparelhos Conectados" e aponte a câmera para este código.</p>
@@ -169,11 +173,19 @@ function WhatsAppConfig() {
          </div>
        )}
 
-       {status === 'disconnected' && !qrCode && (
+       {status === 'qr' && !isOwner && (
+         <div className="p-8 text-center bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20 rounded-3xl">
+            <AlertTriangle size={32} className="mx-auto text-amber-500 mb-3" />
+            <p className="text-sm font-bold text-amber-700 dark:text-amber-400">Aguardando Conexão do Proprietário</p>
+            <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">O proprietário da conta precisa escanear o QR Code para que a equipe possa enviar mensagens.</p>
+         </div>
+       )}
+
+       {status === 'disconnected' && isOwner && (
          <div className="flex flex-col items-center justify-center p-12 text-center bg-gray-50 dark:bg-gray-800 rounded-3xl transition-colors">
            <AlertTriangle size={48} className="text-amber-400 mb-4" />
-           <p className="font-bold text-gray-900 dark:text-gray-100 transition-colors tracking-tight uppercase">Serviço de WhatsApp Offline</p>
-           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm transition-colors">O motor interno fechou a conexão. Isso costuma ocorrer quando você desloga do aparelho ou quando a internet cai. Aguarde a auto-reconexão ou reinicie o App pelo ZimaOS.</p>
+           <p className="font-bold text-gray-900 dark:text-gray-100 transition-colors tracking-tight uppercase">Serviço Offline</p>
+           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm transition-colors">O motor de envio está aguardando inicialização ou reconexão. Se demorar, tente atualizar a página.</p>
            <button onClick={fetchStatus} className="mt-6 flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-sm rounded-xl font-bold text-gray-600 dark:text-gray-300 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 transition-all uppercase">
              <RefreshCcw size={14} /> Atualizar Agora
            </button>
@@ -181,22 +193,24 @@ function WhatsAppConfig() {
        )}
 
        {/* Logs Area */}
-       <div className="mt-8 space-y-3">
-          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-            <Activity size={12} /> Log de Interações Recentes
-          </h4>
-          <div className="bg-gray-900 rounded-2xl p-4 font-mono text-[10px] text-emerald-400 h-48 overflow-y-auto border border-gray-800 shadow-inner">
-            {logs ? (
-              logs.split('\n').map((line, i) => (
-                <div key={i} className="mb-1 leading-relaxed">
-                  <span className="opacity-40">{i+1}</span> {line}
-                </div>
-              ))
-            ) : (
-              <div className="text-gray-600 italic">Nenhum log disponível...</div>
-            )}
-          </div>
-       </div>
+       {isOwner && (
+         <div className="mt-8 space-y-3">
+            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+              <Activity size={12} /> Log de Interações Recentes
+            </h4>
+            <div className="bg-gray-900 rounded-2xl p-4 font-mono text-[10px] text-emerald-400 h-48 overflow-y-auto border border-gray-800 shadow-inner">
+              {logs ? (
+                logs.split('\n').map((line, i) => (
+                  <div key={i} className="mb-1 leading-relaxed">
+                    <span className="opacity-40">{i+1}</span> {line}
+                  </div>
+                ))
+              ) : (
+                <div className="text-gray-600 italic">Nenhum log disponível...</div>
+              )}
+            </div>
+         </div>
+       )}
     </div>
   );
 }
@@ -272,6 +286,7 @@ export default function AdminView({
       email: inviteData.email,
       role: inviteData.role,
       password: inviteData.password,
+      ownerId: currentUser.role === 'OWNER' ? currentUser.id : currentUser.ownerId,
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteData.name)}&background=random`
     };
     
@@ -488,14 +503,10 @@ export default function AdminView({
                   <div className="p-8">
                      {integration.type === 'whatsapp' ? (
                        <div className="space-y-4">
-                         {!isOwner && <WhatsAppConfig />}
-                         {isOwner && (
-                           <div className="p-8 text-center bg-gray-50 dark:bg-gray-800 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700">
-                             <Shield size={48} className="mx-auto text-indigo-400 mb-4" />
-                             <h4 className="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-tight">Acesso Restrito</h4>
-                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Apenas o administrador master pode visualizar logs e configurações sensíveis de rede.</p>
-                           </div>
-                         )}
+                         <WhatsAppConfig 
+                           ownerId={currentUser.role === 'OWNER' ? currentUser.id : currentUser.ownerId || ''} 
+                           isOwner={currentUser.role === 'OWNER'} 
+                         />
                          <a 
                            href="https://web.whatsapp.com" 
                            target="_blank" 
@@ -577,15 +588,20 @@ export default function AdminView({
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                       <span className={cn(
-                         "px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-colors",
-                         user.role === 'ADMIN' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-500/20" :
-                         user.role === 'DESIGNER' ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-500/20" :
-                         user.role === 'EDITOR' ? "bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-500/20" :
-                         "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-500/20"
-                       )}>
-                         {user.role}
-                       </span>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-colors",
+                        user.role === 'OWNER' ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-500/20" :
+                        user.role === 'ADMIN' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-500/20" :
+                        user.role === 'DESIGNER' ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-500/20" :
+                        user.role === 'EDITOR' ? "bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-500/20" :
+                        "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-500/20"
+                      )}>
+                        {user.role === 'OWNER' ? 'PROPRIETÁRIO' : 
+                         user.role === 'DESIGNER' ? 'DESIGNER' :
+                         user.role === 'EDITOR' ? 'EDITOR' :
+                         user.role === 'ADMIN' ? 'ADMIN' : 
+                         user.role === 'PARTNER' ? 'PARCEIRO' : user.role}
+                      </span>
                        <button 
                         onClick={() => handleRemoveUser(user.id)}
                         className="p-2 text-gray-300 dark:text-gray-600 hover:text-rose-500 dark:hover:text-rose-400 transition-all opacity-0 group-hover:opacity-100"
@@ -716,7 +732,7 @@ export default function AdminView({
                </div>
 
                {/* N8n Logs Area */}
-               {!isOwner && (
+               {isOwner && (
                  <div className="space-y-3 mt-8 pt-6 border-t border-gray-50 dark:border-gray-800 transition-colors">
                     <h4 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2 transition-colors uppercase justify-center">
                        <Activity size={12} /> Log de Interações n8n Recentes (Webhooks)
@@ -821,7 +837,7 @@ export default function AdminView({
               className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
             >
               <option value="DESIGNER" className="dark:bg-gray-900">Designer</option>
-              <option value="EDITOR" className="dark:bg-gray-900" disabled>Editor de Vídeo (Em breve)</option>
+              <option value="EDITOR" className="dark:bg-gray-900">Editor</option>
               <option value="PARTNER" className="dark:bg-gray-900">Parceiro</option>
               <option value="ADMIN" className="dark:bg-gray-900">Administrador</option>
             </select>

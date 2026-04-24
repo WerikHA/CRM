@@ -516,7 +516,13 @@ export default function DesignView({
       const res = await fetch('/api/whatsapp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: client.phone, message, poll, mediaBase64: whatsappImageBase64 || undefined })
+        body: JSON.stringify({ 
+          ownerId: currentUser.role === 'OWNER' ? currentUser.id : currentUser.ownerId,
+          phone: client.phone, 
+          message, 
+          poll, 
+          mediaBase64: whatsappImageBase64 || undefined 
+        })
       });
 
       const data = await res.json();

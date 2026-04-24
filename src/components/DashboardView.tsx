@@ -321,7 +321,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
-          title={isDesigner || isEditor ? "Ganhos Previstos" : isPartner ? "Gasto (Amplifica Marketing)" : "Receita Mensal"} 
+          title={isDesigner || isEditor ? "Ganhos Previstos" : isPartner ? "Gasto (Amplifica CRM)" : "Receita Mensal"} 
           value={`R$ ${totalValue.toLocaleString()}`} 
           change={12.5} 
           icon={DollarSign} 

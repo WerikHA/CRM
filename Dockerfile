@@ -1,29 +1,29 @@
-# Dockerfile for Amplifica CRM (Full-Stack Vite + Express)
+# Use a Node base image with TypeScript support
+FROM node:20-slim
 
-# Stage 1: Build Frontend
-FROM node:22-slim AS builder
+# Install system dependencies for Baileys/Sharp if needed (though not strictly required for current setup)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
+
+# Copy package files
 COPY package*.json ./
+
+# Install dependencies
 RUN npm install
+
+# Copy source code
 COPY . .
+
+# Build the frontend
 RUN npm run build
 
-# Stage 2: Runtime
-FROM node:22-slim
-WORKDIR /app
-COPY package*.json ./
-RUN npm install --production
-
-# In a real production, you might compile server.ts to JS, 
-# but Node 22 + tsx works great for this setup.
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/server.ts ./
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/tsconfig.json ./
-COPY --from=builder /app/db ./db
-
+# Expose port
 EXPOSE 3000
 
-ENV NODE_ENV=production
-# We use npx tsx to ensure we use the version in node_modules
-CMD ["npx", "tsx", "server.ts"]
+# Start the application
+CMD ["npm", "start"]

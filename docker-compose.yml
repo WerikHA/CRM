@@ -1,121 +1,18 @@
-# Amplifica CRM - Docker Compose for ZimaOS
-version: '3.8'
-
 services:
-  app:
-    image: SEU_USUARIO_DOCKER_HUB/amplifica-crm:latest
-    container_name: amplifica-app
-    # Acesso via ZimaClient (rede local). O Cloudflare Tunnel (cloudflared) faz o roteamento externo.
-    # NENHUMA PORTA será exposta no seu roteador diretamente.
+  amplifica-crm:
+    build: .
+    container_name: amplifica-crm
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - VITE_COMPANY_NAME=Amplifica CRM
-    # Injetamos os secrets no runtime para evitar deixar senhas no YAML ou depender do .env
-    command: >
-      sh -c '
-      export SUPABASE_URL=$$(cat /run/secrets/supabase_url) &&
-      export SUPABASE_ANON_KEY=$$(cat /run/secrets/supabase_anon_key) &&
-      export GEMINI_API_KEY=$$(cat /run/secrets/gemini_api_key) &&
-      npm start
-      '
-    networks:
-      - agency_net
-    secrets:
-      - supabase_url
-      - supabase_anon_key
-      - gemini_api_key
-    # Segurança de Contêineres no App
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-
-  db:
-    image: postgres:15-alpine
-    container_name: amplifica-db
-    environment:
-      - POSTGRES_USER=amplifica_admin
-      - POSTGRES_DB=amplifica_db
-      - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+      - PORT=3000
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - APP_URL=${APP_URL}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - agency_net
-    secrets:
-      - db_password
-    # Restrição radical de privilégios no Banco
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U amplifica_admin -d amplifica_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - ./whatsapp_auth_sessions:/app/whatsapp_auth_sessions
+      - ./whatsapp_polls.json:/app/whatsapp_polls.json
+      - ./whatsapp_interaction_logs.txt:/app/whatsapp_interaction_logs.txt
+      - ./n8n_interaction_logs.txt:/app/n8n_interaction_logs.txt
     restart: unless-stopped
-
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: amplifica-pgadmin
-    environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@amplifica.com
-      - PGADMIN_DEFAULT_PASSWORD_FILE=/run/secrets/pgadmin_password
-    ports:
-      # OBRIGATÓRIO: Restrito a localhost.
-      # Para acessar, você deve usar o ZimaClient na rede local interna. Ninguém de fora consegue.
-      - "127.0.0.1:8080:80"
-    networks:
-      - agency_net
-    secrets:
-      - pgadmin_password
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    depends_on:
-      - db
-    restart: unless-stopped
-
-  # Túnel Reverso da Cloudflare - Sem furos no roteador!
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: amplifica-tunnel
-    command: tunnel run
-    environment:
-      # INSIRA SEU TOKEN AQUI! (Não usa .env)
-      - TUNNEL_TOKEN=seu_token_do_cloudflare_aqui
-    networks:
-      - agency_net
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true # Protege o binário de explorações de filesystem
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-
-networks:
-  agency_net:
-    driver: bridge
-
-secrets:
-  supabase_url:
-    file: ./secrets/supabase_url.txt
-  supabase_anon_key:
-    file: ./secrets/supabase_anon_key.txt
-  gemini_api_key:
-    file: ./secrets/gemini_api_key.txt
-  db_password:
-    file: ./secrets/db_password.txt
-  pgadmin_password:
-    file: ./secrets/pgadmin_password.txt
