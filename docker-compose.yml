@@ -7,9 +7,11 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - APP_URL=${APP_URL}
+      - SUPABASE_URL=https://wfdvszqfsvnrtdouuygy.supabase.co
+      - SUPABASE_ANON_KEY=sb_publishable_rjAkTZq7AlDqZ-ibucO0SA_k6UJy8l6
+      - APP_URL=https://ais-dev-ax55koxpyxq3fqifff7ehm-215070016480.us-east5.run.app
+      - VITE_COMPANY_NAME=AgencyFlow CRM
+      - VITE_PRIMARY_COLOR=#4f46e5
     volumes:
       - ./whatsapp_auth_sessions:/app/whatsapp_auth_sessions
       - ./whatsapp_polls.json:/app/whatsapp_polls.json
