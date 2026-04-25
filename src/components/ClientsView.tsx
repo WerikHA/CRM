@@ -26,8 +26,10 @@ export default function ClientsView({ clients, setClients, users, partners, curr
     renewalDate: '',
     status: 'active',
     assignedDesignerId: '',
+    assignedVideoEditorId: '',
     partnerId: '',
     designerPayout: 0,
+    videoEditorPayout: 0,
     demandConfig: {
       enabled: false,
       type: 'art',
@@ -42,7 +44,8 @@ export default function ClientsView({ clients, setClients, users, partners, curr
 
   const [formData, setFormData] = useState<Partial<Client>>(initialFormData);
 
-  const designers = users.filter(u => u.role === 'DESIGNER');
+  const designers = users.filter(u => u.role === 'DESIGNER' || u.role === 'ADMIN' || u.role === 'OWNER');
+  const videoEditors = users.filter(u => u.role === 'EDITOR' || u.role === 'ADMIN' || u.role === 'OWNER');
   const isPartner = currentUser.role === 'PARTNER';
   const isAdmin = currentUser.role === 'ADMIN';
   const isOwner = currentUser.role === 'OWNER';
@@ -558,6 +561,28 @@ export default function ClientsView({ clients, setClients, users, partners, curr
                     type="number" 
                     value={formData.designerPayout}
                     onChange={e => setFormData({...formData, designerPayout: Number(e.target.value)})}
+                    className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
+                    placeholder="Valor fixo por mês"
+                  />
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Editor de Vídeo Responsável</label>
+                  <select 
+                    value={formData.assignedVideoEditorId || ''}
+                    onChange={e => setFormData({...formData, assignedVideoEditorId: e.target.value})}
+                    className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">Nenhum</option>
+                    {videoEditors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Payout do Editor (R$)</label>
+                  <input 
+                    type="number" 
+                    value={formData.videoEditorPayout}
+                    onChange={e => setFormData({...formData, videoEditorPayout: Number(e.target.value)})}
                     className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
                     placeholder="Valor fixo por mês"
                   />

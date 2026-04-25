@@ -44,8 +44,10 @@ export interface Client {
   phone?: string;
   pixKey?: string; // Chave PIX para pagamentos
   assignedDesignerId?: string; // Designer responsável
+  assignedVideoEditorId?: string; // Editor de Vídeo responsável
   partnerId?: string; // Parceiro que trouxe o cliente
   designerPayout?: number; // Quanto o designer ganha por este cliente
+  videoEditorPayout?: number; // Quanto o editor de vídeo ganha por este cliente
   branding?: ClientBranding;
   demandConfig?: {
     enabled: boolean;
