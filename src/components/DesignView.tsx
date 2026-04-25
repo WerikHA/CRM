@@ -212,8 +212,7 @@ export default function DesignView({
         setArtOrders(orders => orders.map(o => o.id === editingOrder.id ? { ...o, ...updated } : o));
       } else {
         const newOrderData: any = {
-          ...formData,
-          id: 'o' + Math.random().toString(36).substr(2, 9),
+          ...formData
         };
         const created = await api.createArtOrder(newOrderData);
         setArtOrders([...artOrders, created]);

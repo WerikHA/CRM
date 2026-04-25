@@ -26,32 +26,56 @@ async function startServer() {
 
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+  // --- Helpers for naming conversions ---
+  const toSnakeCase = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+  const toCamelCase = (str: string) => str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+
+  const keysToSnake = (obj: any) => {
+    if (typeof obj !== 'object' || obj === null) return obj;
+    if (Array.isArray(obj)) return obj.map(keysToSnake);
+    const n: any = {};
+    Object.keys(obj).forEach(k => {
+      n[toSnakeCase(k)] = keysToSnake(obj[k]);
+    });
+    return n;
+  };
+
+  const keysToCamel = (obj: any) => {
+    if (typeof obj !== 'object' || obj === null) return obj;
+    if (Array.isArray(obj)) return obj.map(keysToCamel);
+    const n: any = {};
+    Object.keys(obj).forEach(k => {
+      n[toCamelCase(k)] = keysToCamel(obj[k]);
+    });
+    return n;
+  };
+
   // --- Helper to handle CRUD via Supabase with Privacy Filters ---
   const supabaseCrud = (pathName: string, tableName: string) => {
     app.get(`/api/${pathName}`, async (req, res) => {
-      const userId = req.headers['x-user-id'] as string;
+      let userId = req.headers['x-user-id'] as string;
       const userRole = req.headers['x-user-role'] as string;
+
+      // Sanitize userId. Use a dummy valid UUID if missing to avoid Postgres syntax errors.
+      const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId || "");
+      if (!isValidUUID) {
+        userId = "00000000-0000-0000-0000-000000000000";
+      }
 
       let query = supabase.from(tableName).select('*');
 
       // Privacy logic
-      if (userRole !== 'OWNER') {
+      if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
         if (tableName === 'clients') {
           if (userRole === 'PARTNER') {
             query = query.eq('partner_id', userId);
           } else {
-            // ADMIN, DESIGNER, EDITOR only see what they are assigned to
+            // DESIGNER, EDITOR only see what they are assigned to
             query = query.or(`assigned_designer_id.eq.${userId},assigned_video_editor_id.eq.${userId}`);
           }
         } else if (tableName === 'users') {
-          // ADMIN can see team members to assign, others only see themselves
-          if (userRole !== 'ADMIN') {
-            query = query.eq('id', userId);
-          }
-        } else if (tableName === 'leads') {
-          // Options: Leads might be shared or restricted. Assuming restricted for now if specified.
-          // If leads have an owner_id or agent_id, filter there.
-          // For now, let's keep leads visible to ADMIN/OWNER but filter for others if needed.
+          // Team members only see themselves (ADMIN/OWNER see everyone via outer IF)
+          query = query.eq('id', userId);
         } else if (tableName === 'art_orders' || tableName === 'video_orders' || tableName === 'demand_tasks') {
           // Orders restricted to assigned users
           const designerField = tableName === 'video_orders' ? 'editor_id' : (tableName === 'demand_tasks' ? 'editor_id' : 'designer_id');
@@ -60,16 +84,30 @@ async function startServer() {
       }
 
       const { data, error } = await query;
-      if (error) return res.status(500).json({ error: error.message });
-      res.json(data);
+      if (error) {
+        // Gracefully handle missing tables (common in initial setup) by returning empty array
+        if (error.message.includes('schema cache') || error.code === '42P01') {
+          console.warn(`[SUPABASE] Table "${tableName}" not found, returning empty array. Make sure to run migrations.`);
+          return res.json([]);
+        }
+        return res.status(500).json({ error: error.message });
+      }
+      res.json(keysToCamel(data));
     });
     
     app.post(`/api/${pathName}`, async (req, res) => {
-      const payload = { ...req.body };
-      // Sanitize ID fields: empty string or "null" string -> null
+      const payload = keysToSnake(req.body);
+      // Remove manual ID if provided as empty or generic string to let DB generate UUID
+      if (!payload.id || (typeof payload.id === 'string' && (payload.id.startsWith('u-') || payload.id.startsWith('c-') || payload.id.startsWith('dem-')))) {
+        delete payload.id;
+      }
+
+      // Sanitize ID fields: empty string, "null", "undefined", or "system" string -> null
       Object.keys(payload).forEach(key => {
-        if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null")) {
-          payload[key] = null;
+        if (key.endsWith('_id')) {
+          if (payload[key] === "" || payload[key] === "null" || payload[key] === "system" || payload[key] === "undefined") {
+            payload[key] = null;
+          }
         }
       });
 
@@ -78,14 +116,14 @@ async function startServer() {
         console.error(`[SUPABASE][${tableName}] Insert error:`, error);
         return res.status(500).json({ error: error.message });
       }
-      res.json(data);
+      res.json(keysToCamel(data));
     });
 
     app.put(`/api/${pathName}/:id`, async (req, res) => {
-      const payload = { ...req.body };
-      // Sanitize ID fields: empty string or "null" string -> null
+      const payload = keysToSnake(req.body);
+      // Sanitize ID fields: empty string, "null", or "undefined" string -> null
       Object.keys(payload).forEach(key => {
-        if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null")) {
+        if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null" || payload[key] === "undefined")) {
           payload[key] = null;
         }
       });
@@ -95,7 +133,7 @@ async function startServer() {
         console.error(`[SUPABASE][${tableName}] Update error:`, error);
         return res.status(500).json({ error: error.message });
       }
-      res.json(data);
+      res.json(keysToCamel(data));
     });
 
     app.delete(`/api/${pathName}/:id`, async (req, res) => {
@@ -154,7 +192,6 @@ async function startServer() {
           for (let i = 0; i < tasksToCreate; i++) {
             const taskIndex = (existingTasks?.length || 0) + i + 1;
             const newTask = {
-              id: 'dem-' + Math.random().toString(36).substr(2, 9),
               client_id: client.id,
               type: config.type || 'art',
               title: config.type === 'recording' ? `Gravação ${taskIndex}` : null,
@@ -162,7 +199,7 @@ async function startServer() {
               period_start: startStr,
               period_end: periodEnd.toISOString(),
               status: 'todo',
-              editor_id: config.defaultEditorId || null,
+              editor_id: config.default_editor_id || config.defaultEditorId || null,
               created_at: new Date().toISOString()
             };
 
@@ -185,10 +222,15 @@ async function startServer() {
   // --- CUSTOM DASHBOARD/DEMANDS SPECIFIC ROUTES ---
   // Must come before supabaseCrud to take precedence
   app.post("/api/demand-tasks", async (req, res) => {
-    const payload = { ...req.body };
+    const payload = keysToSnake(req.body);
+    // Let database generate the UUID
+    if (!payload.id || (typeof payload.id === 'string' && payload.id.startsWith('dem-'))) {
+      delete payload.id;
+    }
+
     // Sanitize ID fields
     Object.keys(payload).forEach(key => {
-      if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null")) {
+      if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null" || payload[key] === "undefined")) {
         payload[key] = null;
       }
     });
@@ -196,7 +238,7 @@ async function startServer() {
     try {
       const { data, error } = await supabase.from('demand_tasks').insert(payload).select().single();
       if (error) throw error;
-      res.json(data);
+      res.json(keysToCamel(data));
     } catch (err: any) {
       console.error("[DEMANDS] Erro ao criar demanda:", err);
       res.status(500).json({ error: `Erro no banco de dados: ${err.message}` });
@@ -205,11 +247,11 @@ async function startServer() {
 
   app.put("/api/demand-tasks/:id", async (req, res) => {
     const { id } = req.params;
-    const updates = { ...req.body };
+    const updates = keysToSnake(req.body);
     
     // Sanitize ID fields
     Object.keys(updates).forEach(key => {
-      if (key.endsWith('_id') && (updates[key] === "" || updates[key] === "null")) {
+      if (key.endsWith('_id') && (updates[key] === "" || updates[key] === "null" || updates[key] === "undefined")) {
         updates[key] = null;
       }
     });
@@ -226,7 +268,7 @@ async function startServer() {
         console.error(`[DEMANDS] Supabase Update Error for ID ${id}:`, error);
         throw error;
       }
-      const updatedTask = data;
+      const updatedTask = keysToCamel(data);
 
       // Special logic: if status set to 'done' and type is 'recording', create a video order
       if (updates.status === 'done' && updatedTask && updatedTask.type === 'recording') {
@@ -244,7 +286,6 @@ async function startServer() {
           }
 
           const newVideoOrder = {
-            id: 'v-' + Math.random().toString(36).substr(2, 9),
             title: `Edição: ${updatedTask.title || updatedTask.observations || 'Sem título'}`,
             client_id: updatedTask.client_id,
             editor_id: updatedTask.editor_id || client.demand_config?.defaultEditorId || '',
@@ -277,6 +318,11 @@ async function startServer() {
   supabaseCrud("video-orders", "video_orders");
   supabaseCrud("demand-tasks", "demand_tasks");
   supabaseCrud("users", "users");
+  supabaseCrud("notifications", "notifications");
+  supabaseCrud("prospecting/lists", "prospecting_lists");
+  supabaseCrud("prospecting/leads", "prospecting_leads");
+  supabaseCrud("prospecting/campaigns", "campaigns");
+  supabaseCrud("prospecting/history", "message_history");
 
 
   // Run on start and then every hour
@@ -352,8 +398,7 @@ async function startServer() {
     }
 
     email = email.trim().toLowerCase();
-    const id = 'u-' + Math.random().toString(36).substr(2, 9);
-    const newUser = { id, name, email, password, role: 'OWNER', owner_id: id };
+    const newUser = { name, email, password, role: 'OWNER' };
 
     try {
       const { data: existingUser } = await supabase
@@ -373,8 +418,11 @@ async function startServer() {
         .single();
         
       if (error) throw error;
+
+      // Update owner_id to be same as own ID for OWNERs
+      await supabase.from('users').update({ owner_id: data.id }).eq('id', data.id);
       
-      res.json({ success: true, user: data });
+      res.json({ success: true, user: keysToCamel({ ...data, owner_id: data.id }) });
     } catch (err: any) {
       console.error("[AUTH] Erro no signup:", err);
       // Return the actual error message for easier debugging of connection issues
@@ -411,7 +459,7 @@ async function startServer() {
       }
       
       console.log(`[AUTH] Login bem-sucedido: ${email}`);
-      res.json({ success: true, user: data });
+      res.json({ success: true, user: keysToCamel(data) });
     } catch (err) {
       console.error(`[AUTH] Erro interno no login:`, err);
       res.status(500).json({ error: "Erro interno no servidor de autenticação" });

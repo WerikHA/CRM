@@ -53,6 +53,7 @@ import ProspectingView from './components/prospecting/ProspectingView';
 import VideoWorkflowView from './components/VideoWorkflowView';
 import DemandsView from './components/DemandsView';
 import DesignModificationForm from './components/DesignModificationForm';
+import NotificationBell from './components/NotificationBell';
 import { LogOut, Film, ClipboardList, MessageSquare } from 'lucide-react';
 
 import LandingPage from './components/LandingPage';
@@ -648,10 +649,7 @@ export default function App() {
              </div>
 
              <div className="h-8 w-[1px] mx-2 bg-gray-100 dark:bg-gray-800" />
-             <button className="text-gray-400 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors relative">
-               <Bell size={20} />
-               <span className="absolute top-0 right-0 w-2 h-2 bg-rose-500 rounded-full border border-white dark:border-gray-900" />
-             </button>
+             <NotificationBell onNavigate={setActiveView} />
              <div className="flex items-center gap-2 cursor-pointer group">
                <span className="text-xs font-semibold text-gray-400 dark:text-gray-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors uppercase tracking-widest italic">Status: Online</span>
                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />

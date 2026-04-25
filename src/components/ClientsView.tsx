@@ -83,7 +83,6 @@ export default function ClientsView({ clients, setClients, users, partners, curr
       } else {
         const newClientData: any = {
           ...formData,
-          id: 'c' + Math.random().toString(36).substr(2, 9),
           status: formData.status || 'active'
         };
         const created = await api.createClient(newClientData);

@@ -102,11 +102,10 @@ export default function PartnersView({
         const updated = await api.updatePartner(editingAgency.id, agencyFormData);
         setPartners(prev => prev.map(p => p.id === editingAgency.id ? { ...p, ...updated } : p));
       } else {
-        const newPartner: Partner = {
+        const newPartner: any = {
           ...agencyFormData,
-          id: 'p' + Math.random().toString(36).substring(2, 9),
           ownerId: currentUser.id
-        } as Partner;
+        };
         const created = await api.createPartner(newPartner);
         setPartners(prev => [...prev, created]);
       }
@@ -139,12 +138,11 @@ export default function PartnersView({
         const updated = await api.updateUser(editingTeamMember.id, teamFormData);
         setUsers(users.map(u => u.id === editingTeamMember.id ? { ...u, ...updated } : u));
       } else {
-        const newUser: User = {
+        const newUser: any = {
           ...teamFormData,
-          id: Math.random().toString(36).substr(2, 9),
           role: teamFormData.role || 'EDITOR',
           ownerId: currentUser.id
-        } as User;
+        };
         const created = await api.createUser(newUser);
         setUsers([...users, created]);
       }
@@ -172,11 +170,9 @@ export default function PartnersView({
         const updated = await api.updatePartnerRequest(editingRequest.id, formData);
         setPartnerRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...updated } : r));
       } else {
-        const requestId = 'pr' + Math.random().toString(36).substring(2, 9);
         const newRequestData: any = {
           ...formData,
-          id: requestId,
-          partnerId: formData.partnerId || 'unknown',
+          partnerId: formData.partnerId || null,
           partnerName: formData.partnerName || 'Agência Externa',
           clientName: formData.clientName || '',
           serviceType: formData.serviceType || '',
@@ -190,9 +186,7 @@ export default function PartnersView({
         // First, check/create client if needed
         let clientId = clients.find(c => c.name === formData.clientName)?.id;
         if (!clientId) {
-          clientId = 'c' + Math.random().toString(36).substring(2, 9);
-          const newClient: Client = {
-            id: clientId,
+          const newClient: any = {
             name: formData.clientName || '',
             status: 'active',
             monthlyValue: formData.cost || 0,
@@ -201,16 +195,15 @@ export default function PartnersView({
             partnerId: formData.partnerId
           };
           const createdClient = await api.createClient(newClient);
+          clientId = createdClient.id;
           setClients(prev => [...prev, createdClient]);
         }
 
         const designers = users.filter(u => u.role === 'DESIGNER');
-        const newOrder: ArtOrder = {
-          id: 'ao' + Math.random().toString(36).substring(2, 9),
+        const newOrder: any = {
           title: formData.serviceType || 'Novo Job',
           clientId: clientId,
-          designerId: designers[0]?.id || 'unknown',
-          designerName: designers[0]?.name || 'Pendente',
+          designerId: designers[0]?.id || null,
           deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
           priority: 'medium',
           progress: 0,

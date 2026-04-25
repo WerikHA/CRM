@@ -125,10 +125,9 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
           for (let i = 1; i <= quantity; i++) {
             const newTaskData = {
               ...cleanFormData,
-              id: 'dem-' + Math.random().toString(36).substr(2, 9),
               title: cleanFormData.title ? `${cleanFormData.title} ${i}` : `Gravação ${i}`,
               quantity: 1
-            } as DemandTask;
+            } as any;
             const created = await api.createDemandTask(newTaskData);
             newTasks.push(created);
           }
@@ -136,8 +135,7 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
         } else {
           const newTaskData = {
             ...cleanFormData,
-            id: 'dem-' + Math.random().toString(36).substr(2, 9),
-          } as DemandTask;
+          } as any;
           const created = await api.createDemandTask(newTaskData);
           setTasks(prev => [...prev, created]);
         }

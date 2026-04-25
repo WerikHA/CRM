@@ -36,8 +36,7 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const newTicketData: SupportTicket = {
-        id: Math.random().toString(36).substr(2, 9),
+      const newTicketData: any = {
         partnerId: currentUser.id,
         subject: formData.subject || '',
         description: formData.description || '',

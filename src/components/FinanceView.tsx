@@ -121,7 +121,6 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
       } else {
         const newData: any = {
           ...formData,
-          id: 'r' + Math.random().toString(36).substr(2, 9),
         };
         const created = await api.createReceivable(newData);
         setReceivables([...receivables, created]);

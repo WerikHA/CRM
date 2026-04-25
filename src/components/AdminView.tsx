@@ -531,8 +531,7 @@ export default function AdminView({
 
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newUserFormData = {
-      id: Math.random().toString(36).substring(2, 9),
+    const newUserFormData: any = {
       name: inviteData.name,
       email: inviteData.email,
       role: inviteData.role,

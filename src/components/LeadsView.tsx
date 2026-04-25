@@ -253,7 +253,6 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
       } else {
         const newLeadData: any = {
           ...formData,
-          id: 'l' + Math.random().toString(36).substr(2, 9),
           lastContact: new Date().toLocaleDateString('pt-BR'),
           status: formData.status || 'prospect'
         };
@@ -273,8 +272,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
 
       const lead = leads.find(l => l.id === id);
       if (newStatus === 'converted' && lead) {
-          const newClient: Client = {
-            id: 'c-' + Math.random().toString(36).substr(2, 5),
+          const newClientData: any = {
             name: lead.company,
             contactEmail: lead.email,
             phone: lead.phone || '',
@@ -282,7 +280,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
             status: 'active',
             renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
           };
-          const createdClient = await api.createClient(newClient);
+          const createdClient = await api.createClient(newClientData);
           setClients(prev => [...prev, createdClient]);
           alert('Cliente criado com sucesso! Verifique a aba de Clientes.');
       }

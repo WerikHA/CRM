@@ -138,8 +138,7 @@ export default function VideoWorkflowView({
         setVideoOrders(orders => orders.map(o => o.id === editingOrder.id ? { ...o, ...updated } : o));
       } else {
         const newOrderData: any = {
-          ...formData,
-          id: 'v' + Math.random().toString(36).substr(2, 9),
+          ...formData
         };
         const created = await api.createVideoOrder(newOrderData);
         setVideoOrders([...videoOrders, created]);

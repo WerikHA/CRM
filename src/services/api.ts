@@ -30,7 +30,7 @@ async function request(endpoint: string, method: string, data?: any) {
   const url = `${API_BASE}${endpoint}`;
   
   // Get user from localStorage to pass role/id headers
-  const storedUser = localStorage.getItem('crm-user');
+  const storedUser = localStorage.getItem('agency_user');
   const user = storedUser ? JSON.parse(storedUser) : null;
   
   const headers: Record<string, string> = {
@@ -239,6 +239,42 @@ export const api = {
     return request(`/demand-tasks/${id}`, 'DELETE');
   },
 
+  // PROSPECTING
+  async getProspectLists(): Promise<any[]> {
+    return request('/prospecting/lists', 'GET');
+  },
+  async createProspectList(list: any): Promise<any> {
+    return request('/prospecting/lists', 'POST', list);
+  },
+  async deleteProspectList(id: string): Promise<void> {
+    return request(`/prospecting/lists/${id}`, 'DELETE');
+  },
+  async getProspectLeads(listId?: string): Promise<any[]> {
+    const endpoint = listId ? `/prospecting/leads?list_id=${listId}` : '/prospecting/leads';
+    return request(endpoint, 'GET');
+  },
+  async createProspectLead(lead: any): Promise<any> {
+    return request('/prospecting/leads', 'POST', lead);
+  },
+  async updateProspectLead(id: string, lead: any): Promise<any> {
+    return request(`/prospecting/leads/${id}`, 'PUT', lead);
+  },
+  async deleteProspectLead(id: string): Promise<void> {
+    return request(`/prospecting/leads/${id}`, 'DELETE');
+  },
+  async getCampaigns(): Promise<any[]> {
+    return request('/prospecting/campaigns', 'GET');
+  },
+  async createCampaign(campaign: any): Promise<any> {
+    return request('/prospecting/campaigns', 'POST', campaign);
+  },
+  async updateCampaign(id: string, campaign: any): Promise<any> {
+    return request(`/prospecting/campaigns/${id}`, 'PUT', campaign);
+  },
+  async deleteCampaign(id: string): Promise<void> {
+    return request(`/prospecting/campaigns/${id}`, 'DELETE');
+  },
+
   async login(email: string, password: string): Promise<{ success: boolean; user: User }> {
     return request('/login', 'POST', { email, password });
   },
@@ -252,16 +288,26 @@ export const api = {
   },
 
   async reportError(errorInfo: { message: string, stack?: string, context?: string }): Promise<SupportTicket> {
-    const storedUser = localStorage.getItem('crm-user');
+    const storedUser = localStorage.getItem('agency_user');
     const user = storedUser ? JSON.parse(storedUser) : null;
     
     return request('/support-tickets', 'POST', {
-      id: 'err-' + Math.random().toString(36).substr(2, 9),
-      partnerId: user?.id || 'system',
+      partnerId: user?.id || null, // Changed from 'system' to null
       subject: `[ERRO DO SISTEMA] - ${user?.name || 'Visitante'}`,
       description: `Mensagem: ${errorInfo.message}\nContexto: ${errorInfo.context || 'Não informado'}\nStack: ${errorInfo.stack || 'Não disponível'}`,
       status: 'open',
       createdAt: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     });
+  },
+
+  // NOTIFICATIONS
+  async getNotifications(): Promise<any[]> {
+    return request('/notifications', 'GET');
+  },
+  async markNotificationRead(id: string): Promise<any> {
+    return request(`/notifications/${id}`, 'PUT', { isRead: true });
+  },
+  async deleteNotification(id: string): Promise<void> {
+    return request(`/notifications/${id}`, 'DELETE');
   }
 };
