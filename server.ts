@@ -26,10 +26,40 @@ async function startServer() {
 
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // --- Helper to handle CRUD via Supabase ---
+  // --- Helper to handle CRUD via Supabase with Privacy Filters ---
   const supabaseCrud = (pathName: string, tableName: string) => {
     app.get(`/api/${pathName}`, async (req, res) => {
-      const { data, error } = await supabase.from(tableName).select('*');
+      const userId = req.headers['x-user-id'] as string;
+      const userRole = req.headers['x-user-role'] as string;
+
+      let query = supabase.from(tableName).select('*');
+
+      // Privacy logic
+      if (userRole !== 'OWNER') {
+        if (tableName === 'clients') {
+          if (userRole === 'PARTNER') {
+            query = query.eq('partner_id', userId);
+          } else {
+            // ADMIN, DESIGNER, EDITOR only see what they are assigned to
+            query = query.or(`assigned_designer_id.eq.${userId},assigned_video_editor_id.eq.${userId}`);
+          }
+        } else if (tableName === 'users') {
+          // ADMIN can see team members to assign, others only see themselves
+          if (userRole !== 'ADMIN') {
+            query = query.eq('id', userId);
+          }
+        } else if (tableName === 'leads') {
+          // Options: Leads might be shared or restricted. Assuming restricted for now if specified.
+          // If leads have an owner_id or agent_id, filter there.
+          // For now, let's keep leads visible to ADMIN/OWNER but filter for others if needed.
+        } else if (tableName === 'art_orders' || tableName === 'video_orders' || tableName === 'demand_tasks') {
+          // Orders restricted to assigned users
+          const designerField = tableName === 'video_orders' ? 'editor_id' : (tableName === 'demand_tasks' ? 'editor_id' : 'designer_id');
+          query = query.eq(designerField, userId);
+        }
+      }
+
+      const { data, error } = await query;
       if (error) return res.status(500).json({ error: error.message });
       res.json(data);
     });
@@ -118,21 +148,27 @@ async function startServer() {
           .eq('client_id', client.id)
           .eq('period_start', startStr);
 
-        if (!existingTasks || existingTasks.length === 0) {
-          const newTask = {
-            id: 'dem-' + Math.random().toString(36).substr(2, 9),
-            client_id: client.id,
-            type: config.type || 'art',
-            quantity: config.quantity || 1,
-            period_start: startStr,
-            period_end: periodEnd.toISOString(),
-            status: 'todo',
-            editor_id: config.defaultEditorId || null,
-            created_at: new Date().toISOString()
-          };
+        if (!existingTasks || existingTasks.length < (config.quantity || 1)) {
+          const tasksToCreate = (config.type === 'recording') ? (config.quantity || 1) - (existingTasks?.length || 0) : (existingTasks?.length === 0 ? 1 : 0);
+          
+          for (let i = 0; i < tasksToCreate; i++) {
+            const taskIndex = (existingTasks?.length || 0) + i + 1;
+            const newTask = {
+              id: 'dem-' + Math.random().toString(36).substr(2, 9),
+              client_id: client.id,
+              type: config.type || 'art',
+              title: config.type === 'recording' ? `Gravação ${taskIndex}` : null,
+              quantity: config.type === 'recording' ? 1 : (config.quantity || 1),
+              period_start: startStr,
+              period_end: periodEnd.toISOString(),
+              status: 'todo',
+              editor_id: config.defaultEditorId || null,
+              created_at: new Date().toISOString()
+            };
 
-          await supabase.from('demand_tasks').insert(newTask);
-          console.log(`[DEMANDS] Nova demanda gerada para ${client.name} (${config.frequency})`);
+            await supabase.from('demand_tasks').insert(newTask);
+            console.log(`[DEMANDS] Nova demanda gerada para ${client.name}: ${newTask.title || config.type} (${config.frequency})`);
+          }
         }
       }
     } catch (err) {
@@ -145,6 +181,90 @@ async function startServer() {
     console.error("[SUPABASE ERROR]", error);
     res.status(500).json({ error: error.message });
   };
+
+  // --- CUSTOM DASHBOARD/DEMANDS SPECIFIC ROUTES ---
+  // Must come before supabaseCrud to take precedence
+  app.post("/api/demand-tasks", async (req, res) => {
+    const payload = { ...req.body };
+    // Sanitize ID fields
+    Object.keys(payload).forEach(key => {
+      if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null")) {
+        payload[key] = null;
+      }
+    });
+
+    try {
+      const { data, error } = await supabase.from('demand_tasks').insert(payload).select().single();
+      if (error) throw error;
+      res.json(data);
+    } catch (err: any) {
+      console.error("[DEMANDS] Erro ao criar demanda:", err);
+      res.status(500).json({ error: `Erro no banco de dados: ${err.message}` });
+    }
+  });
+
+  app.put("/api/demand-tasks/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = { ...req.body };
+    
+    // Sanitize ID fields
+    Object.keys(updates).forEach(key => {
+      if (key.endsWith('_id') && (updates[key] === "" || updates[key] === "null")) {
+        updates[key] = null;
+      }
+    });
+
+    try {
+      const { data, error } = await supabase
+        .from('demand_tasks')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) {
+        console.error(`[DEMANDS] Supabase Update Error for ID ${id}:`, error);
+        throw error;
+      }
+      const updatedTask = data;
+
+      // Special logic: if status set to 'done' and type is 'recording', create a video order
+      if (updates.status === 'done' && updatedTask && updatedTask.type === 'recording') {
+        const { data: client, error: clientErr } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('id', updatedTask.client_id)
+          .single();
+        
+        if (!clientErr && client) {
+          // Calculate deadline: 12 hours before postTime on postDate
+          let deadlineStr = 'Imediato';
+          if (updatedTask.post_date) {
+              deadlineStr = updatedTask.post_date;
+          }
+
+          const newVideoOrder = {
+            id: 'v-' + Math.random().toString(36).substr(2, 9),
+            title: `Edição: ${updatedTask.title || updatedTask.observations || 'Sem título'}`,
+            client_id: updatedTask.client_id,
+            editor_id: updatedTask.editor_id || client.demand_config?.defaultEditorId || '',
+            deadline: deadlineStr,
+            priority: 'high',
+            progress: 0,
+            status: 'queue'
+          };
+
+          await supabase.from('video_orders').insert(newVideoOrder);
+          console.log(`[DEMANDS] Video order created automatically for Recording Demand ${id}`);
+        }
+      }
+
+      res.json(updatedTask);
+    } catch (err: any) {
+      console.error("[DEMANDS] Erro ao atualizar demanda:", err);
+      res.status(500).json({ error: `Erro ao salvar demanda: ${err.message}` });
+    }
+  });
 
   // --- API ROUTES ---
   supabaseCrud("leads", "leads");
@@ -297,65 +417,6 @@ async function startServer() {
       res.status(500).json({ error: "Erro interno no servidor de autenticação" });
     }
   });
-
-// --- Legacy CRUD functionality has been replaced by supabaseCrud helper ---
-
-  // setupCrud replacements will go here as we refactor each endpoint.
-  // The old 'pool' dependency has been removed.
-  // Database routes should be converted to use `supabase` client.
-  app.put("/api/demand-tasks/:id", async (req, res) => {
-    const { id } = req.params;
-    const updates = req.body;
-    try {
-      const { data, error } = await supabase
-        .from('demand_tasks')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      const updatedTask = data;
-
-      // Special logic: if status set to 'done' and type is 'recording', create a video order
-      if (updates.status === 'done' && updatedTask.type === 'recording') {
-        const { data: client, error: clientErr } = await supabase
-          .from('clients')
-          .select('*')
-          .eq('id', updatedTask.client_id)
-          .single();
-        
-        if (clientErr) throw clientErr;
-        
-        // Calculate deadline: 12 hours before postTime on postDate
-        let deadlineStr = 'Imediato';
-        if (updatedTask.post_date) {
-            deadlineStr = updatedTask.post_date; // simplifying deadline calculation for stability
-        }
-
-        const newVideoOrder = {
-          id: 'v-' + Math.random().toString(36).substr(2, 9),
-          title: `Edição: ${updatedTask.title || updatedTask.observations || 'Sem título'}`,
-          client_id: updatedTask.client_id,
-          editor_id: updatedTask.editor_id || client.demand_config?.defaultEditorId || '',
-          deadline: deadlineStr,
-          priority: 'high',
-          progress: 0,
-          status: 'queue'
-        };
-
-        await supabase.from('video_orders').insert(newVideoOrder);
-        console.log(`[DEMANDS] Video order created automatically for Recording Demand ${id}`);
-      }
-
-      res.json(updatedTask);
-    } catch (err: any) {
-      console.error("[DEMANDS] Erro ao atualizar demanda:", err);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-
 
   // --- PROSPECTING ROUTES ---
   app.post("/api/prospecting/scrape", async (req, res) => {

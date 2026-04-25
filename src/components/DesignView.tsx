@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Palette, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, ArrowUpCircle, Filter, MessageSquare, Check, X as XIcon, RefreshCcw, Eye, Download, Copy, ChevronLeft, ChevronRight } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, notifyError } from '../lib/utils';
 import { ArtOrder, Client, WorkStatus, IntegrationConfig, ApprovalStatus, User, Receivable, PartnerRequest } from '../types';
 import Modal from './Modal';
 import { api } from '../services/api';
@@ -220,7 +220,7 @@ export default function DesignView({
       }
       setIsModalOpen(false);
     } catch (err: any) {
-      alert('Erro ao salvar pedido: ' + err.message);
+      notifyError('Erro ao salvar pedido', err.message);
     }
   };
 
@@ -269,7 +269,7 @@ export default function DesignView({
       await api.deleteArtOrder(id);
       setArtOrders(orders => orders.filter(o => o.id !== id));
     } catch (err: any) {
-      alert('Erro ao excluir pedido: ' + err.message);
+      notifyError('Erro ao excluir pedido', err.message);
     }
   };
 

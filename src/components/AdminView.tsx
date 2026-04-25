@@ -197,7 +197,29 @@ function DatabaseStatus() {
                   </div>
 
                   <div>
-                    <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-2">Opção 2: Desativar RLS (Menos Seguro)</p>
+                    <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2">Opção 2: Atualização de Esquema (Corrigir Erros)</p>
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed mb-2">Se você vir o erro "column assigned_video_editor_id does not exist", execute este script no <b>SQL Editor</b> do Supabase:</p>
+                    <div className="group relative">
+                      <pre className="text-[10px] font-mono bg-black text-indigo-400 p-4 rounded-xl overflow-x-auto select-all">
+                        {`-- Adicionar colunas de Editor de Vídeo na tabela de Clientes
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS assigned_video_editor_id TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS video_editor_payout NUMERIC DEFAULT 0;
+
+-- Adicionar colunas de Editor nas tabelas de Pedidos e Tarefas (se não existirem)
+ALTER TABLE video_orders ADD COLUMN IF NOT EXISTS editor_id TEXT;
+ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS editor_id TEXT;
+ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS observations TEXT;
+ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS materials_link TEXT;
+ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS post_date TEXT;
+ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS post_time TEXT;
+ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]';`}
+                      </pre>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-2">Opção 3: Desativar RLS (Menos Seguro)</p>
                     <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed mb-2">Se não conseguir configurar a variável, você pode desativar o RLS manualmente. Isso resolve o erro, mas remove a proteção de acesso direto via chave pública.</p>
                     <div className="group relative">
                       <pre className="text-[10px] font-mono bg-black text-emerald-400 p-4 rounded-xl overflow-x-auto select-all">

@@ -60,6 +60,7 @@ type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'vide
 import { api } from './services/api';
 import { VideoOrder, SupportTicket, DemandTask } from './types';
 import ProductivityView from './components/ProductivityView';
+import ErrorNotifier from './components/ErrorNotifier';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   dashboard: 'Painel',
@@ -659,6 +660,7 @@ export default function App() {
           )}
         </section>
       </main>
+      <ErrorNotifier />
     </div>
   );
 }

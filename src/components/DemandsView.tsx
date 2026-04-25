@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { ClipboardList, CheckCircle2, Clock, Calendar, ArrowRight, User as UserIcon, Palette, Video, Filter, Edit3, X, Upload, MessageSquare, AlertCircle, Film, Link as LinkIcon, Plus } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, notifyError } from '../lib/utils';
 import { DemandTask, Client, User } from '../types';
 import { api } from '../services/api';
 import Modal from './Modal';
@@ -75,10 +75,12 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
   const handleToggleStatus = async (task: DemandTask) => {
     const newStatus = task.status === 'todo' ? 'done' : 'todo';
     try {
-      const updated = await api.updateDemandTask(task.id, { status: newStatus });
+      // Clean task data before update to avoid sending virtual fields like 'client'
+      const { client, ...cleanTask } = task as any;
+      const updated = await api.updateDemandTask(task.id, { ...cleanTask, status: newStatus });
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...updated } : t));
-    } catch (err) {
-      alert('Erro ao atualizar demanda');
+    } catch (err: any) {
+      notifyError('Erro ao atualizar demanda', err.message);
     }
   };
 
@@ -106,24 +108,64 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
 
   const handleSaveEdit = async () => {
     try {
+      // Create a clean copy for the server (omit UI-only fields like 'client')
+      const { client, ...cleanFormData } = formData as any;
+
       if (isCreating) {
-        if (!formData.clientId) {
+        if (!cleanFormData.clientId) {
           alert('Selecione um cliente');
           return;
         }
-        const newTaskData = {
-          ...formData,
-          id: 'dem-' + Math.random().toString(36).substr(2, 9),
-        } as DemandTask;
-        const created = await api.createDemandTask(newTaskData);
-        setTasks(prev => [...prev, created]);
+
+        const quantity = cleanFormData.quantity || 1;
+        const type = cleanFormData.type || 'art';
+
+        if (type === 'recording' && quantity > 1) {
+          const newTasks = [];
+          for (let i = 1; i <= quantity; i++) {
+            const newTaskData = {
+              ...cleanFormData,
+              id: 'dem-' + Math.random().toString(36).substr(2, 9),
+              title: cleanFormData.title ? `${cleanFormData.title} ${i}` : `Gravação ${i}`,
+              quantity: 1
+            } as DemandTask;
+            const created = await api.createDemandTask(newTaskData);
+            newTasks.push(created);
+          }
+          setTasks(prev => [...prev, ...newTasks]);
+        } else {
+          const newTaskData = {
+            ...cleanFormData,
+            id: 'dem-' + Math.random().toString(36).substr(2, 9),
+          } as DemandTask;
+          const created = await api.createDemandTask(newTaskData);
+          setTasks(prev => [...prev, created]);
+        }
       } else if (editingTask) {
-        const updated = await api.updateDemandTask(editingTask.id, formData);
+        // Only send fields that exist in the database schema
+        const payload = {
+          clientId: cleanFormData.clientId,
+          type: cleanFormData.type,
+          quantity: cleanFormData.quantity,
+          periodStart: cleanFormData.periodStart,
+          periodEnd: cleanFormData.periodEnd,
+          status: cleanFormData.status,
+          editorId: cleanFormData.editorId,
+          title: cleanFormData.title,
+          observations: cleanFormData.observations,
+          materialsLink: cleanFormData.materialsLink,
+          postDate: cleanFormData.postDate,
+          postTime: cleanFormData.postTime,
+          attachments: cleanFormData.attachments
+        };
+
+        const updated = await api.updateDemandTask(editingTask.id, payload);
         setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...updated } : t));
       }
       setIsEditModalOpen(false);
-    } catch (err) {
-      alert('Erro ao salvar demanda');
+    } catch (err: any) {
+      console.error('Error saving demand:', err);
+      notifyError('Erro ao salvar demanda', err.message);
     }
   };
 

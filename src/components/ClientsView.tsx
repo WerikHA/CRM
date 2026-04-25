@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Plus, Filter, MoreVertical, LayoutGrid, List, MessageSquare, ExternalLink, Trash2, Phone } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, notifyError } from '../lib/utils';
 import { Client, ClientStatus, User, Partner } from '../types';
 import Modal from './Modal';
 import { api } from '../services/api';
@@ -91,7 +91,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
       }
       setIsModalOpen(false);
     } catch (err: any) {
-      alert('Erro ao salvar cliente: ' + err.message);
+      notifyError('Erro ao salvar cliente', err.message);
     }
   };
 
@@ -100,7 +100,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
       await api.deleteClient(id);
       setClients(clients.filter(c => c.id !== id));
     } catch (err: any) {
-      alert('Erro ao excluir cliente: ' + err.message);
+      notifyError('Erro ao excluir cliente', err.message);
     }
   };
 

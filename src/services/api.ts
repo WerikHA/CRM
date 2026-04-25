@@ -28,10 +28,24 @@ function toCamelCase(obj: any): any {
 
 async function request(endpoint: string, method: string, data?: any) {
   const url = `${API_BASE}${endpoint}`;
+  
+  // Get user from localStorage to pass role/id headers
+  const storedUser = localStorage.getItem('crm-user');
+  const user = storedUser ? JSON.parse(storedUser) : null;
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  
+  if (user) {
+    headers['x-user-id'] = user.id;
+    headers['x-user-role'] = user.role;
+  }
+
   try {
     const res = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: data ? JSON.stringify(toSnakeCase(data)) : undefined,
     });
     
@@ -45,7 +59,14 @@ async function request(endpoint: string, method: string, data?: any) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Failed to ${method} ${endpoint}`);
+      const errorMessage = err.error || `Failed to ${method} ${endpoint}`;
+      
+      // Trigger global error notifier
+      if ((window as any).reportAppError) {
+        (window as any).reportAppError(errorMessage, `Endpoint: ${endpoint} (${method})`);
+      }
+      
+      throw new Error(errorMessage);
     }
     const result = await res.json();
     return toCamelCase(result);
@@ -228,5 +249,19 @@ export const api = {
 
   async triggerIntegration(integrationId: string, payload: any): Promise<void> {
     return request(`/integrations/${integrationId}/trigger`, 'POST', payload);
+  },
+
+  async reportError(errorInfo: { message: string, stack?: string, context?: string }): Promise<SupportTicket> {
+    const storedUser = localStorage.getItem('crm-user');
+    const user = storedUser ? JSON.parse(storedUser) : null;
+    
+    return request('/support-tickets', 'POST', {
+      id: 'err-' + Math.random().toString(36).substr(2, 9),
+      partnerId: user?.id || 'system',
+      subject: `[ERRO DO SISTEMA] - ${user?.name || 'Visitante'}`,
+      description: `Mensagem: ${errorInfo.message}\nContexto: ${errorInfo.context || 'Não informado'}\nStack: ${errorInfo.stack || 'Não disponível'}`,
+      status: 'open',
+      createdAt: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    });
   }
 };
