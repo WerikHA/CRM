@@ -9,137 +9,68 @@ import { startBackupScheduler } from "./src/services/backupService.ts";
 import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } from "./src/services/paymentReminderService.ts";
 import { supabase } from "./src/lib/supabaseClient.ts";
 
+import { dbService, DbContext, UserRole } from "./src/services/dbService.ts";
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-
-// --- Database is now handled via Supabase ---
-
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
   app.use(express.json({ limit: "50mb" }));
-
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // --- Helpers for naming conversions ---
-  const toSnakeCase = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-  const toCamelCase = (str: string) => str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-
-  const keysToSnake = (obj: any) => {
-    if (typeof obj !== 'object' || obj === null) return obj;
-    if (Array.isArray(obj)) return obj.map(keysToSnake);
-    const n: any = {};
-    Object.keys(obj).forEach(k => {
-      n[toSnakeCase(k)] = keysToSnake(obj[k]);
-    });
-    return n;
+  // --- Middleware for typed user context ---
+  const getContext = (req: express.Request): DbContext | undefined => {
+    const userId = req.headers['x-user-id'] as string;
+    const userRole = req.headers['x-user-role'] as UserRole;
+    
+    if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      return { userId, userRole };
+    }
+    return undefined;
   };
 
-  const keysToCamel = (obj: any) => {
-    if (typeof obj !== 'object' || obj === null) return obj;
-    if (Array.isArray(obj)) return obj.map(keysToCamel);
-    const n: any = {};
-    Object.keys(obj).forEach(k => {
-      n[toCamelCase(k)] = keysToCamel(obj[k]);
-    });
-    return n;
-  };
-
-  // --- Helper to handle CRUD via Supabase with Privacy Filters ---
+  // --- Improved CRUD helper ---
   const supabaseCrud = (pathName: string, tableName: string) => {
     app.get(`/api/${pathName}`, async (req, res) => {
-      let userId = req.headers['x-user-id'] as string;
-      const userRole = req.headers['x-user-role'] as string;
-
-      // Sanitize userId. Use a dummy valid UUID if missing to avoid Postgres syntax errors.
-      const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId || "");
-      if (!isValidUUID) {
-        userId = "00000000-0000-0000-0000-000000000000";
+      try {
+        const data = await dbService.list(tableName, getContext(req));
+        res.json(data);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
       }
-
-      let query = supabase.from(tableName).select('*');
-
-      // Privacy logic
-      if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
-        if (tableName === 'clients') {
-          if (userRole === 'PARTNER') {
-            query = query.eq('partner_id', userId);
-          } else {
-            // DESIGNER, EDITOR only see what they are assigned to
-            query = query.or(`assigned_designer_id.eq.${userId},assigned_video_editor_id.eq.${userId}`);
-          }
-        } else if (tableName === 'users') {
-          // Team members only see themselves (ADMIN/OWNER see everyone via outer IF)
-          query = query.eq('id', userId);
-        } else if (tableName === 'art_orders' || tableName === 'video_orders' || tableName === 'demand_tasks') {
-          // Orders restricted to assigned users
-          const designerField = tableName === 'video_orders' ? 'editor_id' : (tableName === 'demand_tasks' ? 'editor_id' : 'designer_id');
-          query = query.eq(designerField, userId);
-        }
-      }
-
-      const { data, error } = await query;
-      if (error) {
-        // Gracefully handle missing tables (common in initial setup) by returning empty array
-        if (error.message.includes('schema cache') || error.code === '42P01') {
-          console.warn(`[SUPABASE] Table "${tableName}" not found, returning empty array. Make sure to run migrations.`);
-          return res.json([]);
-        }
-        return res.status(500).json({ error: error.message });
-      }
-      res.json(keysToCamel(data));
     });
     
     app.post(`/api/${pathName}`, async (req, res) => {
-      const payload = keysToSnake(req.body);
-      // Remove manual ID if provided as empty or generic string to let DB generate UUID
-      if (!payload.id || (typeof payload.id === 'string' && (payload.id.startsWith('u-') || payload.id.startsWith('c-') || payload.id.startsWith('dem-')))) {
-        delete payload.id;
+      try {
+        const data = await dbService.insert(tableName, req.body, getContext(req));
+        res.json(data);
+      } catch (error: any) {
+        console.error(`[API] Erro ao criar em ${tableName}:`, error);
+        res.status(500).json({ error: error.message });
       }
-
-      // Sanitize ID fields: empty string, "null", "undefined", or "system" string -> null
-      Object.keys(payload).forEach(key => {
-        if (key.endsWith('_id')) {
-          if (payload[key] === "" || payload[key] === "null" || payload[key] === "system" || payload[key] === "undefined") {
-            payload[key] = null;
-          }
-        }
-      });
-
-      const { data, error } = await supabase.from(tableName).insert(payload).select().single();
-      if (error) {
-        console.error(`[SUPABASE][${tableName}] Insert error:`, error);
-        return res.status(500).json({ error: error.message });
-      }
-      res.json(keysToCamel(data));
     });
 
     app.put(`/api/${pathName}/:id`, async (req, res) => {
-      const payload = keysToSnake(req.body);
-      // Sanitize ID fields: empty string, "null", or "undefined" string -> null
-      Object.keys(payload).forEach(key => {
-        if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null" || payload[key] === "undefined")) {
-          payload[key] = null;
-        }
-      });
-
-      const { data, error } = await supabase.from(tableName).update(payload).eq('id', req.params.id).select().single();
-      if (error) {
-        console.error(`[SUPABASE][${tableName}] Update error:`, error);
-        return res.status(500).json({ error: error.message });
+      try {
+        const data = await dbService.update(tableName, req.params.id, req.body, getContext(req));
+        res.json(data);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
       }
-      res.json(keysToCamel(data));
     });
 
     app.delete(`/api/${pathName}/:id`, async (req, res) => {
-      const { error } = await supabase.from(tableName).delete().eq('id', req.params.id);
-      if (error) return res.status(500).json({ error: error.message });
-      res.json({ success: true });
+      try {
+        const result = await dbService.delete(tableName, req.params.id, getContext(req));
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
     });
   };
 
@@ -222,23 +153,9 @@ async function startServer() {
   // --- CUSTOM DASHBOARD/DEMANDS SPECIFIC ROUTES ---
   // Must come before supabaseCrud to take precedence
   app.post("/api/demand-tasks", async (req, res) => {
-    const payload = keysToSnake(req.body);
-    // Let database generate the UUID
-    if (!payload.id || (typeof payload.id === 'string' && payload.id.startsWith('dem-'))) {
-      delete payload.id;
-    }
-
-    // Sanitize ID fields
-    Object.keys(payload).forEach(key => {
-      if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null" || payload[key] === "undefined")) {
-        payload[key] = null;
-      }
-    });
-
     try {
-      const { data, error } = await supabase.from('demand_tasks').insert(payload).select().single();
-      if (error) throw error;
-      res.json(keysToCamel(data));
+      const data = await dbService.insert('demand_tasks', req.body, getContext(req));
+      res.json(data);
     } catch (err: any) {
       console.error("[DEMANDS] Erro ao criar demanda:", err);
       res.status(500).json({ error: `Erro no banco de dados: ${err.message}` });
@@ -247,55 +164,27 @@ async function startServer() {
 
   app.put("/api/demand-tasks/:id", async (req, res) => {
     const { id } = req.params;
-    const updates = keysToSnake(req.body);
+    const updates = req.body;
     
-    // Sanitize ID fields
-    Object.keys(updates).forEach(key => {
-      if (key.endsWith('_id') && (updates[key] === "" || updates[key] === "null" || updates[key] === "undefined")) {
-        updates[key] = null;
-      }
-    });
-
     try {
-      const { data, error } = await supabase
-        .from('demand_tasks')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) {
-        console.error(`[DEMANDS] Supabase Update Error for ID ${id}:`, error);
-        throw error;
-      }
-      const updatedTask = keysToCamel(data);
+      const updatedTask = await dbService.update('demand_tasks', id, updates, getContext(req));
 
       // Special logic: if status set to 'done' and type is 'recording', create a video order
       if (updates.status === 'done' && updatedTask && updatedTask.type === 'recording') {
-        const { data: client, error: clientErr } = await supabase
-          .from('clients')
-          .select('*')
-          .eq('id', updatedTask.client_id)
-          .single();
+        const client = await dbService.list('clients', getContext(req)).then(list => list.find((c: any) => c.id === updatedTask.clientId));
         
-        if (!clientErr && client) {
-          // Calculate deadline: 12 hours before postTime on postDate
-          let deadlineStr = 'Imediato';
-          if (updatedTask.post_date) {
-              deadlineStr = updatedTask.post_date;
-          }
-
+        if (client) {
           const newVideoOrder = {
             title: `Edição: ${updatedTask.title || updatedTask.observations || 'Sem título'}`,
-            client_id: updatedTask.client_id,
-            editor_id: updatedTask.editor_id || client.demand_config?.defaultEditorId || '',
-            deadline: deadlineStr,
+            clientId: updatedTask.clientId,
+            editorId: updatedTask.editorId || client.demandConfig?.defaultEditorId || '',
+            deadline: updatedTask.postDate || 'Imediato',
             priority: 'high',
             progress: 0,
             status: 'queue'
           };
 
-          await supabase.from('video_orders').insert(newVideoOrder);
+          await dbService.insert('video_orders', newVideoOrder, getContext(req));
           console.log(`[DEMANDS] Video order created automatically for Recording Demand ${id}`);
         }
       }
@@ -352,7 +241,7 @@ async function startServer() {
       }
     },
     async (phone: string, message: string) => {
-        const { data: owner } = await supabase.from('users').select('id').eq('role', 'OWNER').limit(1).single();
+        const owner = await dbService.list('users', { userId: '', userRole: 'ADMIN' } as any).then(list => list.find((u: any) => u.role === 'OWNER'));
         if (owner) {
             return whatsappService.sendMessage(owner.id, phone, message);
         }
@@ -391,6 +280,39 @@ async function startServer() {
     }
   });
 
+  app.get("/api/system/audit-db", async (req, res) => {
+    const tables = [
+      "users", "clients", "leads", "receivables", "art_orders", 
+      "partners", "partner_requests", "support_tickets", "video_orders", 
+      "demand_tasks", "notifications", "prospecting_lists", 
+      "prospecting_leads", "campaigns", "message_history"
+    ];
+    
+    const results: any = {};
+    const missing = [];
+    
+    for (const table of tables) {
+      try {
+        const { error } = await supabase.from(table).select('id', { count: 'exact', head: true });
+        if (error) {
+          results[table] = { status: "error", message: error.message };
+          if (error.code === '42P01') missing.push(table);
+        } else {
+          results[table] = { status: "ok" };
+        }
+      } catch (err: any) {
+        results[table] = { status: "exception", message: err.message };
+      }
+    }
+    
+    res.json({
+      summary: missing.length === 0 ? "All tables found" : `${missing.length} tables missing`,
+      missing_count: missing.length,
+      missing_tables: missing,
+      details: results
+    });
+  });
+
   app.post("/api/signup", async (req, res) => {
     let { name, email, password } = req.body;
     if (!name || !email || !password) {
@@ -398,34 +320,24 @@ async function startServer() {
     }
 
     email = email.trim().toLowerCase();
-    const newUser = { name, email, password, role: 'OWNER' };
+    const newUser = { name, email, password, role: 'OWNER' as const };
 
     try {
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .single();
+      const users = await dbService.list('users');
+      const existingUser = users.find((u: any) => u.email === email);
         
       if (existingUser) {
         return res.status(400).json({ error: "E-mail já cadastrado" });
       }
 
-      const { data, error } = await supabase
-        .from('users')
-        .insert(newUser)
-        .select('id, name, email, role, avatar')
-        .single();
-        
-      if (error) throw error;
-
-      // Update owner_id to be same as own ID for OWNERs
-      await supabase.from('users').update({ owner_id: data.id }).eq('id', data.id);
+      const data = await dbService.insert('users', newUser);
       
-      res.json({ success: true, user: keysToCamel({ ...data, owner_id: data.id }) });
+      // Update owner_id to be same as own ID for OWNERs
+      await dbService.update('users', data.id, { ownerId: data.id });
+      
+      res.json({ success: true, user: { ...data, ownerId: data.id } });
     } catch (err: any) {
       console.error("[AUTH] Erro no signup:", err);
-      // Return the actual error message for easier debugging of connection issues
       res.status(500).json({ error: `Erro ao criar conta: ${err.message || 'Erro desconhecido'}` });
     }
   });
@@ -443,24 +355,17 @@ async function startServer() {
     console.log(`[AUTH] Tentativa de login para: ${email}`);
     
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, name, email, role, avatar')
-        .eq('email', email)
-        .eq('password', password)
-        .single();
+      const users = await dbService.list('users');
+      const data = users.find((u: any) => u.email === email && u.password === password);
         
-      if (error) {
-        console.log(`[AUTH] Falha no login: ${email}`, error.message);
-        // If it's a real database error (not just not found), return more detail
-        const isNotFound = error.code === 'PGRST116';
-        const msg = isNotFound ? "E-mail ou senha incorretos" : `Erro de banco de dados: ${error.message}`;
-        return res.status(isNotFound ? 401 : 500).json({ error: msg });
+      if (!data) {
+        console.log(`[AUTH] Falha no login: ${email}`);
+        return res.status(401).json({ error: "E-mail ou senha incorretos" });
       }
       
       console.log(`[AUTH] Login bem-sucedido: ${email}`);
-      res.json({ success: true, user: keysToCamel(data) });
-    } catch (err) {
+      res.json({ success: true, user: data });
+    } catch (err: any) {
       console.error(`[AUTH] Erro interno no login:`, err);
       res.status(500).json({ error: "Erro interno no servidor de autenticação" });
     }

@@ -88,26 +88,29 @@ export default function LandingPage({ onLogin, onSignup, agencyName, primaryColo
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-900 overflow-x-hidden">
       {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 bg-white/70 backdrop-blur-xl border-b border-slate-100">
+      <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-7xl mx-auto px-6 h-16 sm:h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 group cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-[0_8px_16px_rgba(79,70,229,0.3)] group-hover:scale-110 transition-transform">
-              <Zap size={18} fill="currentColor" />
+            <div 
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform"
+              style={{ backgroundColor: primaryColor }}
+            >
+              <Zap size={20} fill="currentColor" />
             </div>
-            <span className="text-xl font-black tracking-tighter text-slate-900 uppercase">{agencyName}</span>
+            <span className="text-xl font-bold font-display tracking-tight text-slate-900 uppercase">{agencyName}</span>
           </div>
 
           <div className="hidden md:flex items-center gap-10">
-            <a href="#features" className="text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors">Funcionalidades</a>
-            <a href="#workflow" className="text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors">Workflow</a>
-            <a href="#pricing" className="text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors">Preços</a>
-            <button onClick={onLogin} className="text-sm font-bold text-slate-900 hover:opacity-70 transition-opacity">Entrar</button>
+            <a href="#features" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Funcionalidades</a>
+            <a href="#workflow" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Como Funciona</a>
+            <a href="#pricing" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Preços</a>
+            <button onClick={onLogin} className="text-xs font-bold uppercase tracking-widest text-slate-900 hover:opacity-70 transition-opacity">Entrar</button>
             <button 
               onClick={onSignup}
-              className="px-6 py-2.5 rounded-full text-sm font-bold text-white shadow-[0_10px_20px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 active:translate-y-0 transition-all"
+              className="px-8 py-3 rounded-full text-xs font-bold uppercase tracking-widest text-white shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all"
               style={{ backgroundColor: primaryColor }}
             >
-              Começar Grátis
+              Começar Agora
             </button>
           </div>
 
@@ -115,136 +118,77 @@ export default function LandingPage({ onLogin, onSignup, agencyName, primaryColo
             {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
-
-        {/* Mobile Menu */}
-        <AnimatePresence>
-          {isMenuOpen && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="md:hidden bg-white border-b border-slate-100 overflow-hidden"
-            >
-              <div className="p-6 space-y-4">
-                <a href="#features" className="block text-lg font-bold text-slate-700" onClick={() => setIsMenuOpen(false)}>Funcionalidades</a>
-                <a href="#workflow" className="block text-lg font-bold text-slate-700" onClick={() => setIsMenuOpen(false)}>Como Funciona</a>
-                <div className="pt-4 flex flex-col gap-3">
-                  <button onClick={onLogin} className="w-full py-4 text-center border border-slate-100 rounded-2xl font-bold">Login</button>
-                  <button 
-                    onClick={onSignup} 
-                    className="w-full py-4 text-center text-white rounded-2xl font-bold shadow-lg"
-                    style={{ backgroundColor: primaryColor }}
-                  >
-                    Cadastrar-se
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-48 pb-32 px-6 overflow-hidden">
-        {/* Background Decorative Elements */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[800px] -z-10 overflow-hidden">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 blur-[120px] rounded-full animate-pulse" />
-          <div className="absolute bottom-[20%] right-[-5%] w-[35%] h-[35%] bg-blue-500/10 blur-[120px] rounded-full animate-pulse" style={{ animationDelay: '2s' }} />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_transparent_0%,_white_100%)]" />
-        </div>
-
+      <section className="relative pt-48 pb-32 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center text-center">
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="group mb-10 inline-flex items-center gap-3 px-4 py-2 rounded-full bg-slate-50 border border-slate-100 hover:border-indigo-200 transition-colors backdrop-blur-sm cursor-pointer"
+              className="mb-8 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-100"
             >
-              <span className="flex h-2 w-2 rounded-full bg-indigo-600 animate-ping" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 group-hover:text-indigo-600 transition-colors">Nova versão 2.4 disponível</span>
-              <ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-600 transition-colors" />
+              <span className="flex h-1.5 w-1.5 rounded-full bg-indigo-600" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Sistema Operacional de Agências</span>
             </motion.div>
 
             <motion.h1 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-6xl sm:text-8xl md:text-[9rem] font-black text-slate-900 leading-[0.85] tracking-[-0.04em] mb-12"
+              className="text-5xl sm:text-7xl md:text-9xl font-black font-display text-slate-900 leading-[0.9] tracking-tight mb-8"
             >
-              Transforme caos <br /> em <span className="relative inline-block">
-                <span className="relative z-10 text-indigo-600 italic">escala.</span>
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: '100%' }}
-                  transition={{ delay: 0.5, duration: 0.8 }}
-                  className="absolute bottom-4 left-0 h-4 bg-indigo-100 -z-10" 
-                />
-              </span>
+              Domine sua agência <br /> 
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-500 italic">com precisão.</span>
             </motion.h1>
 
             <motion.p 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="text-xl sm:text-3xl text-slate-500 max-w-3xl mx-auto leading-tight mb-16 font-medium tracking-tight"
+              className="text-lg sm:text-2xl text-slate-500 max-w-2xl mx-auto leading-relaxed mb-12 font-medium"
             >
-              O sistema operacional definitivo para agências que não aceitam mediocridade. Gestão, aprovação e lucro em um só lugar.
+              A plataforma completa para gerenciar leads, automações e criativos em um ambiente profissional projetado para escala.
             </motion.p>
 
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="flex flex-col sm:flex-row items-center gap-6 mb-32"
+              className="flex flex-col sm:flex-row items-center gap-4 mb-24"
             >
               <button 
                 onClick={onSignup}
-                className="w-full sm:w-auto px-14 py-6 rounded-full text-xl font-black text-white shadow-[0_25px_50px_-12px_rgba(79,70,229,0.5)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-4 bg-indigo-600 uppercase tracking-widest"
+                className="w-full sm:w-auto px-10 py-5 rounded-full text-sm font-bold text-white shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-3 uppercase tracking-widest"
+                style={{ backgroundColor: primaryColor }}
               >
-                Inicie sua Jornada
-                <ArrowRight size={24} />
+                Ativar Minha Agência
+                <ArrowRight size={18} />
               </button>
               <button 
                 onClick={onLogin}
-                className="group w-full sm:w-auto px-14 py-6 rounded-full text-xl font-black text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 transition-all flex items-center gap-3 uppercase tracking-widest"
+                className="w-full sm:w-auto px-10 py-5 rounded-full text-sm font-bold text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 transition-all uppercase tracking-widest"
               >
-                Explorar Demo
+                Acessar Plataforma
               </button>
             </motion.div>
 
             <motion.div 
-              initial={{ opacity: 0, y: 100 }}
+              initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4, duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-              className="relative w-full max-w-6xl mx-auto"
+              transition={{ delay: 0.4, duration: 1 }}
+              className="relative w-full max-w-6xl mx-auto rounded-[3rem] border border-slate-100 shadow-2xl shadow-slate-200/50 bg-slate-50 overflow-hidden"
             >
-              <div className="absolute -inset-10 bg-indigo-500/10 rounded-[4rem] blur-3xl -z-10 opacity-50" />
-              <div className="relative bg-white rounded-[3.5rem] p-4 sm:p-6 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.15)] border border-slate-100 overflow-hidden">
-                 <div className="absolute top-0 left-0 w-full h-12 bg-slate-50/50 flex items-center px-8 gap-2 border-b border-slate-100">
-                    <div className="w-3 h-3 rounded-full bg-slate-200" />
-                    <div className="w-3 h-3 rounded-full bg-slate-200" />
-                    <div className="w-3 h-3 rounded-full bg-slate-200" />
-                 </div>
-                 <img 
-                   src="https://i.ibb.co/1YbdN8bj/Captura-de-tela-2026-04-25-082006.png" 
-                   alt="Dashboard" 
-                   className="w-full h-auto rounded-[2.5rem] mt-10 shadow-sm"
-                 />
-                 
-                 {/* Floating Glass UI Elements */}
-                 <motion.div 
-                   animate={{ y: [0, -15, 0] }}
-                   transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
-                   className="absolute top-4/6 -right--1 hidden xl:flex flex-col gap-4 p-8 bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border border-white/20 max-w-[350px]"
-                 >
-                   <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg">
-                     <Cpu size={24} />
-                   </div>
-                   <div className="space-y-2">
-                     <p className="text-sm font-black text-slate-900 uppercase tracking-widest">Automação Ativa</p>
-                     <p className="text-xs text-slate-500 font-medium leading-relaxed">Sincronizando 12 fontes de leads em tempo real.</p>
-                   </div>
-                 </motion.div>
+              <div className="absolute top-0 left-0 w-full h-10 bg-white border-b border-slate-100 flex items-center px-6 gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-slate-200" />
+                <div className="w-2.5 h-2.5 rounded-full bg-slate-200" />
+                <div className="w-2.5 h-2.5 rounded-full bg-slate-200" />
               </div>
+              <img 
+                src="https://i.ibb.co/1YbdN8bj/Captura-de-tela-2026-04-25-082006.png" 
+                alt="Amplifica CRM Dashboard" 
+                className="w-full h-auto mt-10 rounded-b-[2.5rem]"
+              />
             </motion.div>
           </div>
         </div>

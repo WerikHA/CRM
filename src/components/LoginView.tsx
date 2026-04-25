@@ -33,13 +33,13 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-100 via-white to-gray-50">
+    <div className="min-h-screen bg-white flex items-center justify-center p-6">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        <div className="text-center mb-8 relative">
+        <div className="text-center mb-10 relative">
           {onBack && (
             <button 
               onClick={onBack}
@@ -48,18 +48,16 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
               <ArrowLeft size={24} />
             </button>
           )}
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-indigo-600 text-white shadow-xl shadow-indigo-200 mb-6 group transition-transform hover:scale-110">
-            <Zap className="w-8 h-8 group-hover:animate-pulse" />
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 text-white shadow-lg mb-6">
+            <Zap className="w-7 h-7" />
           </div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-2">Amplifica <span className="text-indigo-600">CRM</span></h1>
-          <p className="text-gray-500 font-medium">
-            {mode === 'login' ? 'Acesso restrito para parceiros e admins' : 'Crie sua conta administrativa (OWNER)'}
+          <h1 className="text-4xl font-black font-display text-gray-900 tracking-tight mb-2 uppercase">Amplifica <span className="text-indigo-600 italic">CRM</span></h1>
+          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest px-4">
+            {mode === 'login' ? 'Autenticação de Usuário' : 'Novo Registro Administrativo'}
           </p>
         </div>
 
-        <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-gray-200/50 border border-gray-100 p-10 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1.5 bg-indigo-600" />
-          
+        <div className="bg-white rounded-[2rem] border border-gray-100 p-8 sm:p-12 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-6">
             {mode === 'signup' && (
               <motion.div

@@ -17,6 +17,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
+import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Lead, Client, Receivable, ArtOrder, User, Partner, PartnerRequest, VideoOrder } from '../types';
 
@@ -32,37 +33,42 @@ interface DashboardViewProps {
   currentUser: User;
 }
 
-const StatCard = ({ title, value, change, icon: Icon, color }: any) => (
-  <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden group transition-all duration-300">
+const StatCard = ({ title, value, change, icon: Icon, color, index }: any) => (
+  <motion.div 
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: index * 0.1 }}
+    className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden group transition-all duration-300"
+  >
     <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 opacity-[0.03] transition-transform group-hover:scale-110 duration-500`} style={{ color }}>
       <Icon size={96} />
     </div>
     <div className="flex items-start justify-between">
       <div>
-        <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</p>
-        <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</h3>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1">{title}</p>
+        <h3 className="text-3xl font-black font-display text-gray-900 dark:text-gray-100">{value}</h3>
       </div>
-              <div className={cn(
-                "p-2.5 rounded-xl transition-colors duration-300",
-                color === '#6366f1' ? "bg-indigo-50/50 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-400" : 
-                color === '#10b981' ? "bg-emerald-50/50 dark:bg-emerald-500/10 text-emerald-500 dark:text-emerald-400" : 
-                color === '#f59e0b' ? "bg-amber-50/50 dark:bg-amber-500/10 text-amber-500 dark:text-amber-400" : 
-                "bg-rose-50/50 dark:bg-rose-500/10 text-rose-500 dark:text-rose-400"
-              )}>
+      <div className={cn(
+        "p-2.5 rounded-xl transition-colors duration-300",
+        color === '#6366f1' ? "bg-indigo-50/50 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-400" : 
+        color === '#10b981' ? "bg-emerald-50/50 dark:bg-emerald-500/10 text-emerald-500 dark:text-emerald-400" : 
+        color === '#f59e0b' ? "bg-amber-50/50 dark:bg-amber-500/10 text-amber-500 dark:text-amber-400" : 
+        "bg-rose-50/50 dark:bg-rose-500/10 text-rose-500 dark:text-rose-400"
+      )}>
         <Icon size={20} />
       </div>
     </div>
     <div className="mt-4 flex items-center gap-2">
       <span className={cn(
-        "flex items-center text-xs font-bold px-1.5 py-0.5 rounded-lg",
+        "flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-lg",
         change > 0 ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10" : "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10"
       )}>
         {change > 0 ? <ArrowUpRight size={12} className="mr-1" /> : <ArrowDownRight size={12} className="mr-1" />}
         {Math.abs(change)}%
       </span>
-      <span className="text-xs text-gray-400 dark:text-gray-500 font-medium whitespace-nowrap">vs. mês passado</span>
+      <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-tight whitespace-nowrap">vs. período anterior</span>
     </div>
-  </div>
+  </motion.div>
 );
 
 export default function DashboardView({ leads, clients, receivables, artOrders, videoOrders = [], partners, partnerRequests, onViewChange, currentUser }: DashboardViewProps) {
@@ -326,16 +332,18 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
           change={12.5} 
           icon={DollarSign} 
           color="#6366f1" 
+          index={0}
         />
-        {isAdminOrOwner && <StatCard title="Leads Ativos" value={leads.length} change={8.2} icon={TrendingUp} color="#10b981" />}
+        {isAdminOrOwner && <StatCard title="Leads Ativos" value={leads.length} change={8.2} icon={TrendingUp} color="#10b981" index={1} />}
         <StatCard 
           title={isPartner ? "Clientes em Parceria" : "Clientes Ativos"} 
           value={filteredClients.length} 
           change={0} 
           icon={Users} 
           color="#f59e0b" 
+          index={2}
         />
-        <StatCard title="Produções Ativas" value={activeOrdersCount} change={-4.1} icon={Palette} color="#ec4899" />
+        <StatCard title="Produções Ativas" value={activeOrdersCount} change={-4.1} icon={Palette} color="#ec4899" index={3} />
         {isPartner && <StatCard title="Tickets de Suporte" value={0} change={0} icon={TrendingUp} color="#10b981" />}
         
         {!isAdminOrOwner && (
