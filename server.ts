@@ -348,11 +348,19 @@ async function startServer() {
   });
 
   app.get("/api/whatsapp/logs", (req, res) => {
+    const { ownerId } = req.query;
     try {
       const logPath = path.join(process.cwd(), "whatsapp_interaction_logs.txt");
       if (fs.existsSync(logPath)) {
         const logs = fs.readFileSync(logPath, "utf-8");
-        res.send(logs);
+        if (ownerId) {
+          const filtered = logs.split('\n')
+            .filter(line => line.includes(`[Owner: ${ownerId}]`))
+            .join('\n');
+          res.send(filtered || "Sem logs registrados para este proprietário.");
+        } else {
+          res.send(logs);
+        }
       } else {
         res.send("Sem logs registrados ainda.");
       }
@@ -379,6 +387,13 @@ async function startServer() {
     const { ownerId } = req.body;
     if (!ownerId) return res.status(400).json({ error: "ownerId é obrigatório" });
     await whatsappService.logout(ownerId);
+    res.json({ success: true });
+  });
+  
+  app.post("/api/whatsapp/reload", async (req, res) => {
+    const { ownerId } = req.body;
+    if (!ownerId) return res.status(400).json({ error: "ownerId é obrigatório" });
+    await whatsappService.reload(ownerId);
     res.json({ success: true });
   });
 

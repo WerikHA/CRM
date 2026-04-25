@@ -19,7 +19,7 @@ import pino from "pino";
 import crypto from "crypto";
 import NodeCache from "node-cache";
 
-const logger = pino({ level: "silent" });
+const logger = pino({ level: "warn" });
 const msgRetryCounterCache = new NodeCache();
 
 interface SentPollData {
@@ -75,8 +75,22 @@ export class WhatsAppService extends EventEmitter {
     fs.writeFileSync(this.pollStorePath, JSON.stringify(this.pollStore));
   }
 
+  private logInteraction(ownerId: string, message: string) {
+    try {
+      const logPath = path.join(process.cwd(), "whatsapp_interaction_logs.txt");
+      const timestamp = new Date().toLocaleString("pt-BR");
+      const logLine = `[${timestamp}][Owner: ${ownerId}] ${message}\n`;
+      fs.appendFileSync(logPath, logLine);
+    } catch (err) {
+      console.error("[WHATSAPP] Erro ao gravar log:", err);
+    }
+  }
+
   public async initSession(ownerId: string) {
-    if (this.initializingSessions.has(ownerId)) return;
+    if (this.initializingSessions.has(ownerId)) {
+      console.log(`[WHATSAPP] Sessão ${ownerId} já está em inicialização...`);
+      return;
+    }
     this.initializingSessions.add(ownerId);
 
     const sessionAuthDir = path.join(this.authBaseDir, `auth_${ownerId}`);
@@ -97,7 +111,15 @@ export class WhatsAppService extends EventEmitter {
       }
 
       const { state, saveCreds } = await useMultiFileAuthState(sessionAuthDir);
-      const { version, isLatest } = await fetchLatestBaileysVersion();
+      
+      let version: any = [2, 3000, 1015901307];
+      try {
+        const { version: latestVersion } = await fetchLatestBaileysVersion();
+        version = latestVersion;
+        console.log(`[WHATSAPP] Usando versão: ${version.join(".")}`);
+      } catch (err) {
+        console.error("[WHATSAPP] Erro ao buscar versão do Baileys, usando fallback:", err);
+      }
 
       const socket = makeWASocket({
         version,
@@ -106,19 +128,18 @@ export class WhatsAppService extends EventEmitter {
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
-        browser: Browsers.ubuntu("Chrome"),
+        browser: Browsers.macOS("Chrome"),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: true,
-        connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 60000,
-        keepAliveIntervalMs: 30000,
+        connectTimeoutMs: 120000,
+        defaultQueryTimeoutMs: 120000,
+        keepAliveIntervalMs: 25000,
         retryRequestDelayMs: 5000,
         msgRetryCounterCache,
         logger,
         qrTimeout: 180000,
         generateHighQualityLinkPreview: false,
-        linkPreviewImageThumbnailWidth: 192,
       });
 
       this.sessions[ownerId] = socket;
@@ -166,7 +187,7 @@ export class WhatsAppService extends EventEmitter {
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
             console.log(
-              `[WHATSAPP] Sessão ${ownerId} fechada. Código: ${statusCode}. Reconnecting: ${shouldReconnect}`,
+              `[WHATSAPP] Sessão ${ownerId} fechada. Código: ${statusCode}. Reconnecting: ${shouldReconnect}. Motivo: ${message}`,
             );
 
             this.sessionStatus[ownerId] = "disconnected";
@@ -187,6 +208,7 @@ export class WhatsAppService extends EventEmitter {
             }
           } else if (connection === "open") {
             console.log(`[WHATSAPP] Sessão ${ownerId} conectada com sucesso!`);
+            this.logInteraction(ownerId, "Sessão Conectada com Sucesso.");
             this.sessionStatus[ownerId] = "connected";
             this.qrDataUrls[ownerId] = null;
             this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
@@ -307,6 +329,19 @@ export class WhatsAppService extends EventEmitter {
     this.initSession(ownerId);
   }
 
+  public async reload(ownerId: string) {
+    const socket = this.sessions[ownerId];
+    if (socket) {
+      try {
+        socket.end();
+      } catch (e) {}
+      delete this.sessions[ownerId];
+    }
+    this.sessionStatus[ownerId] = "disconnected";
+    this.initializingSessions.delete(ownerId);
+    this.initSession(ownerId);
+  }
+
   public async sendMessage(
     ownerId: string,
     phone: string,
@@ -322,6 +357,8 @@ export class WhatsAppService extends EventEmitter {
     if (!formattedPhone.startsWith("55")) formattedPhone = `55${formattedPhone}`;
 
     const jid = `${formattedPhone}@s.whatsapp.net`;
+
+    this.logInteraction(ownerId, `Enviando mensagem para ${phone}: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
 
     if (mediaBase64) {
       const buffer = Buffer.from(mediaBase64.split(",")[1] || mediaBase64, "base64");
@@ -348,6 +385,8 @@ export class WhatsAppService extends EventEmitter {
 
     const jid = `${formattedPhone}@s.whatsapp.net`;
 
+    this.logInteraction(ownerId, `Enviando enquete para ${phone}: ${pollName}`);
+
     const result = await socket.sendMessage(jid, {
       poll: {
         name: pollName,
@@ -372,6 +411,9 @@ export class WhatsAppService extends EventEmitter {
   }
 
   public getStatus(ownerId: string) {
+    if (!this.sessions[ownerId] && !this.initializingSessions.has(ownerId)) {
+      this.initSession(ownerId).catch(err => console.error(`[WHATSAPP] Failed to auto-init session for ${ownerId}:`, err));
+    }
     return { status: this.sessionStatus[ownerId] || "disconnected", qr: this.qrDataUrls[ownerId] || null };
   }
 }

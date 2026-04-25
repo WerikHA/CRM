@@ -15,6 +15,7 @@ Este CRM foi preparado para rodar em containers Docker, garantindo persistência
    - `VITE_COMPANY_NAME`: O nome da sua agência (White Label).
    - `SUPABASE_URL`: A URL do seu projeto no Supabase (Ex: `https://xyz.supabase.co`). **Atenção**: Deve terminar em `.co`, não `.com`.
    - `SUPABASE_ANON_KEY`: A chave anônima (anon key) do Supabase.
+   - `SUPABASE_SERVICE_ROLE_KEY`: A chave de serviço (service role) do Supabase. **Importante**: Use esta chave para evitar erros de "Row-Level Security" ao salvar dados.
    - `GEMINI_API_KEY`: Sua chave da API Gemini (opcional).
 5. **Instalar**: Clique em "Install".
 

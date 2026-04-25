@@ -95,25 +95,32 @@ export default function PartnersView({
     setIsAgencyModalOpen(true);
   };
 
-  const handleAgencySubmit = (e: React.FormEvent) => {
+  const handleAgencySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingAgency) {
-      setPartners(prev => prev.map(p => p.id === editingAgency.id ? { ...p, ...agencyFormData } as Partner : p));
-    } else {
-      const newPartner: Partner = {
-        ...agencyFormData,
-        id: 'p' + Math.random().toString(36).substring(2, 9)
-      } as Partner;
-      setPartners(prev => [...prev, newPartner]);
+    try {
+      if (editingAgency) {
+        const updated = await api.updatePartner(editingAgency.id, agencyFormData);
+        setPartners(prev => prev.map(p => p.id === editingAgency.id ? { ...p, ...updated } : p));
+      } else {
+        const newPartner: Partner = {
+          ...agencyFormData,
+          id: 'p' + Math.random().toString(36).substring(2, 9),
+          ownerId: currentUser.id
+        } as Partner;
+        const created = await api.createPartner(newPartner);
+        setPartners(prev => [...prev, created]);
+      }
+      setIsAgencyModalOpen(false);
+    } catch (err: any) {
+      alert('Erro ao salvar agência: ' + err.message);
     }
-    setIsAgencyModalOpen(false);
   };
 
   const handleDeleteAgency = async (id: string) => {
     if (!window.confirm('Tem certeza que deseja excluir esta agência parceira?')) return;
     try {
+      await api.deletePartner(id);
       setPartners(prev => prev.filter(p => p.id !== id));
-      // Optionally notify API if needed
     } catch (err: any) {
       alert('Erro ao excluir agência: ' + err.message);
     }

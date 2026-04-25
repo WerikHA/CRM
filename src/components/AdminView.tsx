@@ -6,9 +6,10 @@ import { IntegrationConfig, Lead, Client, ArtOrder, Receivable, User } from '../
 import Modal from './Modal';
 
 // Componente Interno para Gestão do QR do WhatsApp Cloud
-function N8nLogs() {
+function N8nLogs({ isAdmin }: { isAdmin: boolean }) {
   const [logs, setLogs] = useState<string>('');
   useEffect(() => {
+    if (!isAdmin) return;
     const fetchLogs = async () => {
       try {
         const res = await fetch('/api/n8n/logs');
@@ -18,10 +19,38 @@ function N8nLogs() {
     fetchLogs();
     const interval = setInterval(fetchLogs, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAdmin]);
+
+  if (!isAdmin) return null;
+
   return (
     <div className="font-mono text-[10px] text-indigo-400 dark:text-indigo-300">
       {logs ? logs.split('\n').map((line, i) => <div key={i}>{line}</div>) : 'Nenhum log disponível...'}
+    </div>
+  );
+}
+
+function WhatsAppAccountLogs({ userId }: { userId: string }) {
+  const [logs, setLogs] = useState<string>('');
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const res = await fetch(`/api/whatsapp/logs?ownerId=${userId}`);
+        if (res.ok) setLogs(await res.text());
+      } catch (err) {}
+    };
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 5000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  return (
+    <div className="font-mono text-[10px] text-emerald-400">
+      {logs ? logs.split('\n').map((line, i) => (
+        <div key={i} className="mb-1 leading-relaxed">
+          <span className="opacity-40">{i+1}</span> {line}
+        </div>
+      )) : 'Nenhum log disponível para este usuário...'}
     </div>
   );
 }
@@ -87,11 +116,13 @@ function DatabaseStatus() {
   );
 }
 
-function WhatsAppConfig({ ownerId, isOwner }: { ownerId: string, isOwner: boolean }) {
+function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, isAdmin: boolean, currentUserId: string }) {
   const [status, setStatus] = useState<'disconnected' | 'qr' | 'connected'>('disconnected');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<string>('');
+
+  const canControl = isAdmin || ownerId === currentUserId;
 
   const fetchStatus = async () => {
     try {
@@ -102,8 +133,8 @@ function WhatsAppConfig({ ownerId, isOwner }: { ownerId: string, isOwner: boolea
         setQrCode(data.qr);
       }
       
-      if (isOwner) {
-        const logsRes = await fetch('/api/whatsapp/logs');
+      if (isAdmin) {
+        const logsRes = await fetch(`/api/whatsapp/logs?ownerId=${ownerId}`);
         if (logsRes.ok) {
           const text = await logsRes.text();
           setLogs(text);
@@ -123,7 +154,7 @@ function WhatsAppConfig({ ownerId, isOwner }: { ownerId: string, isOwner: boolea
   }, [ownerId]);
 
   const handleLogout = async () => {
-    if (!isOwner) return;
+    if (!canControl) return;
     setLoading(true);
     await fetch('/api/whatsapp/logout', { 
       method: 'POST',
@@ -155,15 +186,32 @@ function WhatsAppConfig({ ownerId, isOwner }: { ownerId: string, isOwner: boolea
             <button onClick={fetchStatus} className="p-2 text-gray-400 dark:text-gray-500 hover:text-emerald-500 dark:hover:text-emerald-400 transition-all">
                <RefreshCcw size={16} />
             </button>
-            {status === 'connected' && isOwner && (
-              <button onClick={handleLogout} className="px-4 py-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 font-bold text-xs rounded-xl transition-all shadow-sm border border-rose-100 dark:border-rose-500/20">
-                  Desconectar
-              </button>
+            {status === 'connected' && canControl && (
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={async () => {
+                    setLoading(true);
+                    await fetch('/api/whatsapp/reload', { 
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ ownerId })
+                    });
+                    await fetchStatus();
+                  }} 
+                  className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 font-bold text-xs rounded-xl transition-all shadow-sm border border-amber-100 dark:border-amber-500/20"
+                  title="Reinicia a conexão sem deslogar completamente"
+                >
+                    Reiniciar
+                </button>
+                <button onClick={handleLogout} className="px-4 py-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 font-bold text-xs rounded-xl transition-all shadow-sm border border-rose-100 dark:border-rose-500/20">
+                    Sair / Desconectar
+                </button>
+              </div>
             )}
           </div>
        </div>
 
-       {status === 'qr' && qrCode && isOwner && (
+       {status === 'qr' && qrCode && canControl && (
          <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl bg-white dark:bg-gray-900 transition-colors">
             <h4 className="font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors uppercase tracking-tight">Leia o QR Code</h4>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 text-center max-w-sm transition-colors">Abra o WhatsApp no seu celular, vá em "Aparelhos Conectados" e aponte a câmera para este código.</p>
@@ -173,7 +221,7 @@ function WhatsAppConfig({ ownerId, isOwner }: { ownerId: string, isOwner: boolea
          </div>
        )}
 
-       {status === 'qr' && !isOwner && (
+       {status === 'qr' && !canControl && (
          <div className="p-8 text-center bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20 rounded-3xl">
             <AlertTriangle size={32} className="mx-auto text-amber-500 mb-3" />
             <p className="text-sm font-bold text-amber-700 dark:text-amber-400">Aguardando Conexão do Proprietário</p>
@@ -181,7 +229,7 @@ function WhatsAppConfig({ ownerId, isOwner }: { ownerId: string, isOwner: boolea
          </div>
        )}
 
-       {status === 'disconnected' && isOwner && (
+       {status === 'disconnected' && canControl && (
          <div className="flex flex-col items-center justify-center p-12 text-center bg-gray-50 dark:bg-gray-800 rounded-3xl transition-colors">
            <AlertTriangle size={48} className="text-amber-400 mb-4" />
            <p className="font-bold text-gray-900 dark:text-gray-100 transition-colors tracking-tight uppercase">Serviço Offline</p>
@@ -193,7 +241,7 @@ function WhatsAppConfig({ ownerId, isOwner }: { ownerId: string, isOwner: boolea
        )}
 
        {/* Logs Area */}
-       {isOwner && (
+       {isAdmin && (
          <div className="mt-8 space-y-3">
             <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
               <Activity size={12} /> Log de Interações Recentes
@@ -244,12 +292,25 @@ export default function AdminView({
 }: AdminViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'personalizacao' | 'whatsapp'>('integrations');
   const isOwner = currentUser.role === 'OWNER';
+  const isAdmin = currentUser.role === 'ADMIN';
+  const canManageSystem = isOwner || isAdmin;
 
   const [copied, setCopied] = useState<string | null>(null);
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditResults, setAuditResults] = useState<any>(null);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
+  const [isUserLogsModalOpen, setIsUserLogsModalOpen] = useState(false);
+  const [viewingUserLogs, setViewingUserLogs] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [editUserData, setEditUserData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'DESIGNER' as User['role']
+  });
   const [inviteData, setInviteData] = useState({
     name: '',
     email: '',
@@ -274,8 +335,54 @@ export default function AdminView({
     handleCopy(link, 'invite-link');
   };
 
+  const handleGenerateTempPassword = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    let pass = "";
+    for (let i = 0; i < 10; i++) {
+        pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setEditUserData(prev => ({ ...prev, password: pass }));
+    setTempPassword(pass);
+  };
+
   const handleToggleIntegration = (id: string) => {
     setIntegrations(prev => prev.map(i => i.id === id ? { ...i, isActive: !i.isActive } : i));
+  };
+
+  const handleOpenEditUser = (user: User) => {
+      setEditingUser(user);
+      setEditUserData({
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          password: ''
+      });
+      setTempPassword(null);
+      setIsEditUserModalOpen(true);
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editingUser) return;
+
+      const updates: any = {
+          name: editUserData.name,
+          email: editUserData.email,
+          role: editUserData.role
+      };
+
+      if (editUserData.password) {
+          updates.password = editUserData.password;
+      }
+
+      try {
+          const updated = await api.updateUser(editingUser.id, updates);
+          setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updated } : u));
+          setIsEditUserModalOpen(false);
+          alert('Usuário atualizado com sucesso!');
+      } catch (error) {
+          alert('Erro ao atualizar usuário: ' + (error as Error).message);
+      }
   };
 
   const handleInviteMember = async (e: React.FormEvent) => {
@@ -286,7 +393,7 @@ export default function AdminView({
       email: inviteData.email,
       role: inviteData.role,
       password: inviteData.password,
-      ownerId: currentUser.role === 'OWNER' ? currentUser.id : currentUser.ownerId,
+      ownerId: (currentUser.role === 'OWNER' || currentUser.role === 'ADMIN') ? currentUser.id : currentUser.ownerId,
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteData.name)}&background=random`
     };
     
@@ -455,9 +562,9 @@ export default function AdminView({
               activeSubTab === 'users' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             )}
           >
-            <Shield size={18} /> Membros da Equipe
+            <Shield size={18} /> {isAdmin ? 'Gestão de Usuários' : 'Membros da Equipe'}
           </button>
-          {!isOwner && (
+          {isAdmin && (
             <button 
               onClick={() => setActiveSubTab('database')}
               className={cn(
@@ -483,7 +590,9 @@ export default function AdminView({
         <div className="lg:col-span-2 space-y-6">
           {activeSubTab === 'integrations' && (
             <div className="space-y-6">
-              {integrations.map((integration) => (
+              {integrations
+                .filter(i => isAdmin || i.type === 'whatsapp')
+                .map((integration) => (
                 <div key={integration.id} className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-all duration-300">
                   <div className="p-6 border-b border-gray-50 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-800/30 flex items-center justify-between transition-colors">
                     <div className="flex items-center gap-4">
@@ -504,8 +613,9 @@ export default function AdminView({
                      {integration.type === 'whatsapp' ? (
                        <div className="space-y-4">
                          <WhatsAppConfig 
-                           ownerId={currentUser.role === 'OWNER' ? currentUser.id : currentUser.ownerId || ''} 
-                           isOwner={currentUser.role === 'OWNER'} 
+                           ownerId={canManageSystem ? currentUser.id : currentUser.ownerId || ''} 
+                           isAdmin={isAdmin} 
+                           currentUserId={currentUser.id}
                          />
                          <a 
                            href="https://web.whatsapp.com" 
@@ -602,12 +712,34 @@ export default function AdminView({
                          user.role === 'ADMIN' ? 'ADMIN' : 
                          user.role === 'PARTNER' ? 'PARCEIRO' : user.role}
                       </span>
-                       <button 
-                        onClick={() => handleRemoveUser(user.id)}
-                        className="p-2 text-gray-300 dark:text-gray-600 hover:text-rose-500 dark:hover:text-rose-400 transition-all opacity-0 group-hover:opacity-100"
-                       >
-                        <Trash2 size={16} />
-                       </button>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                         {canManageSystem && (
+                           <button 
+                            onClick={() => {
+                              setViewingUserLogs(user);
+                              setIsUserLogsModalOpen(true);
+                            }}
+                            className="p-2 text-gray-300 dark:text-gray-600 hover:text-emerald-500 dark:hover:text-emerald-400 transition-all"
+                            title="Ver Logs do WhatsApp"
+                           >
+                            <Activity size={16} />
+                           </button>
+                         )}
+                         <button 
+                          onClick={() => handleOpenEditUser(user)}
+                          className="p-2 text-gray-300 dark:text-gray-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-all"
+                          title="Editar Usuário / Alterar Senha"
+                         >
+                          <Settings size={16} />
+                         </button>
+                         <button 
+                          onClick={() => handleRemoveUser(user.id)}
+                          className="p-2 text-gray-300 dark:text-gray-600 hover:text-rose-500 dark:hover:text-rose-400 transition-all"
+                          title="Excluir Usuário"
+                         >
+                          <Trash2 size={16} />
+                         </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -615,7 +747,7 @@ export default function AdminView({
             </div>
           )}
 
-          {activeSubTab === 'database' && (
+          {activeSubTab === 'database' && isAdmin && (
             <DatabaseStatus />
           )}
 
@@ -631,7 +763,7 @@ export default function AdminView({
                   </div>
                </div>
                <div className="p-8">
-                 <WhatsAppConfig ownerId={currentUser.id} isOwner={isOwner} />
+                 <WhatsAppConfig ownerId={currentUser.id} isAdmin={isAdmin} currentUserId={currentUser.id} />
                </div>
             </div>
           )}
@@ -731,14 +863,14 @@ export default function AdminView({
                   </div>
                </div>
 
-               {/* N8n Logs Area */}
-               {isOwner && (
+        {/* N8n Logs Area */}
+               {isAdmin && (
                  <div className="space-y-3 mt-8 pt-6 border-t border-gray-50 dark:border-gray-800 transition-colors">
                     <h4 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2 transition-colors uppercase justify-center">
                        <Activity size={12} /> Log de Interações n8n Recentes (Webhooks)
                     </h4>
                     <div className="bg-gray-900 dark:bg-black rounded-2xl p-4 font-mono text-[10px] h-40 overflow-y-auto border border-gray-800 dark:border-gray-900 shadow-inner transition-colors">
-                       <N8nLogs />
+                       <N8nLogs isAdmin={isAdmin} />
                     </div>
                  </div>
                )}
@@ -747,6 +879,127 @@ export default function AdminView({
         </div>
       </div>
     </div>
+
+      {/* Modal de Logs do Usuário */}
+      <Modal
+        isOpen={isUserLogsModalOpen}
+        onClose={() => setIsUserLogsModalOpen(false)}
+        title={`Logs de WhatsApp: ${viewingUserLogs?.name}`}
+        footer={
+          <div className="flex justify-end w-full">
+             <button 
+                onClick={() => setIsUserLogsModalOpen(false)}
+                className="px-6 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
+             >
+                Fechar
+             </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+           <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-3 mb-2">
+                 <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                    <Activity size={16} />
+                 </div>
+                 <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 uppercase tracking-tight">Interações Recentes</h4>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Aqui você visualiza as mensagens enviadas e recebidas pelo motor de WhatsApp vinculado a este usuário.</p>
+           </div>
+           
+           {viewingUserLogs && (
+             <div className="bg-gray-900 dark:bg-black rounded-2xl p-4 font-mono text-[10px] text-emerald-400 h-80 overflow-y-auto border border-gray-800 dark:border-gray-900 shadow-inner transition-colors">
+                <WhatsAppAccountLogs userId={viewingUserLogs.id} />
+             </div>
+           )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isEditUserModalOpen}
+        onClose={() => setIsEditUserModalOpen(false)}
+        title={`Editar Usuário: ${editingUser?.name}`}
+        footer={
+          <div className="flex justify-end gap-3 w-full">
+            <button 
+              onClick={() => setIsEditUserModalOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleUpdateUser}
+              className="px-6 py-2 text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl transition-colors shadow-sm"
+            >
+              Salvar Alterações
+            </button>
+          </div>
+        }
+      >
+        <form className="space-y-4" onSubmit={handleUpdateUser}>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Nome</label>
+              <input 
+                type="text" 
+                value={editUserData.name}
+                onChange={e => setEditUserData({...editUserData, name: e.target.value})}
+                className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all"
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Role</label>
+              <select 
+                value={editUserData.role}
+                onChange={e => setEditUserData({...editUserData, role: e.target.value as any})}
+                className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all"
+              >
+                <option value="ADMIN">ADMIN</option>
+                <option value="OWNER">OWNER</option>
+                <option value="DESIGNER">DESIGNER</option>
+                <option value="EDITOR">EDITOR</option>
+                <option value="PARTNER">PARCEIRO</option>
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">E-mail</label>
+            <input 
+              type="email" 
+              value={editUserData.email}
+              onChange={e => setEditUserData({...editUserData, email: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all"
+              required
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Nova Senha</label>
+              <button 
+                type="button" 
+                onClick={handleGenerateTempPassword}
+                className="text-[10px] font-bold text-indigo-500 hover:underline"
+              >
+                Gerar Senha Temporária
+              </button>
+            </div>
+            <input 
+              type="text" 
+              value={editUserData.password}
+              onChange={e => setEditUserData({...editUserData, password: e.target.value})}
+              placeholder="Deixe em branco para manter a atual"
+              className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all font-mono"
+            />
+            {tempPassword && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-medium italic">
+                    Senha Gerada: <span className="font-bold underline">{tempPassword}</span>. Salve para aplicar.
+                </p>
+            )}
+          </div>
+          <p className="text-[10px] text-gray-400 italic">Alterar a senha forçará o usuário a usar a nova credencial no próximo login.</p>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={isInviteModalOpen}

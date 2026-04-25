@@ -97,7 +97,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
       : receivables;
 
   // Valores
-  const totalValue = isAdmin 
+  const totalValue = isAdminOrOwner 
     ? clients.reduce((acc, c) => acc + c.monthlyValue, 0)
     : isDesigner || isEditor
       ? clients.filter(c => c.assignedDesignerId === currentUser.id).reduce((acc, c) => acc + (c.designerPayout || 0), 0)
@@ -128,7 +128,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
 
   const totalRevenueData = getRevenueData();
   const ownRevenueData = getRevenueData(null);
-  const partnerRevenueData = (isAdmin && !isOwner) ? partners.map(p => ({
+  const partnerRevenueData = (isAdminOrOwner && !isOwner) ? partners.map(p => ({
     name: p.agencyName || p.name,
     data: getRevenueData(p.id)
   })) : [];
@@ -350,7 +350,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
       </div>
 
       {/* Partnership Summary Section for Admin and Partner */}
-      {(isAdmin || isPartner) && !isOwner && (
+      {(isAdminOrOwner || isPartner) && !isOwner && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
@@ -411,7 +411,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
       )}
 
       {/* Clients by Partner Section for Admin */}
-      {isAdmin && !isOwner && (
+      {isAdminOrOwner && !isOwner && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Clientes por Parceiro</h2>
@@ -587,7 +587,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
 
       {/* Main Charts Section */}
       <div className="grid grid-cols-1 gap-8 mb-8">
-        {isAdmin && !isOwner ? (
+        {isAdminOrOwner && !isOwner ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <RevenueChart title="Faturamento Total" data={totalRevenueData} color="#4f46e5" />
             <RevenueChart title="Meus Clientes Diretos" data={ownRevenueData} color="#10b981" />
