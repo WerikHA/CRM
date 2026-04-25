@@ -55,6 +55,8 @@ import DemandsView from './components/DemandsView';
 import DesignModificationForm from './components/DesignModificationForm';
 import { LogOut, Film, ClipboardList, MessageSquare } from 'lucide-react';
 
+import LandingPage from './components/LandingPage';
+
 type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity';
 
 import { api } from './services/api';
@@ -98,6 +100,7 @@ export default function App() {
     return DEFAULT_AGENCY_CONFIG;
   });
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
+  const [authView, setAuthView] = useState<'landing' | 'login' | 'signup'>('landing');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -428,7 +431,25 @@ export default function App() {
   }
 
   if (!isAuthenticated || !currentUser || !effectiveUser) {
-    return <LoginView onLogin={handleLogin} onSignup={handleSignup} isLoading={isAuthLoading} />;
+    if (authView === 'landing') {
+      return (
+        <LandingPage 
+          onLogin={() => setAuthView('login')} 
+          onSignup={() => setAuthView('signup')} 
+          agencyName={agencyConfig.name}
+          primaryColor={agencyConfig.primaryColor}
+        />
+      );
+    }
+    return (
+      <LoginView 
+        onLogin={handleLogin} 
+        onSignup={handleSignup} 
+        isLoading={isAuthLoading} 
+        initialMode={authView === 'login' ? 'login' : 'signup'}
+        onBack={() => setAuthView('landing')}
+      />
+    );
   }
 
   return (

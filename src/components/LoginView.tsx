@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Mail, Lock, LogIn, ShieldCheck, Zap } from 'lucide-react';
+import { Mail, Lock, LogIn, ShieldCheck, Zap, ArrowLeft } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface LoginViewProps {
   onLogin: (email: string, password: string) => Promise<void>;
   onSignup: (name: string, email: string, password: string) => Promise<void>;
   isLoading: boolean;
+  initialMode?: 'login' | 'signup';
+  onBack?: () => void;
 }
 
-export default function LoginView({ onLogin, onSignup, isLoading }: LoginViewProps) {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 'login', onBack }: LoginViewProps) {
+  const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,7 +39,15 @@ export default function LoginView({ onLogin, onSignup, isLoading }: LoginViewPro
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 relative">
+          {onBack && (
+            <button 
+              onClick={onBack}
+              className="absolute left-0 top-0 p-2 text-gray-400 hover:text-indigo-600 transition-colors"
+            >
+              <ArrowLeft size={24} />
+            </button>
+          )}
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-indigo-600 text-white shadow-xl shadow-indigo-200 mb-6 group transition-transform hover:scale-110">
             <Zap className="w-8 h-8 group-hover:animate-pulse" />
           </div>
