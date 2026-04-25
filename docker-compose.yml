@@ -10,9 +10,15 @@ services:
       - SUPABASE_URL=https://wfdvszqfsvnrtdouuygy.supabase.co
       - SUPABASE_ANON_KEY=sb_publishable_rjAkTZq7AlDqZ-ibucO0SA_k6UJy8l6
       - SUPABASE_SERVICE_ROLE_KEY=INSIRA_SUA_SERVICE_ROLE_KEY_AQUI
+      - GEMINI_API_KEY=INSIRA_SUA_GEMINI_API_KEY_AQUI
       - APP_URL=${APP_URL:-}
-      - VITE_COMPANY_NAME=AgencyFlow CRM
+      - VITE_COMPANY_NAME=Amplifica CRM
       - VITE_PRIMARY_COLOR=#4f46e5
+      - VITE_SERVER_INTERNAL_IP=
+      - VITE_SERVER_EXTERNAL_IP=
+      - VITE_WHATSAPP_PHONE_ID=
+      - VITE_WHATSAPP_BUSINESS_ID=
+      - WHATSAPP_ACCESS_TOKEN=
     volumes:
       - ./whatsapp_auth_sessions:/app/whatsapp_auth_sessions
       - ./whatsapp_polls.json:/app/whatsapp_polls.json
