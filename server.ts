@@ -33,16 +33,41 @@ async function startServer() {
       if (error) return res.status(500).json({ error: error.message });
       res.json(data);
     });
+    
     app.post(`/api/${pathName}`, async (req, res) => {
-      const { data, error } = await supabase.from(tableName).insert(req.body).select().single();
-      if (error) return res.status(500).json({ error: error.message });
+      const payload = { ...req.body };
+      // Sanitize ID fields: empty string or "null" string -> null
+      Object.keys(payload).forEach(key => {
+        if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null")) {
+          payload[key] = null;
+        }
+      });
+
+      const { data, error } = await supabase.from(tableName).insert(payload).select().single();
+      if (error) {
+        console.error(`[SUPABASE][${tableName}] Insert error:`, error);
+        return res.status(500).json({ error: error.message });
+      }
       res.json(data);
     });
+
     app.put(`/api/${pathName}/:id`, async (req, res) => {
-      const { data, error } = await supabase.from(tableName).update(req.body).eq('id', req.params.id).select().single();
-      if (error) return res.status(500).json({ error: error.message });
+      const payload = { ...req.body };
+      // Sanitize ID fields: empty string or "null" string -> null
+      Object.keys(payload).forEach(key => {
+        if (key.endsWith('_id') && (payload[key] === "" || payload[key] === "null")) {
+          payload[key] = null;
+        }
+      });
+
+      const { data, error } = await supabase.from(tableName).update(payload).eq('id', req.params.id).select().single();
+      if (error) {
+        console.error(`[SUPABASE][${tableName}] Update error:`, error);
+        return res.status(500).json({ error: error.message });
+      }
       res.json(data);
     });
+
     app.delete(`/api/${pathName}/:id`, async (req, res) => {
       const { error } = await supabase.from(tableName).delete().eq('id', req.params.id);
       if (error) return res.status(500).json({ error: error.message });
@@ -185,7 +210,15 @@ async function startServer() {
     try {
       const { data, error } = await supabase.from('users').select('id').limit(1);
       if (error) throw error;
-      res.json({ status: "ok", connected: true });
+      
+      const isServiceRole = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+      
+      res.json({ 
+        status: "ok", 
+        connected: true, 
+        isServiceRole,
+        message: isServiceRole ? "Conectado com Chave de Serviço (Bypass RLS Ativo)" : "Conectado com Chave Anon (RLS Ativo)"
+      });
     } catch (err: any) {
       console.error("[HEALTH] Supabase connection failed:", err.message);
       res.status(500).json({ status: "error", connected: false, message: err.message });
@@ -395,6 +428,30 @@ async function startServer() {
     if (!ownerId) return res.status(400).json({ error: "ownerId é obrigatório" });
     await whatsappService.reload(ownerId);
     res.json({ success: true });
+  });
+
+  app.get("/api/system/network", async (req, res) => {
+    try {
+      const os = await import("os");
+      const interfaces = os.networkInterfaces();
+      const addresses: string[] = [];
+      for (const k in interfaces) {
+        for (const k2 in interfaces[k]!) {
+          const address = interfaces[k]![k2];
+          if (address.family === "IPv4" && !address.internal) {
+            addresses.push(address.address);
+          }
+        }
+      }
+      res.json({ 
+        localIp: addresses[0] || "Não detectado",
+        allAddresses: addresses,
+        port: PORT,
+        appUrl: process.env.APP_URL || ""
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao detectar rede" });
+    }
   });
 
   app.post("/api/whatsapp/send", async (req, res) => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw } from 'lucide-react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert } from 'lucide-react';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import { IntegrationConfig, Lead, Client, ArtOrder, Receivable, User } from '../types';
@@ -55,9 +55,82 @@ function WhatsAppAccountLogs({ userId }: { userId: string }) {
   );
 }
 
+function NetworkStatus() {
+  const [data, setData] = useState<{ localIp: string; allAddresses: string[]; port: string | number; appUrl: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/system/network')
+      .then(res => res.json())
+      .then(setData)
+      .catch(err => console.error('Erro ao buscar rede:', err));
+  }, []);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!data) return <div className="p-8 text-center text-gray-500">Carregando informações de rede...</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 transition-all duration-300">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center transition-colors">
+            <Globe size={24} />
+          </div>
+          <div>
+            <h3 className="font-bold text-lg dark:text-gray-100 transition-colors uppercase tracking-tight">Endereços de Acesso</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 transition-colors">Use estes endereços para acessar o CRM de outros dispositivos na mesma rede.</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {data.allAddresses.map((ip, i) => {
+            const url = `http://${ip}:${data.port}`;
+            return (
+              <div key={i} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl transition-colors">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors">
+                    {i === 0 ? 'IP Local Recomendado' : 'Interface de Rede'}
+                  </span>
+                  <span className="font-mono text-sm font-bold text-indigo-600 dark:text-indigo-400 transition-colors">{url}</span>
+                </div>
+                <button 
+                  onClick={() => copyToClipboard(url)}
+                  className="p-2 text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-all"
+                >
+                  {copied ? <CheckCircle size={18} className="text-emerald-500" /> : <Copy size={18} />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-8 p-6 bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20 rounded-2xl transition-colors">
+          <div className="flex gap-3">
+            <AlertTriangle className="text-amber-500 shrink-0" size={20} />
+            <div>
+              <p className="text-sm font-bold text-amber-800 dark:text-amber-400 uppercase tracking-tight mb-1">Dica de Acesso Externo</p>
+              <p className="text-xs text-amber-700/80 dark:text-amber-500/80 leading-relaxed transition-colors">
+                Se você está usando o <b>ZimaOS</b>, certifique-se de que a porta <b>{data.port}</b> está aberta no firewall do sistema e que você está conectado na mesma rede Wi-Fi/CABO que o servidor.
+                <br /><br />
+                Para acesso <b>externo real</b> (fora de casa), recomendamos usar o <b>Tailscale</b> (disponível na App Store do ZimaOS) ou configurar o <b>Port Forwarding</b> no seu roteador para a porta {data.port}.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DatabaseStatus() {
   const [status, setStatus] = useState<'loading' | 'connected' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [dbInfo, setDbInfo] = useState<{ isServiceRole: boolean; message: string } | null>(null);
 
   useEffect(() => {
     const checkStatus = async () => {
@@ -66,6 +139,7 @@ function DatabaseStatus() {
         const data = await res.json();
         if (data.connected) {
           setStatus('connected');
+          setDbInfo({ isServiceRole: data.isServiceRole, message: data.message });
         } else {
           setStatus('error');
           setMessage(data.message || 'Erro desconhecido ao conectar com Supabase');
@@ -82,18 +156,66 @@ function DatabaseStatus() {
     <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 text-center transition-all duration-300">
       <div className={cn(
         "w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-4 transition-colors",
-        status === 'connected' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
+        status === 'connected' ? (dbInfo?.isServiceRole ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400") :
         status === 'loading' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" :
         "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400"
       )}>
         <Activity size={32} className={cn(status === 'loading' && "animate-spin")} />
       </div>
-      <h3 className="font-bold text-xl mb-2 dark:text-gray-100 transition-colors uppercase tracking-tight">Banco de Dados Cloud</h3>
-      
-      {status === 'connected' && (
+      {status === 'connected' && dbInfo && (
         <>
-          <p className="text-emerald-600 dark:text-emerald-400 font-bold text-lg transition-colors">Status: Operacional</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 transition-colors">Sincronização em tempo real ativa e segura via Supabase.</p>
+          <div className={cn(
+            "inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest mb-4",
+            dbInfo.isServiceRole ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
+          )}>
+            <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", dbInfo.isServiceRole ? "bg-emerald-500" : "bg-amber-500")} />
+            {dbInfo.isServiceRole ? 'Modo Alta Segurança (Recomendado)' : 'Modo Acesso Limitado (RLS Ativo)'}
+          </div>
+
+          <h3 className="font-bold text-xl mb-2 dark:text-gray-100 transition-colors uppercase tracking-tight">Banco de Dados Cloud</h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 transition-colors mb-6">{dbInfo.message}</p>
+          
+          {!dbInfo.isServiceRole && (
+            <div className="space-y-4">
+              <div className="p-6 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-2xl text-left border-l-4 border-l-rose-500">
+                <div className="flex gap-3 mb-4">
+                  <ShieldAlert className="text-rose-500 shrink-0" size={24} />
+                  <div>
+                    <p className="text-sm font-bold text-rose-800 dark:text-rose-400 uppercase tracking-tight">Problema de Permissão Detectado</p>
+                    <p className="text-[10px] text-rose-700/80 dark:text-rose-500/80 font-medium">O erro "New row violates RLS policy" indica que o Supabase está bloqueando suas gravações.</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Opção 1: Configurar Variável (Recomendado & Seguro)</p>
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed bg-white/50 dark:bg-black/20 p-3 rounded-xl border border-gray-100 dark:border-gray-800">
+                      Vá no painel do <b>Render</b> (Environment) e adicione a chave:<br/>
+                      <span className="font-mono font-bold text-rose-600 select-all">SUPABASE_SERVICE_ROLE_KEY</span><br/>
+                      <span className="text-[10px] block mt-1 text-gray-500 italic">* Use a string que começa com "eyJ..." encontrada em Project Settings &gt; API &gt; service_role (secret).</span>
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-2">Opção 2: Desativar RLS (Menos Seguro)</p>
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed mb-2">Se não conseguir configurar a variável, você pode desativar o RLS manualmente. Isso resolve o erro, mas remove a proteção de acesso direto via chave pública.</p>
+                    <div className="group relative">
+                      <pre className="text-[10px] font-mono bg-black text-emerald-400 p-4 rounded-xl overflow-x-auto select-all">
+                        {`ALTER TABLE clients DISABLE ROW LEVEL SECURITY;
+ALTER TABLE leads DISABLE ROW LEVEL SECURITY;
+ALTER TABLE partners DISABLE ROW LEVEL SECURITY;
+ALTER TABLE receivables DISABLE ROW LEVEL SECURITY;
+ALTER TABLE demand_tasks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE art_orders DISABLE ROW LEVEL SECURITY;
+ALTER TABLE video_orders DISABLE ROW LEVEL SECURITY;
+ALTER TABLE users DISABLE ROW LEVEL SECURITY;`}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
       
@@ -584,6 +706,17 @@ export default function AdminView({
           >
             <Globe size={18} /> Personalização
           </button>
+          {isAdmin && (
+            <button 
+              onClick={() => setActiveSubTab('network')}
+              className={cn(
+                "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+                activeSubTab === 'network' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              )}
+            >
+              <Globe size={18} /> Rede & Acesso
+            </button>
+          )}
         </div>
 
         {/* Content Area */}
@@ -766,6 +899,10 @@ export default function AdminView({
                  <WhatsAppConfig ownerId={currentUser.id} isAdmin={isAdmin} currentUserId={currentUser.id} />
                </div>
             </div>
+          )}
+
+          {activeSubTab === 'network' && isAdmin && (
+            <NetworkStatus />
           )}
 
           {activeSubTab === 'personalizacao' && agencyConfig && setAgencyConfig && (
