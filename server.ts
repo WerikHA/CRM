@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
@@ -20,6 +21,7 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
+  app.use(compression());
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   
@@ -165,7 +167,7 @@ async function startServer() {
   };
 
   // --- CUSTOM DASHBOARD/DEMANDS SPECIFIC ROUTES ---
-  // Must come before supabaseCrud to take precedence
+  // Must come before generic CRUD to take precedence
   app.post("/api/demand-tasks", async (req, res) => {
     try {
       const data = await dbService.insert('demand_tasks', req.body, getContext(req));
@@ -210,143 +212,41 @@ async function startServer() {
     }
   });
 
-  // --- API ROUTES ---
-  supabaseCrud("leads", "leads");
-  supabaseCrud("clients", "clients");
-  supabaseCrud("receivables", "receivables");
-  supabaseCrud("art-orders", "art_orders");
-  supabaseCrud("partners", "partners");
-  supabaseCrud("partner-requests", "partner_requests");
-  supabaseCrud("support-tickets", "support_tickets");
-  supabaseCrud("video-orders", "video_orders");
-  supabaseCrud("demand-tasks", "demand_tasks");
-  supabaseCrud("users", "users");
-  supabaseCrud("notifications", "notifications");
-  supabaseCrud("prospecting/lists", "prospecting_lists");
-  supabaseCrud("prospecting/leads", "prospecting_leads");
-  supabaseCrud("prospecting/campaigns", "campaigns");
-  supabaseCrud("prospecting/history", "message_history");
-
-
-  // Run on start and then every hour
-  processDemands();
-  setInterval(processDemands, 1000 * 60 * 60);
-
-  // Initialize Payment Reminder Scheduler
-  startPaymentReminderScheduler(
-    async () => {
-      try {
-        const { data, error } = await supabase.from('receivables').select('*');
-        if (error) throw error;
-        return data;
-      } catch (err) {
-        console.error("Error fetching receivables in scheduler", err);
-        return [];
-      }
-    },
-    async () => {
-      try {
-        const { data, error } = await supabase.from('clients').select('*');
-        if (error) throw error;
-        return data;
-      } catch (err) {
-        console.error("Error fetching clients in scheduler", err);
-        return [];
-      }
-    },
-    async (phone: string, message: string) => {
-        const owner = await dbService.list('users', { userId: '', userRole: 'ADMIN' } as any).then(list => list.find((u: any) => u.role === 'OWNER'));
-        if (owner) {
-            return whatsappService.sendMessage(owner.id, phone, message);
-        }
-        console.error("No OWNER found to send WhatsApp message");
+  // Authentication
+  app.post("/api/login", async (req, res) => {
+    let { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "E-mail e senha são obrigatórios" });
     }
-  );
-
-  // --- API ROUTES ---
-  app.get("/api/finance/config", (req, res) => res.json(getFinanceConfig()));
-  app.post("/api/finance/config", (req, res) => {
-      updateFinanceConfig(req.body);
-      res.json({ success: true });
-  });
-
-  // Health check
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", message: "Amplifica CRM API is active" });
-  });
-
-  app.get("/api/health/supabase", async (req, res) => {
+    
+    email = email.trim().toLowerCase();
+    password = password.trim();
+    
+    console.log(`[AUTH] Tentativa de login para: ${email}`);
+    
     try {
-      const { data, error } = await supabase.from('users').select('id').limit(1);
-      if (error) throw error;
+      const users = await dbService.list('users');
       
-      const isServiceRole = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-      
-      res.json({ 
-        status: "ok", 
-        connected: true, 
-        isServiceRole,
-        message: isServiceRole ? "Conectado com Chave de Serviço (Bypass RLS Ativo)" : "Conectado com Chave Anon (RLS Ativo)"
-      });
-    } catch (err: any) {
-      console.error("[HEALTH] Supabase connection failed:", err.message);
-      res.status(500).json({ status: "error", connected: false, message: err.message });
-    }
-  });
-
-  app.get("/api/system/audit-db", async (req, res) => {
-    const tables = [
-      "users", "clients", "leads", "receivables", "art_orders", 
-      "partners", "partner_requests", "support_tickets", "video_orders", 
-      "demand_tasks", "notifications", "prospecting_lists", 
-      "prospecting_leads", "campaigns", "message_history"
-    ];
-    
-    const results: any = {};
-    const missing = [];
-    
-    const projectUrl = process.env.SUPABASE_URL || '';
-    const projectId = projectUrl.match(/https:\/\/(.*?)\.supabase/)?.[1] || '_';
-    const sqlEditorUrl = `https://supabase.com/dashboard/project/${projectId}/sql`;
-    
-    for (const table of tables) {
-      try {
-        const { error } = await supabase.from(table).select('id', { count: 'exact', head: true });
-        if (error) {
-          results[table] = { status: "error", message: error.message };
-          if (error.code === '42P01') missing.push(table);
-        } else {
-          results[table] = { status: "ok" };
-        }
-      } catch (err: any) {
-        results[table] = { status: "exception", message: err.message };
+      if (users.length === 0) {
+        return res.status(404).json({ 
+          error: "Nenhum usuário cadastrado no sistema.", 
+          code: "SYSTEM_EMPTY"
+        });
       }
-    }
-    
-    res.json({
-      summary: missing.length === 0 ? "All tables found" : `${missing.length} tables missing`,
-      missing_count: missing.length,
-      missing_tables: missing,
-      details: results,
-      sql_editor_url: sqlEditorUrl
-    });
-  });
-
-  app.post("/api/system/fix-db", async (req, res) => {
-    try {
-      const sql = fs.readFileSync(path.join(__dirname, "db", "comprehensive_fix.sql"), "utf8");
-      // Supabase JS doesn't have a direct "exec" for arbitrary SQL via its client for security.
-      // However, for this specific applet environment, we are using the service role or anon key.
-      // Since ai-studio environment doesn't allow direct postgres connection easily, 
-      // we usually tell user to run on Supabase SQL Editor.
-      // But we can try to use a "rpc" if they have one or just return the SQL for them to copy.
       
-      res.json({ 
-        message: "Para aplicar as correções, copie o conteúdo abaixo e execute no SQL Editor do Supabase.",
-        sql: sql
-      });
+      const userFound = users.find((u: any) => u.email === email);
+      const data = userFound && userFound.password === password ? userFound : null;
+        
+      if (!data) {
+        return res.status(401).json({ error: "E-mail ou senha incorretos" });
+      }
+      
+      console.log(`[AUTH] Login bem-sucedido: ${email}`);
+      await logActivity(data.id, data.ownerId || data.id, 'LOGIN', { email: data.email });
+      res.json({ success: true, user: data });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error(`[AUTH] Erro interno no login:`, err);
+      res.status(500).json({ error: "Erro interno no servidor de autenticação" });
     }
   });
 
@@ -368,96 +268,38 @@ async function startServer() {
       }
 
       const data = await dbService.insert('users', newUser);
-      
-      // Update owner_id to be same as own ID for OWNERs
       await dbService.update('users', data.id, { ownerId: data.id });
       
+      await logActivity(data.id, data.id, 'SIGNUP', { email: data.email, role: data.role });
       res.json({ success: true, user: { ...data, ownerId: data.id } });
     } catch (err: any) {
       console.error("[AUTH] Erro no signup:", err);
-      let errorMsg = `Erro ao criar conta: ${err.message || 'Erro desconhecido'}`;
-      let errorCode = "SIGNUP_ERROR";
-
-      if (err.message && err.message.includes('row-level security')) {
-        errorMsg = "Permissão Negada (RLS): O Supabase está bloqueando o cadastro inicial. Você PRECISA executar o script SQL no painel de controle (veja o guia de Auditoria).";
-        errorCode = "RLS_VIOLATION";
-      }
-
-      res.status(500).json({ error: errorMsg, code: errorCode });
+      res.status(500).json({ error: `Erro ao criar conta: ${err.message}` });
     }
   });
 
-  app.post("/api/system/rescue-admin", async (req, res) => {
-    try {
-      const { data: owners, error } = await supabase.from('users').select('*').eq('role', 'OWNER').limit(1);
-      if (error) throw error;
-      if (!owners || owners.length === 0) {
-        return res.status(404).json({ error: "Nenhum OWNER encontrado no sistema para resgatar." });
-      }
-      
-      const owner = owners[0];
-      await supabase.from('users').update({ password: 'admin123' }).eq('id', owner.id);
-      
-      res.json({ 
-        success: true, 
-        message: "Senha do Administrador (OWNER) resetada com sucesso.",
-        email: owner.email,
-        newPassword: 'admin123'
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+  // --- CRUD API ROUTES ---
+  supabaseCrud("leads", "leads");
+  supabaseCrud("clients", "clients");
+  supabaseCrud("receivables", "receivables");
+  supabaseCrud("art-orders", "art_orders");
+  supabaseCrud("partners", "partners");
+  supabaseCrud("partner-requests", "partner_requests");
+  supabaseCrud("support-tickets", "support_tickets");
+  supabaseCrud("video-orders", "video_orders");
+  supabaseCrud("demand-tasks", "demand_tasks");
+  supabaseCrud("users", "users");
+  supabaseCrud("notifications", "notifications");
+  supabaseCrud("prospecting/lists", "prospecting_lists");
+  supabaseCrud("prospecting/leads", "prospecting_leads");
+  supabaseCrud("prospecting/campaigns", "campaigns");
+  supabaseCrud("prospecting/history", "message_history");
 
-  // Authentication
-  app.post("/api/login", async (req, res) => {
-    let { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "E-mail e senha são obrigatórios" });
-    }
-    
-    email = email.trim().toLowerCase();
-    password = password.trim();
-    
-    console.log(`[AUTH] Tentativa de login para: ${email}`);
-    
-    try {
-      const users = await dbService.list('users');
-      console.log(`[AUTH] Total de usuários encontrados no banco: ${users.length}`);
-      
-      if (users.length === 0) {
-        console.log(`[AUTH] Sistema está vazio. Redirecionando para signup.`);
-        return res.status(404).json({ 
-          error: "Nenhum usuário cadastrado no sistema.", 
-          code: "SYSTEM_EMPTY",
-          message: "Por favor, crie o primeiro usuário administrativo (OWNER) na tela de cadastro."
-        });
-      }
-      
-      const userFound = users.find((u: any) => u.email === email);
-      const data = userFound && userFound.password === password ? userFound : null;
-        
-      if (!data) {
-        const reason = !userFound ? "Usuário não encontrado" : "Senha incorreta";
-        console.log(`[AUTH] Falha no login: ${email} (${reason})`);
-        
-        // Se o usuário não foi encontrado, liste os emails disponíveis para ajudar o dev
-        if (!userFound) {
-          const availableEmails = users.map((u: any) => u.email).join(", ");
-          console.log(`[AUTH] Usuários disponíveis no banco: [${availableEmails}]`);
-        } else {
-          console.log(`[AUTH] Senha fornecida: "${password}" | Senha no banco: "${userFound.password}"`);
-        }
-        
-        return res.status(401).json({ error: "E-mail ou senha incorretos" });
-      }
-      
-      console.log(`[AUTH] Login bem-sucedido: ${email}`);
-      res.json({ success: true, user: data });
-    } catch (err: any) {
-      console.error(`[AUTH] Erro interno no login:`, err);
-      res.status(500).json({ error: "Erro interno no servidor de autenticação" });
-    }
+  // Finance Config
+  app.get("/api/finance/config", (req, res) => res.json(getFinanceConfig()));
+  app.post("/api/finance/config", (req, res) => {
+      updateFinanceConfig(req.body);
+      res.json({ success: true });
   });
 
   // --- PROSPECTING ROUTES ---
@@ -505,20 +347,6 @@ async function startServer() {
     }
   });
 
-  app.get("/api/n8n/logs", (req, res) => {
-    try {
-      const logPath = path.join(process.cwd(), "n8n_interaction_logs.txt");
-      if (fs.existsSync(logPath)) {
-        const logs = fs.readFileSync(logPath, "utf-8");
-        res.send(logs);
-      } else {
-        res.send("Sem logs registrados ainda.");
-      }
-    } catch (err) {
-      res.status(500).send("Erro ao ler logs do n8n");
-    }
-  });
-
   app.post("/api/whatsapp/logout", async (req, res) => {
     const { ownerId } = req.body;
     if (!ownerId) return res.status(400).json({ error: "ownerId é obrigatório" });
@@ -533,58 +361,16 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.get("/api/system/network", async (req, res) => {
-    try {
-      const os = await import("os");
-      const interfaces = os.networkInterfaces();
-      const addresses: string[] = [];
-      for (const k in interfaces) {
-        for (const k2 in interfaces[k]!) {
-          const address = interfaces[k]![k2];
-          if (address.family === "IPv4" && !address.internal) {
-            addresses.push(address.address);
-          }
-        }
-      }
-      res.json({ 
-        localIp: addresses[0] || "Não detectado",
-        allAddresses: addresses,
-        port: PORT,
-        appUrl: process.env.APP_URL || ""
-      });
-    } catch (err) {
-      res.status(500).json({ error: "Erro ao detectar rede" });
-    }
-  });
-
   app.post("/api/whatsapp/send", async (req, res) => {
     const { ownerId, phone, message, poll, mediaBase64 } = req.body;
-    
-    console.log(`[WHATSAPP_API] Tentativa de envio. OwnerId: ${ownerId}, Phone: ${phone}`);
-    const status = whatsappService.getStatus(ownerId);
-    console.log(`[WHATSAPP_API] Status atual para ${ownerId}: ${status.status}`);
-
     if (!ownerId || !phone || !message) {
-      const missing = [];
-      if (!ownerId) missing.push('ownerId');
-      if (!phone) missing.push('phone');
-      if (!message) missing.push('message');
-      console.warn(`[WHATSAPP_API] Campos faltando: ${missing.join(', ')}`);
-      return res.status(400).json({ 
-        error: 'OwnerId, telefone e mensagem são obrigatórios.',
-        details: `Campos faltando: ${missing.join(', ')}`
-      });
+      return res.status(400).json({ error: 'OwnerId, telefone e mensagem são obrigatórios.' });
     }
-    
     try {
-      // Send the text message first
       const sendResult = await whatsappService.sendMessage(ownerId, phone, message, mediaBase64);
-      
-      // If a poll is provided, send it right after the text message
       if (poll && poll.name && poll.options) {
         await whatsappService.sendPoll(ownerId, phone, poll.name, poll.options, poll.orderId);
       }
-      
       res.json({ success: true, messageId: sendResult?.key?.id });
     } catch (err: any) {
       console.error('[WHATSAPP] Erro ao enviar:', err);
@@ -592,83 +378,55 @@ async function startServer() {
     }
   });
 
-  whatsappService.on('pollVote', async ({ ownerId, orderId, option, phone }) => {
-    whatsappService['logInteraction']?.(ownerId, `[CRM] Evento pollVote recebido: Arte=${orderId}, Opção=${option}`);
-    let newStatus = '';
-    
-    // Normalização básica para evitar erros
-    const opt = option.trim();
-    if (opt.includes('Aprovar')) {
-      newStatus = 'approved';
-    } else if (opt.includes('Ajustes')) {
-      newStatus = 'rejected';
-    }
+  // Health check
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", message: "Amplifica CRM API is active" });
+  });
 
-    if (newStatus && orderId) {
+  // Catch-all API 404 (IMPORTANT: always return JSON for /api requests)
+  app.all("/api/*", (req, res) => {
+    console.warn(`[SERVER] API 404: ${req.method} ${req.url}`);
+    res.status(404).json({ error: `Endpoint da API não encontrado: ${req.url}` });
+  });
+
+  // --- BACKGROUND TASKS ---
+  
+  // Run on start and then every hour
+  processDemands();
+  setInterval(processDemands, 1000 * 60 * 60);
+
+  // Initialize Payment Reminder Scheduler
+  startPaymentReminderScheduler(
+    async () => {
       try {
-        const update = newStatus === 'approved' 
-          ? { approval_status: 'approved', status: 'done', feedback_requested: false }
-          : { feedback_requested: true, approval_status: 'pending' };
-
-        const { error } = await supabase
-          .from('art_orders')
-          .update(update)
-          .eq('id', orderId);
-        
-        if (error) {
-          whatsappService['logInteraction']?.(ownerId, `[CRM] Erro Supabase: ${JSON.stringify(error)}`);
-          throw error;
-        }
-        
-        whatsappService['logInteraction']?.(ownerId, `[CRM] Arte ${orderId} atualizada para ${newStatus}`);
-        
-        // Optionally send a confirmation back to the user
-        let responseMsg = '';
-        if (newStatus === 'approved') {
-          responseMsg = '✅ Muito obrigado pela aprovação! Já vamos finalizar o processo.';
-        } else {
-          // GENERATE THE LINK AUTOMATICALLY
-          let appUrl = process.env.APP_URL || 'https://ais-dev-ax55koxpyxq3fqifff7ehm-215070016480.us-east5.run.app';
-          appUrl = appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl;
-          
-          const link = `${appUrl}/?refuseOrderId=${orderId}`;
-          responseMsg = `📝 Entendido! Para que possamos fazer os ajustes exatamente como você deseja, por favor preencha este rápido formulário:\n\n${link}\n\nAguardamos seu feedback!`;
-        }
-        
-        if (phone) {
-          await whatsappService.sendMessage(ownerId, phone, responseMsg).catch(err => {
-            whatsappService['logInteraction']?.(ownerId, `[CRM] Falha ao enviar resposta: ${err.message}`);
-          });
-        }
-      } catch (err: any) {
-        whatsappService['logInteraction']?.(ownerId, `[CRM] Erro fatal: ${err.message}`);
+        const { data, error } = await supabase.from('receivables').select('*');
+        if (error) throw error;
+        return data;
+      } catch (err) {
+        console.error("Error fetching receivables in scheduler", err);
+        return [];
       }
-    } else {
-      whatsappService['logInteraction']?.(ownerId, `[CRM] Voto ignorado ou status não mapeado. Status=${newStatus}`);
+    },
+    async () => {
+      try {
+        const { data, error } = await supabase.from('clients').select('*');
+        if (error) throw error;
+        return data;
+      } catch (err) {
+        console.error("Error fetching clients in scheduler", err);
+        return [];
+      }
+    },
+    async (phone: string, message: string) => {
+        const owner = await dbService.list('users', { userId: '', userRole: 'ADMIN' } as any).then(list => list.find((u: any) => u.role === 'OWNER'));
+        if (owner) {
+            return whatsappService.sendMessage(owner.id, phone, message);
+        }
+        console.error("No OWNER found to send WhatsApp message");
     }
-  });
-  // --- FIM WHATSAPP ROUTES ---
+  );
 
-  // Generic Integration Webhook Trigger
-  app.post("/api/integrations/:id/trigger", async (req, res) => {
-    const { id } = req.params;
-    const payload = req.body;
-    console.log(`[INTEGRATION] Acionando webhook ${id} com payload:`, payload);
-    
-    // In a real scenario, fetch webhookUrl from DB/config and POST to it
-    // For now, simulate success
-    res.json({ success: true, message: `Trigger ${id} executado.` });
-  });
-
-  // API routes and middleware setup...
-
-  // Middleware to catch 404s for API and log them
-  app.use("/api", (req, res, next) => {
-    console.warn(`[SERVER] 404 no endpoint da API: ${req.method} ${req.originalUrl}`);
-    res.status(404).json({ error: `Rota da API não encontrada: ${req.originalUrl}` });
-  });
-
-  // Vite middleware for development
+  // --- Vite & Static Assets ---
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -678,9 +436,19 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    if (fs.existsSync(distPath)) {
+      console.log(`[PROD] Servindo arquivos estáticos de: ${distPath}`);
+      app.use(express.static(distPath));
+    } else {
+      console.error(`[PROD] ALERTA: Pasta 'dist' não encontrada em: ${distPath}`);
+    }
+    
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      if (fs.existsSync(path.join(distPath, "index.html"))) {
+        res.sendFile(path.join(distPath, "index.html"));
+      } else {
+        res.status(404).send("Erro Crítico: Frontend não encontrado. Certifique-se de rodar 'npm run build' e que a pasta 'dist' existe.");
+      }
     });
   }
 
@@ -710,6 +478,21 @@ async function startServer() {
       }
     } catch (err) {
       // Ignorar silenciosamente se a tabela não existir ainda
+    }
+  }
+
+  // Helper para Logs de Atividade (Opção 5)
+  async function logActivity(userId: string, ownerId: string, action: string, details: any) {
+    try {
+      await supabase.from('activity_logs').insert({
+        user_id: userId,
+        owner_id: ownerId,
+        action,
+        details,
+        ip_address: 'internal'
+      });
+    } catch (e) {
+      console.error("[LOG] Falha ao gravar log de atividade:", e);
     }
   }
 

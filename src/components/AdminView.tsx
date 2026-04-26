@@ -273,6 +273,7 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`}
 function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, isAdmin: boolean, currentUserId: string }) {
   const [status, setStatus] = useState<'disconnected' | 'qr' | 'connected'>('disconnected');
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [errorInfo, setErrorInfo] = useState<{ message: string, action: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<string>('');
 
@@ -285,6 +286,7 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
         const data = await res.json();
         setStatus(data.status);
         setQrCode(data.qr);
+        setErrorInfo(data.error);
       }
       
       if (isAdmin) {
@@ -364,6 +366,24 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
             )}
           </div>
        </div>
+
+       {errorInfo && canControl && (
+         <div className="p-6 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-3xl animate-in fade-in zoom-in duration-300">
+           <div className="flex gap-4">
+             <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+               <ShieldAlert size={20} />
+             </div>
+             <div className="space-y-1">
+               <p className="text-sm font-bold text-rose-900 dark:text-rose-100 uppercase tracking-tight">Ocorreu um Problema na Conexão</p>
+               <p className="text-xs text-rose-700 dark:text-rose-400 leading-relaxed">{errorInfo.message}</p>
+               <div className="mt-3 p-3 bg-white dark:bg-black/20 rounded-xl border border-rose-100 dark:border-rose-500/10">
+                  <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">O que fazer?</p>
+                  <p className="text-xs text-gray-700 dark:text-gray-300 font-medium">{errorInfo.action}</p>
+               </div>
+             </div>
+           </div>
+         </div>
+       )}
 
        {status === 'qr' && qrCode && canControl && (
          <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl bg-white dark:bg-gray-900 transition-colors">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { TrendingUp, Users, DollarSign, Palette, ArrowUpRight, ArrowDownRight, BarChart3, PieChart as PieChartIcon, CheckCircle2, Handshake, Clock, Receipt, Briefcase, ArrowUp } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -78,8 +78,27 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
   const isAdmin = currentUser.role === 'ADMIN';
   const isEditor = currentUser.role === 'EDITOR';
   const isOwner = currentUser.role === 'OWNER';
-
+  
   const isAdminOrOwner = isAdmin || isOwner;
+
+  // Cálculos de métricas (Opção 2)
+  const totalRevenue = useMemo(() => 
+    receivables.reduce((acc, r) => acc + (Number(r.amount) || 0), 0)
+  , [receivables]);
+
+  const activeLeads = useMemo(() => 
+    leads.filter(l => l.status !== 'converted' && l.status !== 'lost').length
+  , [leads]);
+
+  const ongoingOrders = useMemo(() => 
+    artOrders.filter(o => o.status === 'production' || o.status === 'review').length
+  , [artOrders]);
+
+  const conversionRate = useMemo(() => {
+    if (leads.length === 0) return 0;
+    const converted = leads.filter(l => l.status === 'converted').length;
+    return ((converted / leads.length) * 100).toFixed(1);
+  }, [leads]);
 
   // Métricas Filtradas
   const filteredClients = isDesigner || isEditor
@@ -327,14 +346,14 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
-          title={isDesigner || isEditor ? "Ganhos Previstos" : isPartner ? "Gasto (Amplifica CRM)" : "Receita Mensal"} 
-          value={`R$ ${totalValue.toLocaleString()}`} 
+          title={isDesigner || isEditor ? "Ganhos Previstos" : isPartner ? "Gasto (Amplifica CRM)" : "Faturamento Bruto"} 
+          value={`R$ ${totalRevenue.toLocaleString()}`} 
           change={12.5} 
           icon={DollarSign} 
           color="#6366f1" 
           index={0}
         />
-        {isAdminOrOwner && <StatCard title="Leads Ativos" value={leads.length} change={8.2} icon={TrendingUp} color="#10b981" index={1} />}
+        {isAdminOrOwner && <StatCard title="Leads Ativos" value={activeLeads} change={8.2} icon={TrendingUp} color="#10b981" index={1} />}
         <StatCard 
           title={isPartner ? "Clientes em Parceria" : "Clientes Ativos"} 
           value={filteredClients.length} 
@@ -343,18 +362,15 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
           color="#f59e0b" 
           index={2}
         />
-        <StatCard title="Produções Ativas" value={activeOrdersCount} change={-4.1} icon={Palette} color="#ec4899" index={3} />
-        {isPartner && <StatCard title="Tickets de Suporte" value={0} change={0} icon={TrendingUp} color="#10b981" />}
-        
-        {!isAdminOrOwner && (
-          <DeliveryRateChart 
-            title={isPartner ? "Taxa de Entrega" : "Sua Taxa de Entrega"} 
-            pct={completionPercentage} 
-            done={finishedTasks} 
-            total={totalTasks} 
-            color="#10b981" 
-          />
-        )}
+        <StatCard 
+          title={isDesigner || isEditor ? "Entregas Pendentes" : "Jobs em Produção"}
+          value={ongoingOrders} 
+          change={-4.1} 
+          icon={Palette} 
+          color="#ec4899" 
+          index={3} 
+        />
+        {isPartner && <StatCard title="Taxa de Conversão" value={`${conversionRate}%`} change={4.0} icon={TrendingUp} color="#10b981" />}
       </div>
 
       {/* Partnership Summary Section for Admin and Partner */}

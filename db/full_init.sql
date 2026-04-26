@@ -174,6 +174,17 @@ CREATE TABLE IF NOT EXISTS public.message_history (
     owner_id UUID REFERENCES public.users(id)
 );
 
+-- 5.1 Tabela de Auditoria (Opção 5)
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES public.users(id),
+    owner_id UUID REFERENCES public.users(id),
+    action TEXT NOT NULL,
+    details JSONB,
+    ip_address TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 6. Segurança (RLS e Permissões)
 -- Este bloco habilita RLS e cria uma política "Permitir Tudo" para simplificar o dev.
 -- Em produção real, você deve restringir por owner_id.

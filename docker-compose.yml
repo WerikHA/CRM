@@ -4,7 +4,7 @@ services:
     container_name: amplifica-crm
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "45.167.187.80:3009:3000"
     environment:
       # --- CONFIGURAÇÕES DO SERVIDOR ---
       - NODE_ENV=production

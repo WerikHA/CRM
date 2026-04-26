@@ -1,0 +1,21 @@
+{
+  "name": "Amplifica CRM",
+  "short_name": "Amplifica",
+  "description": "CRM Completo para Gestão de Design e Vídeos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/vite.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -96,11 +96,14 @@ const DEFAULT_AGENCY_CONFIG = {
 
 export default function App() {
   const [agencyConfig, setAgencyConfig] = useState(() => {
-    const saved = localStorage.getItem('agency_config');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // Evita sumir as chaves novas no parse
-      return { ...DEFAULT_AGENCY_CONFIG, ...parsed };
+    try {
+      const saved = localStorage.getItem('agency_config');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...DEFAULT_AGENCY_CONFIG, ...parsed };
+      }
+    } catch (e) {
+      console.error("Erro ao ler agency_config do localStorage:", e);
     }
     return DEFAULT_AGENCY_CONFIG;
   });
@@ -109,6 +112,13 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // Debug auth state in production
+  useEffect(() => {
+    if (import.meta.env.PROD) {
+      console.log(`[AUTH DEBUG] Authenticated: ${isAuthenticated}, View: ${authView}, User: ${!!currentUser}`);
+    }
+  }, [isAuthenticated, authView, currentUser]);
   const [perspective, setPerspective] = useState<User['role'] | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -211,6 +221,8 @@ export default function App() {
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
       setIsAuthenticated(true);
+    } else {
+      setAuthView('landing');
     }
   }, []);
 

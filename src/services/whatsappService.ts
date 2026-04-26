@@ -35,6 +35,7 @@ export class WhatsAppService extends EventEmitter {
   private sessions: Record<string, any> = {};
   private qrDataUrls: Record<string, string | null> = {};
   private sessionStatus: Record<string, "disconnected" | "qr" | "connected"> = {};
+  private sessionError: Record<string, { message: string, action: string } | null> = {};
   private authBaseDir = path.join(process.cwd(), "whatsapp_auth_sessions");
   private pollStorePath = path.join(process.cwd(), "whatsapp_polls.json");
   private pollStore: Record<string, SentPollData> = {};
@@ -177,17 +178,52 @@ export class WhatsAppService extends EventEmitter {
 
           if (connection === "close") {
             const error = lastDisconnect?.error;
-            const statusCode = (error as any)?.output?.statusCode;
+            const statusCode = (error as any)?.output?.statusCode || error?.code;
             const message = error?.message || error?.stack || "";
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            
+            // Reasons that definitely mean we shouldn't reconnect automatically without clearing
+            const isLogout = statusCode === DisconnectReason.loggedOut || 
+                             statusCode === 401 || 
+                             statusCode === 403;
+            
+            // Reasons that should trigger a reconnect
+            const shouldReconnect = !isLogout;
 
             console.log(
               `[WHATSAPP] Conexão FECHADA para ${ownerId}. Status: ${statusCode}. Reconnect: ${shouldReconnect}. Erro: ${message}`,
             );
 
-            // Handle specific Baileys error 515 (Stream Errored)
-            if (statusCode === 515 || message.includes("Stream Errored")) {
-              console.warn(`[WHATSAPP] Erro de Stream (515) detectado para ${ownerId}. Forçando reinicialização limpa...`);
+            // Set detailed error for the UI
+            if (statusCode === DisconnectReason.loggedOut) {
+              this.sessionError[ownerId] = {
+                message: "Você foi desconectado pelo próprio WhatsApp.",
+                action: "Por favor, escaneie o QR Code novamente para reconectar."
+              };
+            } else if (statusCode === 401 || message.includes("conflict")) {
+              this.sessionError[ownerId] = {
+                message: "Conflito de Sessão: Esta conta foi conectada em outro dispositivo ou a sessão expirou.",
+                action: "Clique em 'Sair / Desconectar' e escaneie o código novamente."
+              };
+            } else if (statusCode === 428 || message.includes("Connection Closed")) {
+              this.sessionError[ownerId] = {
+                message: "A conexão com o servidor do WhatsApp foi interrompida inesperadamente.",
+                action: "Estamos tentando reconectar automaticamente. Se persistir, reinicie o CRM."
+              };
+            } else if (statusCode === 515 || message.includes("Stream Errored")) {
+              this.sessionError[ownerId] = {
+                message: "Erro de Fluxo (Stream Errored): Ocorreu uma instabilidade na comunicação com o WhatsApp.",
+                action: "Aguarde alguns segundos, estamos reiniciando a conexão."
+              };
+            } else {
+              this.sessionError[ownerId] = {
+                message: `Erro de Conexão (${statusCode || 'Desconhecido'}): ${message.substring(0, 50)}...`,
+                action: "Tente recarregar a página ou reconectar seu WhatsApp."
+              };
+            }
+
+            // Handle specific Baileys error conditions
+            if (statusCode === 515 || message.includes("Stream Errored") || message.includes("conflict")) {
+              console.warn(`[WHATSAPP] Erro de Conflito ou Stream persistente detectado para ${ownerId}.`);
             }
 
             this.sessionStatus[ownerId] = "disconnected";
@@ -196,18 +232,26 @@ export class WhatsAppService extends EventEmitter {
             this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
 
             if (shouldReconnect) {
-              const delay = statusCode === 515 ? 10000 : 5000;
+              // Exponential-ish backoff or specific delays
+              const delay = (statusCode === 515 || statusCode === 428) ? 10000 : 5000;
               console.log(`[WHATSAPP] Agendando reconexão para ${ownerId} em ${delay/1000}s...`);
               setTimeout(() => this.initSession(ownerId), delay);
             } else {
-              console.log(`[WHATSAPP] Logout detectado para ${ownerId}.`);
+              console.log(`[WHATSAPP] Logout ou Falha Crítica detectada para ${ownerId}. Limpando sessão.`);
               this.clearAuth(ownerId);
-              delete this.sessions[ownerId];
+              if (this.sessions[ownerId]) {
+                try {
+                  this.sessions[ownerId].ev.removeAllListeners();
+                  this.sessions[ownerId].end(undefined);
+                } catch (e) {}
+                delete this.sessions[ownerId];
+              }
             }
           } else if (connection === "open") {
             console.log(`[WHATSAPP] Conexão ABERTA com sucesso para ${ownerId}!`);
             this.logInteraction(ownerId, "WhatsApp Conectado.");
             this.sessionStatus[ownerId] = "connected";
+            this.sessionError[ownerId] = null;
             this.qrDataUrls[ownerId] = null;
             this.initializingSessions.delete(ownerId);
             this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
@@ -464,7 +508,11 @@ export class WhatsAppService extends EventEmitter {
     if (!this.sessions[ownerId] && !this.initializingSessions.has(ownerId)) {
       this.initSession(ownerId).catch(err => console.error(`[WHATSAPP] Failed to auto-init session for ${ownerId}:`, err));
     }
-    return { status: this.sessionStatus[ownerId] || "disconnected", qr: this.qrDataUrls[ownerId] || null };
+    return { 
+      status: this.sessionStatus[ownerId] || "disconnected", 
+      qr: this.qrDataUrls[ownerId] || null,
+      error: this.sessionError[ownerId] || null
+    };
   }
 }
 
