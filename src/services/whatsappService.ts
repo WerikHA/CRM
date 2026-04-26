@@ -220,32 +220,40 @@ export class WhatsAppService extends EventEmitter {
         for (const msg of m.messages) {
           if (msg.key.fromMe) continue;
           
-          let content = msg.message;
-          if (!content) continue;
+          const getRealContent = (m: any): any => {
+            if (!m) return null;
+            if (m.viewOnceMessage?.message) return getRealContent(m.viewOnceMessage.message);
+            if (m.viewOnceMessageV2?.message) return getRealContent(m.viewOnceMessageV2.message);
+            if (m.ephemeralMessage?.message) return getRealContent(m.ephemeralMessage.message);
+            if (m.deviceSentMessage?.message) return getRealContent(m.deviceSentMessage.message);
+            return m;
+          };
 
-          // Extrair conteúdo real de invólucros como viewOnce
-          if (content.viewOnceMessage?.message) content = content.viewOnceMessage.message;
-          if (content.viewOnceMessageV2?.message) content = content.viewOnceMessageV2.message;
-          if (content.ephemeralMessage?.message) content = content.ephemeralMessage.message;
+          const realContent = getRealContent(msg.message);
+          if (!realContent) continue;
 
-          const msgType = Object.keys(content || {})[0];
-          this.logInteraction(ownerId, `Mensagem de ${msg.key.remoteJid}: Tipo=${msgType}`);
+          const keys = Object.keys(realContent);
+          
+          // Debugging keys to logs
+          if (keys.length > 0 && !realContent.pollUpdateMessage) {
+             this.logInteraction(ownerId, `Msg de ${msg.key.remoteJid}: Chaves=[${keys.join(",")}]`);
+          }
 
-          if (msgType === "pollUpdateMessage") {
-            const update = content.pollUpdateMessage;
+          if (realContent.pollUpdateMessage || realContent.pollUpdateMessageV2) {
+            const update = realContent.pollUpdateMessage || realContent.pollUpdateMessageV2;
             const pollMsgId = update.pollCreationMessageKey?.id;
-            this.logInteraction(ownerId, `Encontrada PollUpdate! ID=${pollMsgId}`);
+            this.logInteraction(ownerId, `PollUpdate Detectada! ID=${pollMsgId}`);
             
             if (pollMsgId && this.pollStore[pollMsgId]) {
               const context = this.pollStore[pollMsgId];
-              this.logInteraction(ownerId, `Contexto OK para ordem ${context.orderId}`);
+              this.logInteraction(ownerId, `Contexto encontrado para arte: ${context.orderId}`);
               try {
                 const meId = jidNormalizedUser(socket.user?.id || '');
                 const meLid = (socket.user as any)?.lid ? jidNormalizedUser((socket.user as any)?.lid) : undefined;
                 const pollEncKey = context.messageSecretHex ? Buffer.from(context.messageSecretHex, "hex") : null;
 
                 if (!pollEncKey) {
-                  this.logInteraction(ownerId, `ERRO: Sem secret para ${pollMsgId}`);
+                  this.logInteraction(ownerId, `ERRO: Secret faltando para ${pollMsgId}`);
                   continue;
                 }
 
@@ -276,11 +284,11 @@ export class WhatsAppService extends EventEmitter {
                 }
 
                 if (!voteMsg) {
-                  this.logInteraction(ownerId, `ERRO: Falha na descriptografia FINAL.`);
+                  this.logInteraction(ownerId, `ERRO: Falha ao descriptografar voto da enquete ${pollMsgId}.`);
                   continue;
                 }
 
-                if (voteMsg.selectedOptions?.length > 0) {
+                if (voteMsg.selectedOptions && voteMsg.selectedOptions.length > 0) {
                   const selectedHash = Buffer.from(voteMsg.selectedOptions[0]).toString("hex");
                   let selectedOption = null;
                   
@@ -300,11 +308,25 @@ export class WhatsAppService extends EventEmitter {
                       option: selectedOption,
                       phone: msg.key.remoteJid?.split("@")[0],
                     });
+                  } else {
+                    this.logInteraction(ownerId, `Hash de voto não mapeado: ${selectedHash}`);
                   }
                 }
+
+                // Persistir voto no context para histórico
+                if (context.fullMessage) {
+                  updateMessageWithPollUpdate(context.fullMessage, {
+                    pollUpdateMessageKey: msg.key,
+                    vote: voteMsg,
+                    senderTimestampMs: Number(update.senderTimestampMs || Date.now()),
+                  });
+                  this.savePollStore();
+                }
               } catch (e: any) {
-                this.logInteraction(ownerId, `Erro: ${e.message}`);
+                this.logInteraction(ownerId, `Erro ao processar voto: ${e.message}`);
               }
+            } else {
+               this.logInteraction(ownerId, `Enquete ID ${pollMsgId} não está no cache local.`);
             }
           }
         }

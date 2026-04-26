@@ -565,7 +565,15 @@ async function startServer() {
     console.log(`[WHATSAPP_API] Status atual para ${ownerId}: ${status.status}`);
 
     if (!ownerId || !phone || !message) {
-      return res.status(400).json({ error: 'OwnerId, telefone e mensagem são obrigatórios.' });
+      const missing = [];
+      if (!ownerId) missing.push('ownerId');
+      if (!phone) missing.push('phone');
+      if (!message) missing.push('message');
+      console.warn(`[WHATSAPP_API] Campos faltando: ${missing.join(', ')}`);
+      return res.status(400).json({ 
+        error: 'OwnerId, telefone e mensagem são obrigatórios.',
+        details: `Campos faltando: ${missing.join(', ')}`
+      });
     }
     
     try {
@@ -585,7 +593,7 @@ async function startServer() {
   });
 
   whatsappService.on('pollVote', async ({ ownerId, orderId, option, phone }) => {
-    console.log(`[CRM][${ownerId}] Recebido voto para a arte ${orderId}: ${option}`);
+    whatsappService['logInteraction']?.(ownerId, `[CRM] Evento pollVote recebido: Arte=${orderId}, Opção=${option}`);
     let newStatus = '';
     
     // Normalização básica para evitar erros
@@ -596,26 +604,23 @@ async function startServer() {
       newStatus = 'rejected';
     }
 
-    console.log(`[CRM][${ownerId}] Status identificado: ${newStatus} para OrderId: ${orderId}`);
-
     if (newStatus && orderId) {
       try {
         const update = newStatus === 'approved' 
           ? { approval_status: 'approved', status: 'done', feedback_requested: false }
           : { feedback_requested: true, approval_status: 'pending' };
 
-        console.log(`[CRM][${ownerId}] Atualizando banco de dados via Supabase...`);
         const { error } = await supabase
           .from('art_orders')
           .update(update)
           .eq('id', orderId);
         
         if (error) {
-          console.error(`[CRM][${ownerId}] Erro Supabase ao atualizar arte ${orderId}:`, error);
+          whatsappService['logInteraction']?.(ownerId, `[CRM] Erro Supabase: ${JSON.stringify(error)}`);
           throw error;
         }
         
-        console.log(`[CRM][${ownerId}] Arte ${orderId} atualizada com sucesso. Status: ${newStatus}`);
+        whatsappService['logInteraction']?.(ownerId, `[CRM] Arte ${orderId} atualizada para ${newStatus}`);
         
         // Optionally send a confirmation back to the user
         let responseMsg = '';
@@ -631,16 +636,15 @@ async function startServer() {
         }
         
         if (phone) {
-          console.log(`[CRM][${ownerId}] Enviando resposta automática para ${phone}`);
           await whatsappService.sendMessage(ownerId, phone, responseMsg).catch(err => {
-            console.error(`[CRM][${ownerId}] Falha ao enviar resposta WhatsApp:`, err);
+            whatsappService['logInteraction']?.(ownerId, `[CRM] Falha ao enviar resposta: ${err.message}`);
           });
         }
       } catch (err: any) {
-        console.error(`[CRM][${ownerId}] Erro fatal ao processar voto:`, err);
+        whatsappService['logInteraction']?.(ownerId, `[CRM] Erro fatal: ${err.message}`);
       }
     } else {
-      console.warn(`[CRM][${ownerId}] Voto ignorado. newStatus: ${newStatus}, orderId: ${orderId}`);
+      whatsappService['logInteraction']?.(ownerId, `[CRM] Voto ignorado ou status não mapeado. Status=${newStatus}`);
     }
   });
   // --- FIM WHATSAPP ROUTES ---

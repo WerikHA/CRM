@@ -512,11 +512,19 @@ export default function DesignView({
         orderId: orderToApprove.id
       };
 
+      // Fallback robusto para ownerId
+      const targetOwnerId = currentUser.role === 'OWNER' ? currentUser.id : (currentUser.ownerId || currentUser.id);
+
+      if (!targetOwnerId) {
+        alert('Erro: Identificação do proprietário (OwnerId) não encontrada. Tente deslogar e logar novamente.');
+        return;
+      }
+
       const res = await fetch('/api/whatsapp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          ownerId: currentUser.role === 'OWNER' ? currentUser.id : currentUser.ownerId,
+          ownerId: targetOwnerId,
           phone: client.phone, 
           message, 
           poll, 
