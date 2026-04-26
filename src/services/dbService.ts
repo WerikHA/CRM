@@ -5,13 +5,17 @@ export type UserRole = 'ADMIN' | 'DESIGNER' | 'PARTNER' | 'EDITOR' | 'OWNER';
 export interface DbContext {
   userId: string;
   userRole: UserRole;
+  ownerId?: string;
 }
 
 const toSnakeCase = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 const toCamelCase = (str: string) => str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 
 const keysToSnake = (obj: any): any => {
-  if (typeof obj !== 'object' || obj === null) return obj;
+  if (typeof obj !== 'object' || obj === null) {
+    if (obj === "") return null;
+    return obj;
+  }
   if (Array.isArray(obj)) return obj.map(keysToSnake);
   const n: any = {};
   Object.keys(obj).forEach(k => {
@@ -56,12 +60,19 @@ export const dbService = {
     return keysToCamel(data);
   },
 
+  async getById(tableName: string, id: string, context?: DbContext) {
+    let query = supabase.from(tableName).select('*').eq('id', id).single();
+    const { data, error } = await query;
+    if (error) throw error;
+    return keysToCamel(data);
+  },
+
   async insert(tableName: string, payload: any, context?: DbContext) {
     const snakePayload = keysToSnake(payload);
     
     // Auto-set owner_id if available and not set
     if (context && !snakePayload.owner_id) {
-      snakePayload.owner_id = context.userId;
+      snakePayload.owner_id = context.ownerId || context.userId;
     }
 
     const { data, error } = await supabase.from(tableName).insert(snakePayload).select().single();

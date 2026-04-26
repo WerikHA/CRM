@@ -40,6 +40,9 @@ async function request(endpoint: string, method: string, data?: any) {
   if (user) {
     headers['x-user-id'] = user.id;
     headers['x-user-role'] = user.role;
+    if (user.ownerId) {
+      headers['x-user-owner-id'] = user.ownerId;
+    }
   }
 
   try {
@@ -61,12 +64,14 @@ async function request(endpoint: string, method: string, data?: any) {
       const err = await res.json().catch(() => ({}));
       const errorMessage = err.error || `Failed to ${method} ${endpoint}`;
       
-      // Trigger global error notifier
-      if ((window as any).reportAppError) {
+      // Trigger global error notifier (skip for soft errors like SYSTEM_EMPTY)
+      if ((window as any).reportAppError && err.code !== 'SYSTEM_EMPTY') {
         (window as any).reportAppError(errorMessage, `Endpoint: ${endpoint} (${method})`);
       }
       
-      throw new Error(errorMessage);
+      const error: any = new Error(errorMessage);
+      error.code = err.code;
+      throw error;
     }
     const result = await res.json();
     return toCamelCase(result);

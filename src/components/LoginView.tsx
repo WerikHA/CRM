@@ -27,8 +27,25 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
       } else {
         await onSignup(name, email, password);
       }
-    } catch (err) {
-      setError((err as Error).message);
+    } catch (err: any) {
+      if (err.code === 'SYSTEM_EMPTY') {
+        setError('Bem-vindo ao Amplifica CRM! Crie a primeira conta administrativa para começar.');
+        setMode('signup');
+      } else if (err.code === 'RLS_VIOLATION') {
+        setError(
+          <div className="flex flex-col gap-2">
+            <span>{err.message || 'Erro de Permissão (RLS).'}</span>
+            <button 
+              onClick={() => (window as any).onNavigate?.('audit')}
+              className="text-[10px] bg-white/10 hover:bg-white/20 p-2 rounded uppercase font-bold tracking-tighter"
+            >
+              Abrir Corretor de Banco de Dados
+            </button>
+          </div>
+        );
+      } else {
+        setError(err.message);
+      }
     }
   };
 

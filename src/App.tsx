@@ -23,7 +23,8 @@ import {
   Sun,
   Target,
   Activity,
-  Bell
+  Bell,
+  Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -58,7 +59,9 @@ import { LogOut, Film, ClipboardList, MessageSquare } from 'lucide-react';
 
 import LandingPage from './components/LandingPage';
 
-type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity';
+import DatabaseAuditView from './components/DatabaseAuditView';
+
+type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'audit';
 
 import { api } from './services/api';
 import { VideoOrder, SupportTicket, DemandTask } from './types';
@@ -77,6 +80,7 @@ const VIEW_LABELS: Record<ViewType, string> = {
   tickets: 'Suporte',
   prospecting: 'Prospecção',
   productivity: 'Produtividade',
+  audit: 'Banco de Dados',
   admin: 'Configurações'
 };
 
@@ -155,6 +159,11 @@ export default function App() {
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>(INITIAL_INTEGRATIONS);
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
   const [holidays] = useState([{ date: '21/04/2026', name: 'Tiradentes' }]);
+
+  useEffect(() => {
+    (window as any).onNavigate = (view: ViewType) => setActiveView(view);
+    return () => { delete (window as any).onNavigate; };
+  }, []);
 
   const effectiveUser = useMemo(() => {
     if (!currentUser) return null;
@@ -252,7 +261,10 @@ export default function App() {
         
         if (currentUser && usersData.length > 0) {
           const freshSelf = usersData.find(u => u.id === currentUser.id);
-          if (freshSelf) setCurrentUser(freshSelf);
+          if (freshSelf) {
+            setCurrentUser(freshSelf);
+            localStorage.setItem('agency_user', JSON.stringify(freshSelf));
+          }
         }
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
@@ -288,6 +300,7 @@ export default function App() {
       { id: 'productivity', label: 'Produtividade', icon: Activity, roles: ['ADMIN', 'DESIGNER', 'EDITOR', 'OWNER'] },
       { id: 'partners', label: isPartner ? 'Solicitações' : 'Parceiros', icon: Handshake, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
       { id: 'tickets', label: 'Suporte', icon: MessageSquare, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
+      { id: 'audit', label: 'DB Auditoria', icon: Database, roles: ['ADMIN'] },
       { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN', 'OWNER'] },
     ].filter(item => {
       if (effectiveUser.role === 'OWNER' && item.id === 'partners') {
@@ -368,6 +381,8 @@ export default function App() {
           setTickets={setTickets}
           currentUser={effectiveUser}
         />;
+      case 'audit':
+        return <DatabaseAuditView />;
       case 'prospecting':
         return <ProspectingView />;
       case 'videos':

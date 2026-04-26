@@ -40,6 +40,18 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
       alert("Configurações salvas!");
   };
   
+  const formatDateForDisplay = (dateStr: string) => {
+    if (!dateStr) return '';
+    if (dateStr.includes('/')) return dateStr; // Already BR format
+    const [year, month, day] = dateStr.split('-');
+    if (year && month && day) {
+      // Remove time part if exists
+      const cleanDay = day.split('T')[0];
+      return `${cleanDay}/${month}/${year}`;
+    }
+    return dateStr;
+  };
+
   const isDesigner = currentUser.role === 'DESIGNER';
   const isAdmin = currentUser.role === 'ADMIN';
   const isOwner = currentUser.role === 'OWNER';
@@ -62,7 +74,8 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
 
   // Group by month for additional chart
   const monthlyDataMap = receivables.reduce((acc: any, r) => {
-    const month = r.dueDate.split('/')[1] || '01';
+    const formattedDate = formatDateForDisplay(r.dueDate);
+    const month = formattedDate.split('/')[1] || '01';
     const monthNames: any = { '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr', '05': 'Mai', '06': 'Jun', '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez' };
     const monthName = monthNames[month] || month;
     if (!acc[monthName]) acc[monthName] = { name: monthName, total: 0, count: 0 };
@@ -112,17 +125,29 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     setIsModalOpen(true);
   };
 
+  const formatDateForDB = (dateStr: string) => {
+    if (!dateStr) return null;
+    if (dateStr.includes('-')) return dateStr; // Already ISO
+    const [day, month, year] = dateStr.split('/');
+    if (day && month && year) {
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+    return dateStr;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const formattedData = {
+        ...formData,
+        dueDate: formatDateForDB(formData.dueDate || '')
+      };
+
       if (editingReceivable) {
-        const updated = await api.updateReceivable(editingReceivable.id, formData);
+        const updated = await api.updateReceivable(editingReceivable.id, formattedData);
         setReceivables(receivables.map(r => r.id === editingReceivable.id ? { ...r, ...updated } : r));
       } else {
-        const newData: any = {
-          ...formData,
-        };
-        const created = await api.createReceivable(newData);
+        const created = await api.createReceivable(formattedData);
         setReceivables([...receivables, created]);
       }
       setIsModalOpen(false);
@@ -400,7 +425,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                       </div>
                     </td>
                     <td className="px-6 py-4 text-xs font-medium text-gray-500 dark:text-gray-300">{r.description}</td>
-                    <td className="px-6 py-4 text-xs font-medium text-gray-500 dark:text-gray-300">{r.dueDate}</td>
+                    <td className="px-6 py-4 text-xs font-medium text-gray-500 dark:text-gray-300">{formatDateForDisplay(r.dueDate)}</td>
                     <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-gray-100">R$ {displayAmount.toLocaleString()}</td>
                     <td className="px-6 py-4">
                        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded border border-gray-100 dark:border-gray-700">

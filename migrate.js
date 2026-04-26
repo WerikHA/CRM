@@ -17,11 +17,16 @@ const client = new Client({
 async function runMigrations() {
     await client.connect();
     
-    const migrationsDir = './db';
-    const migrationFile = 'notifications_migration.sql';
-    const filePath = path.join(migrationsDir, migrationFile);
+    const migrationFile = process.argv[2] || 'notifications_migration.sql';
+    const filePath = path.isAbsolute(migrationFile) ? migrationFile : path.join('./db', migrationFile);
     
-    console.log(`Running migration: ${migrationFile}`);
+    if (!fs.existsSync(filePath)) {
+        console.error(`Error: File not found at ${filePath}`);
+        await client.end();
+        process.exit(1);
+    }
+
+    console.log(`Running migration: ${filePath}`);
     
     const sql = fs.readFileSync(filePath, 'utf8');
     

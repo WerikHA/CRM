@@ -87,6 +87,7 @@ export class WhatsAppService extends EventEmitter {
   }
 
   public async initSession(ownerId: string) {
+    if (!ownerId) return;
     if (this.initializingSessions.has(ownerId)) {
       console.log(`[WHATSAPP] Sessão ${ownerId} já está em inicialização...`);
       return;
@@ -96,7 +97,7 @@ export class WhatsAppService extends EventEmitter {
     const sessionAuthDir = path.join(this.authBaseDir, `auth_${ownerId}`);
 
     try {
-      console.log(`[WHATSAPP] Iniciando sessão ${ownerId}...`);
+      console.log(`[WHATSAPP] Iniciando sessão para Owner: ${ownerId}...`);
 
       if (this.sessions[ownerId]) {
         try {
@@ -112,11 +113,11 @@ export class WhatsAppService extends EventEmitter {
 
       const { state, saveCreds } = await useMultiFileAuthState(sessionAuthDir);
       
-      let version: any = [2, 3000, 1015901307];
+      let version: any = [2, 3000, 1017531234]; // Updated fallback version
       try {
-        const { version: latestVersion } = await fetchLatestBaileysVersion();
+        const { version: latestVersion, isLatest } = await fetchLatestBaileysVersion();
         version = latestVersion;
-        console.log(`[WHATSAPP] Usando versão: ${version.join(".")}`);
+        console.log(`[WHATSAPP] Usando versão Baileys: ${version.join(".")} (Latest: ${isLatest})`);
       } catch (err) {
         console.error("[WHATSAPP] Erro ao buscar versão do Baileys, usando fallback:", err);
       }
@@ -128,13 +129,13 @@ export class WhatsAppService extends EventEmitter {
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
-        browser: Browsers.macOS("Chrome"),
+        browser: ["Amplifica", "Chrome", "1.0.0"],
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: true,
-        connectTimeoutMs: 120000,
-        defaultQueryTimeoutMs: 120000,
-        keepAliveIntervalMs: 25000,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 30000,
         retryRequestDelayMs: 5000,
         msgRetryCounterCache,
         logger,
@@ -178,41 +179,38 @@ export class WhatsAppService extends EventEmitter {
             const error = lastDisconnect?.error;
             const statusCode = (error as any)?.output?.statusCode;
             const message = error?.message || error?.stack || "";
-            const isServerTerminated = message.includes("Connection Terminated by Server") || 
-                                     message.includes("Stream Errored") ||
-                                     statusCode === 440 || 
-                                     statusCode === 515 || 
-                                     statusCode === 408;
-            
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
             console.log(
-              `[WHATSAPP] Sessão ${ownerId} fechada. Código: ${statusCode}. Reconnecting: ${shouldReconnect}. Motivo: ${message}`,
+              `[WHATSAPP] Conexão FECHADA para ${ownerId}. Status: ${statusCode}. Reconnect: ${shouldReconnect}. Erro: ${message}`,
             );
+
+            // Handle specific Baileys error 515 (Stream Errored)
+            if (statusCode === 515 || message.includes("Stream Errored")) {
+              console.warn(`[WHATSAPP] Erro de Stream (515) detectado para ${ownerId}. Forçando reinicialização limpa...`);
+            }
 
             this.sessionStatus[ownerId] = "disconnected";
             this.qrDataUrls[ownerId] = null;
+            this.initializingSessions.delete(ownerId);
             this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
 
-            if (!shouldReconnect) {
-              console.log(`[WHATSAPP] Sessão ${ownerId} deslogada. Limpando credenciais...`);
+            if (shouldReconnect) {
+              const delay = statusCode === 515 ? 10000 : 5000;
+              console.log(`[WHATSAPP] Agendando reconexão para ${ownerId} em ${delay/1000}s...`);
+              setTimeout(() => this.initSession(ownerId), delay);
+            } else {
+              console.log(`[WHATSAPP] Logout detectado para ${ownerId}.`);
               this.clearAuth(ownerId);
               delete this.sessions[ownerId];
             }
-
-            this.initializingSessions.delete(ownerId);
-            
-            if (shouldReconnect) {
-              const delay = isServerTerminated ? 5000 : 3000;
-              setTimeout(() => this.initSession(ownerId), delay);
-            }
           } else if (connection === "open") {
-            console.log(`[WHATSAPP] Sessão ${ownerId} conectada com sucesso!`);
-            this.logInteraction(ownerId, "Sessão Conectada com Sucesso.");
+            console.log(`[WHATSAPP] Conexão ABERTA com sucesso para ${ownerId}!`);
+            this.logInteraction(ownerId, "WhatsApp Conectado.");
             this.sessionStatus[ownerId] = "connected";
             this.qrDataUrls[ownerId] = null;
-            this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
             this.initializingSessions.delete(ownerId);
+            this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
           }
         },
       );
@@ -221,52 +219,68 @@ export class WhatsAppService extends EventEmitter {
         if (m.type !== "notify") return;
         for (const msg of m.messages) {
           if (msg.key.fromMe) continue;
-          const content = msg.message;
+          
+          let content = msg.message;
+          if (!content) continue;
 
-          if (content?.pollUpdateMessage) {
+          // Extrair conteúdo real de invólucros como viewOnce
+          if (content.viewOnceMessage?.message) content = content.viewOnceMessage.message;
+          if (content.viewOnceMessageV2?.message) content = content.viewOnceMessageV2.message;
+          if (content.ephemeralMessage?.message) content = content.ephemeralMessage.message;
+
+          const msgType = Object.keys(content || {})[0];
+          this.logInteraction(ownerId, `Mensagem de ${msg.key.remoteJid}: Tipo=${msgType}`);
+
+          if (msgType === "pollUpdateMessage") {
             const update = content.pollUpdateMessage;
             const pollMsgId = update.pollCreationMessageKey?.id;
+            this.logInteraction(ownerId, `Encontrada PollUpdate! ID=${pollMsgId}`);
             
             if (pollMsgId && this.pollStore[pollMsgId]) {
               const context = this.pollStore[pollMsgId];
+              this.logInteraction(ownerId, `Contexto OK para ordem ${context.orderId}`);
               try {
-                const meId = jidNormalizedUser(socket.user?.id);
+                const meId = jidNormalizedUser(socket.user?.id || '');
                 const meLid = (socket.user as any)?.lid ? jidNormalizedUser((socket.user as any)?.lid) : undefined;
-                const creationMsgKey = update.pollCreationMessageKey;
-                const pollEncKey = Buffer.from(context.messageSecretHex, "hex");
+                const pollEncKey = context.messageSecretHex ? Buffer.from(context.messageSecretHex, "hex") : null;
 
-                if (!pollEncKey) continue;
+                if (!pollEncKey) {
+                  this.logInteraction(ownerId, `ERRO: Sem secret para ${pollMsgId}`);
+                  continue;
+                }
 
                 const voterJid = jidNormalizedUser(msg.key.participant || msg.key.remoteJid || '');
-                const pollCreatorJid = jidNormalizedUser(context.creatorJid);
+                const creators = [jidNormalizedUser(context.creatorJid), meId];
+                if (meLid) creators.push(meLid);
+                
+                const voters = [voterJid];
+                if (msg.key.participant) voters.push(jidNormalizedUser(msg.key.participant));
+
+                const uniqueCreators = [...new Set(creators.filter(Boolean))];
+                const uniqueVoters = [...new Set(voters.filter(Boolean))];
 
                 let voteMsg: any = null;
-                const combos = [{ creator: pollCreatorJid, voter: voterJid }];
-                if (meLid) combos.push({ creator: meLid, voter: voterJid });
-
-                for (const combo of combos) {
-                  try {
-                    voteMsg = decryptPollVote(update.vote, {
-                      pollCreatorJid: combo.creator,
-                      pollMsgId: creationMsgKey.id,
-                      pollEncKey,
-                      voterJid: combo.voter,
-                    });
-                    if (voteMsg) break;
-                  } catch (err) {}
+                for (const creator of uniqueCreators as string[]) {
+                  for (const voter of uniqueVoters as string[]) {
+                    try {
+                      voteMsg = decryptPollVote(update.vote, {
+                        pollCreatorJid: creator,
+                        pollMsgId: pollMsgId,
+                        pollEncKey,
+                        voterJid: voter,
+                      });
+                      if (voteMsg) break;
+                    } catch (err) {}
+                  }
+                  if (voteMsg) break;
                 }
 
-                if (!voteMsg) continue;
-
-                if (context.fullMessage) {
-                  updateMessageWithPollUpdate(context.fullMessage, {
-                    pollUpdateMessageKey: msg.key,
-                    vote: voteMsg,
-                    senderTimestampMs: Number(update.senderTimestampMs || Date.now()),
-                  });
+                if (!voteMsg) {
+                  this.logInteraction(ownerId, `ERRO: Falha na descriptografia FINAL.`);
+                  continue;
                 }
 
-                if (voteMsg.selectedOptions && voteMsg.selectedOptions.length > 0) {
+                if (voteMsg.selectedOptions?.length > 0) {
                   const selectedHash = Buffer.from(voteMsg.selectedOptions[0]).toString("hex");
                   let selectedOption = null;
                   
@@ -279,6 +293,7 @@ export class WhatsAppService extends EventEmitter {
                   }
 
                   if (selectedOption) {
+                    this.logInteraction(ownerId, `VOTO RECONHECIDO: ${selectedOption}`);
                     this.emit("pollVote", {
                       ownerId,
                       orderId: context.orderId,
@@ -287,10 +302,8 @@ export class WhatsAppService extends EventEmitter {
                     });
                   }
                 }
-
-                if (context.fullMessage) this.savePollStore();
-              } catch (e) {
-                console.error("[WHATSAPP] Erro ao processar voto", e);
+              } catch (e: any) {
+                this.logInteraction(ownerId, `Erro: ${e.message}`);
               }
             }
           }
@@ -395,12 +408,27 @@ export class WhatsAppService extends EventEmitter {
       },
     });
 
+    console.log(`[WHATSAPP] Enquete enviada. ID: ${result?.key?.id}`);
+
     if (result?.key && result.message?.messageContextInfo?.messageSecret) {
+      console.log(`[WHATSAPP] Secret da enquete encontrado e salvo.`);
       this.pollStore[result.key.id] = {
         orderId,
         pollName,
         options,
         messageSecretHex: Buffer.from(result.message.messageContextInfo.messageSecret).toString("hex"),
+        creatorJid: jidNormalizedUser(socket.user?.id || jid),
+        fullMessage: result,
+      };
+      this.savePollStore();
+    } else {
+      console.warn(`[WHATSAPP] AVISO: Secret da enquete NÃO encontrado no resultado do envio. Votos nesta enquete podem falhar na descriptografia.`);
+      // Se não houver secret, ainda salvamos o que dá, mas a descriptografia vai falhar.
+      this.pollStore[result?.key?.id || 'unknown'] = {
+        orderId,
+        pollName,
+        options,
+        messageSecretHex: "",
         creatorJid: jidNormalizedUser(socket.user?.id || jid),
         fullMessage: result,
       };

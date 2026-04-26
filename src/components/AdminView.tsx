@@ -175,6 +175,16 @@ function DatabaseStatus() {
           <h3 className="font-bold text-xl mb-2 dark:text-gray-100 transition-colors uppercase tracking-tight">Banco de Dados Cloud</h3>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 transition-colors mb-6">{dbInfo.message}</p>
           
+          <div className="flex justify-center mb-8">
+            <button 
+              onClick={() => (window as any).onNavigate?.('audit')}
+              className="flex items-center gap-2 px-6 py-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold uppercase tracking-widest text-[10px] border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-100 transition-all"
+            >
+              <Database size={14} />
+              Ver Relatório de Integridade Completo
+            </button>
+          </div>
+
           {!dbInfo.isServiceRole && (
             <div className="space-y-4">
               <div className="p-6 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-2xl text-left border-l-4 border-l-rose-500">

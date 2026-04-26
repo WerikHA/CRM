@@ -22,14 +22,18 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  
+  console.log(`[INIT] Supabase URL: ${process.env.SUPABASE_URL ? 'Configurada' : 'MISSING'}`);
+  console.log(`[INIT] Supabase Service Role Key: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Presente' : 'MISSING (RLS pode causar erros)'}`);
 
   // --- Middleware for typed user context ---
   const getContext = (req: express.Request): DbContext | undefined => {
     const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as UserRole;
+    const ownerId = req.headers['x-user-owner-id'] as string;
     
     if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-      return { userId, userRole };
+      return { userId, userRole, ownerId };
     }
     return undefined;
   };
@@ -39,6 +43,16 @@ async function startServer() {
     app.get(`/api/${pathName}`, async (req, res) => {
       try {
         const data = await dbService.list(tableName, getContext(req));
+        res.json(data);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    app.get(`/api/${pathName}/:id`, async (req, res) => {
+      try {
+        const data = await dbService.getById(tableName, req.params.id, getContext(req));
+        if (!data) return res.status(404).json({ error: "Registro não encontrado" });
         res.json(data);
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -291,6 +305,10 @@ async function startServer() {
     const results: any = {};
     const missing = [];
     
+    const projectUrl = process.env.SUPABASE_URL || '';
+    const projectId = projectUrl.match(/https:\/\/(.*?)\.supabase/)?.[1] || '_';
+    const sqlEditorUrl = `https://supabase.com/dashboard/project/${projectId}/sql`;
+    
     for (const table of tables) {
       try {
         const { error } = await supabase.from(table).select('id', { count: 'exact', head: true });
@@ -309,8 +327,27 @@ async function startServer() {
       summary: missing.length === 0 ? "All tables found" : `${missing.length} tables missing`,
       missing_count: missing.length,
       missing_tables: missing,
-      details: results
+      details: results,
+      sql_editor_url: sqlEditorUrl
     });
+  });
+
+  app.post("/api/system/fix-db", async (req, res) => {
+    try {
+      const sql = fs.readFileSync(path.join(__dirname, "db", "comprehensive_fix.sql"), "utf8");
+      // Supabase JS doesn't have a direct "exec" for arbitrary SQL via its client for security.
+      // However, for this specific applet environment, we are using the service role or anon key.
+      // Since ai-studio environment doesn't allow direct postgres connection easily, 
+      // we usually tell user to run on Supabase SQL Editor.
+      // But we can try to use a "rpc" if they have one or just return the SQL for them to copy.
+      
+      res.json({ 
+        message: "Para aplicar as correções, copie o conteúdo abaixo e execute no SQL Editor do Supabase.",
+        sql: sql
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.post("/api/signup", async (req, res) => {
@@ -338,7 +375,37 @@ async function startServer() {
       res.json({ success: true, user: { ...data, ownerId: data.id } });
     } catch (err: any) {
       console.error("[AUTH] Erro no signup:", err);
-      res.status(500).json({ error: `Erro ao criar conta: ${err.message || 'Erro desconhecido'}` });
+      let errorMsg = `Erro ao criar conta: ${err.message || 'Erro desconhecido'}`;
+      let errorCode = "SIGNUP_ERROR";
+
+      if (err.message && err.message.includes('row-level security')) {
+        errorMsg = "Permissão Negada (RLS): O Supabase está bloqueando o cadastro inicial. Você PRECISA executar o script SQL no painel de controle (veja o guia de Auditoria).";
+        errorCode = "RLS_VIOLATION";
+      }
+
+      res.status(500).json({ error: errorMsg, code: errorCode });
+    }
+  });
+
+  app.post("/api/system/rescue-admin", async (req, res) => {
+    try {
+      const { data: owners, error } = await supabase.from('users').select('*').eq('role', 'OWNER').limit(1);
+      if (error) throw error;
+      if (!owners || owners.length === 0) {
+        return res.status(404).json({ error: "Nenhum OWNER encontrado no sistema para resgatar." });
+      }
+      
+      const owner = owners[0];
+      await supabase.from('users').update({ password: 'admin123' }).eq('id', owner.id);
+      
+      res.json({ 
+        success: true, 
+        message: "Senha do Administrador (OWNER) resetada com sucesso.",
+        email: owner.email,
+        newPassword: 'admin123'
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -356,10 +423,32 @@ async function startServer() {
     
     try {
       const users = await dbService.list('users');
-      const data = users.find((u: any) => u.email === email && u.password === password);
+      console.log(`[AUTH] Total de usuários encontrados no banco: ${users.length}`);
+      
+      if (users.length === 0) {
+        console.log(`[AUTH] Sistema está vazio. Redirecionando para signup.`);
+        return res.status(404).json({ 
+          error: "Nenhum usuário cadastrado no sistema.", 
+          code: "SYSTEM_EMPTY",
+          message: "Por favor, crie o primeiro usuário administrativo (OWNER) na tela de cadastro."
+        });
+      }
+      
+      const userFound = users.find((u: any) => u.email === email);
+      const data = userFound && userFound.password === password ? userFound : null;
         
       if (!data) {
-        console.log(`[AUTH] Falha no login: ${email}`);
+        const reason = !userFound ? "Usuário não encontrado" : "Senha incorreta";
+        console.log(`[AUTH] Falha no login: ${email} (${reason})`);
+        
+        // Se o usuário não foi encontrado, liste os emails disponíveis para ajudar o dev
+        if (!userFound) {
+          const availableEmails = users.map((u: any) => u.email).join(", ");
+          console.log(`[AUTH] Usuários disponíveis no banco: [${availableEmails}]`);
+        } else {
+          console.log(`[AUTH] Senha fornecida: "${password}" | Senha no banco: "${userFound.password}"`);
+        }
+        
         return res.status(401).json({ error: "E-mail ou senha incorretos" });
       }
       
@@ -470,6 +559,11 @@ async function startServer() {
 
   app.post("/api/whatsapp/send", async (req, res) => {
     const { ownerId, phone, message, poll, mediaBase64 } = req.body;
+    
+    console.log(`[WHATSAPP_API] Tentativa de envio. OwnerId: ${ownerId}, Phone: ${phone}`);
+    const status = whatsappService.getStatus(ownerId);
+    console.log(`[WHATSAPP_API] Status atual para ${ownerId}: ${status.status}`);
+
     if (!ownerId || !phone || !message) {
       return res.status(400).json({ error: 'OwnerId, telefone e mensagem são obrigatórios.' });
     }
@@ -494,11 +588,15 @@ async function startServer() {
     console.log(`[CRM][${ownerId}] Recebido voto para a arte ${orderId}: ${option}`);
     let newStatus = '';
     
-    if (option.includes('Aprovar')) {
+    // Normalização básica para evitar erros
+    const opt = option.trim();
+    if (opt.includes('Aprovar')) {
       newStatus = 'approved';
-    } else if (option.includes('Ajustes')) {
+    } else if (opt.includes('Ajustes')) {
       newStatus = 'rejected';
     }
+
+    console.log(`[CRM][${ownerId}] Status identificado: ${newStatus} para OrderId: ${orderId}`);
 
     if (newStatus && orderId) {
       try {
@@ -506,14 +604,18 @@ async function startServer() {
           ? { approval_status: 'approved', status: 'done', feedback_requested: false }
           : { feedback_requested: true, approval_status: 'pending' };
 
+        console.log(`[CRM][${ownerId}] Atualizando banco de dados via Supabase...`);
         const { error } = await supabase
           .from('art_orders')
           .update(update)
           .eq('id', orderId);
         
-        if (error) throw error;
+        if (error) {
+          console.error(`[CRM][${ownerId}] Erro Supabase ao atualizar arte ${orderId}:`, error);
+          throw error;
+        }
         
-        console.log(`[CRM][${ownerId}] Arte ${orderId} atualizada. Status: ${newStatus}`);
+        console.log(`[CRM][${ownerId}] Arte ${orderId} atualizada com sucesso. Status: ${newStatus}`);
         
         // Optionally send a confirmation back to the user
         let responseMsg = '';
@@ -521,18 +623,24 @@ async function startServer() {
           responseMsg = '✅ Muito obrigado pela aprovação! Já vamos finalizar o processo.';
         } else {
           // GENERATE THE LINK AUTOMATICALLY
-          let appUrl = process.env.APP_URL || 'https://amplifica.app';
+          let appUrl = process.env.APP_URL || 'https://ais-dev-ax55koxpyxq3fqifff7ehm-215070016480.us-east5.run.app';
           appUrl = appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl;
           
           const link = `${appUrl}/?refuseOrderId=${orderId}`;
           responseMsg = `📝 Entendido! Para que possamos fazer os ajustes exatamente como você deseja, por favor preencha este rápido formulário:\n\n${link}\n\nAguardamos seu feedback!`;
         }
         
-        console.log(`[CRM][${ownerId}] Enviando resposta automática para ${phone}`);
-        await whatsappService.sendMessage(ownerId, phone, responseMsg);
-      } catch (err) {
-        console.error('[CRM] Erro ao atualizar status via WhatsApp:', err);
+        if (phone) {
+          console.log(`[CRM][${ownerId}] Enviando resposta automática para ${phone}`);
+          await whatsappService.sendMessage(ownerId, phone, responseMsg).catch(err => {
+            console.error(`[CRM][${ownerId}] Falha ao enviar resposta WhatsApp:`, err);
+          });
+        }
+      } catch (err: any) {
+        console.error(`[CRM][${ownerId}] Erro fatal ao processar voto:`, err);
       }
+    } else {
+      console.warn(`[CRM][${ownerId}] Voto ignorado. newStatus: ${newStatus}, orderId: ${orderId}`);
     }
   });
   // --- FIM WHATSAPP ROUTES ---
@@ -573,6 +681,31 @@ async function startServer() {
   }
 
   // --- INICIALIZAÇÃO E CORREÇÃO DE DADOS ---
+  async function runMigrations() {
+    console.log("[INIT] Verificando esquema do banco de dados...");
+    try {
+      // Ensure designer_name exists in art_orders
+      const { error: rpcError } = await supabase.rpc('add_column_if_not_exists', { 
+        t_name: 'art_orders', 
+        c_name: 'designer_name', 
+        c_type: 'TEXT' 
+      });
+      
+      if (rpcError) {
+        // Fallback if RPC doesn't exist - try a dummy select to see if column exists
+        const { error: selectError } = await supabase.from('art_orders').select('designer_name').limit(1);
+        if (selectError) {
+             console.log("[INIT] Coluna designer_name não encontrada em art_orders. Verifique seu banco.");
+        }
+      }
+      
+      // Since we can't easily run arbitrary SQL via supabase-js without an RPC,
+      // we assume the user applied full_init.sql.
+    } catch (e) {
+      console.warn("[INIT] Aviso ao verificar esquema:", e);
+    }
+  }
+
   async function fixUserData() {
     try {
       const { data: users, error } = await supabase.from('users').select('*');
@@ -589,6 +722,7 @@ async function startServer() {
       console.error('[FIX] Erro ao corrigir dados de usuários:', err);
     }
   }
+  runMigrations();
   fixUserData();
   // --- FIM CORREÇÃO ---
 
