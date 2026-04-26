@@ -1,25 +1,10 @@
--- RESET TOTAL DO BANCO DE DADOS
--- Este script limpa o esquema e recria tudo com suporte a Multi-tenancy (owner_id)
+-- RESET TOTAL DO BANCO DE DADOS PARA O CRM AMPLIFICA
+-- Este script cria todas as tabelas com suporte a Multi-tenancy (owner_id)
 
--- 1. Limpeza (Opcional, mas recomendado para resolver erros de cache)
--- Descomente as duas linhas abaixo se quiser limpar TUDO antes de começar:
--- DROP SCHEMA public CASCADE;
--- CREATE SCHEMA public;
-
--- 2. Extensões
+-- 1. Extensões
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 3. Função Auxiliar de Colunas
-CREATE OR REPLACE FUNCTION add_column_if_not_exists(t_name text, c_name text, c_type text) 
-RETURNS void AS $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t_name AND column_name = c_name) THEN
-        EXECUTE format('ALTER TABLE public.%I ADD COLUMN %I %s', t_name, c_name, c_type);
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
-
--- 4. Tabela de Usuários (Base de tudo)
+-- 2. Tabela de Usuários (Base de tudo)
 CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -32,7 +17,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Tabelas de Estrutura
+-- 3. Tabelas de Estrutura
 CREATE TABLE IF NOT EXISTS public.partners (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -65,7 +50,7 @@ CREATE TABLE IF NOT EXISTS public.clients (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. Tabelas de Operação
+-- 4. Tabelas de Operação
 CREATE TABLE IF NOT EXISTS public.leads (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company TEXT NOT NULL,
@@ -106,6 +91,7 @@ CREATE TABLE IF NOT EXISTS public.art_orders (
     progress INTEGER DEFAULT 0,
     status TEXT DEFAULT 'queue',
     approval_status TEXT DEFAULT 'pending',
+    feedback_requested BOOLEAN DEFAULT false,
     designer_name TEXT,
     owner_id UUID REFERENCES public.users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -138,30 +124,6 @@ CREATE TABLE IF NOT EXISTS public.receivables (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS public.partner_requests (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    partner_id UUID REFERENCES public.partners(id),
-    client_id UUID REFERENCES public.clients(id),
-    title TEXT,
-    description TEXT,
-    cost NUMERIC(15, 2),
-    status TEXT DEFAULT 'pending',
-    owner_id UUID REFERENCES public.users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS public.support_tickets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id UUID REFERENCES public.clients(id),
-    user_id UUID REFERENCES public.users(id),
-    subject TEXT NOT NULL,
-    description TEXT,
-    priority TEXT DEFAULT 'normal',
-    status TEXT DEFAULT 'open',
-    owner_id UUID REFERENCES public.users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE IF NOT EXISTS public.notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
@@ -172,7 +134,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 7. Tabelas de Prospecção
+-- 5. Tabelas de Prospecção
 CREATE TABLE IF NOT EXISTS public.prospecting_lists (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -212,27 +174,9 @@ CREATE TABLE IF NOT EXISTS public.message_history (
     owner_id UUID REFERENCES public.users(id)
 );
 
--- 8. Garantir colunas essenciais
-SELECT add_column_if_not_exists('art_orders', 'progress', 'INTEGER');
-SELECT add_column_if_not_exists('art_orders', 'approval_status', 'TEXT');
-SELECT add_column_if_not_exists('clients', 'branding', 'JSONB');
-SELECT add_column_if_not_exists('clients', 'demand_config', 'JSONB');
-SELECT add_column_if_not_exists('receivables', 'amount', 'NUMERIC(15, 2)');
-SELECT add_column_if_not_exists('receivables', 'payout_amount', 'NUMERIC(15, 2)');
-SELECT add_column_if_not_exists('receivables', 'designer_id', 'UUID');
-SELECT add_column_if_not_exists('video_orders', 'progress', 'INTEGER');
-SELECT add_column_if_not_exists('art_orders', 'designer_name', 'TEXT');
-SELECT add_column_if_not_exists('video_orders', 'editor_name', 'TEXT');
-
--- Limpeza de colunas legadas
-DO $$ 
-BEGIN 
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'receivables' AND column_name = 'value') THEN
-        ALTER TABLE public.receivables DROP COLUMN value;
-    END IF;
-END $$;
-
--- 9. Segurança (RLS e Permissões)
+-- 6. Segurança (RLS e Permissões)
+-- Este bloco habilita RLS e cria uma política "Permitir Tudo" para simplificar o dev.
+-- Em produção real, você deve restringir por owner_id.
 DO $$ 
 DECLARE
     t text;
@@ -245,13 +189,13 @@ BEGIN
     END LOOP;
 END $$;
 
--- 10. Dados Iniciais
+-- 7. Dados Iniciais
 INSERT INTO public.users (id, name, email, password, role) 
 VALUES 
 ('00000000-0000-0000-0000-000000000001', 'Werik Admin', 'admin@amplifica.com', 'admin123', 'OWNER'),
 ('00000000-0000-0000-0000-000000000002', 'Werik Playstore', 'werikplaystore@gmail.com', 'admin123', 'OWNER')
 ON CONFLICT (email) DO NOTHING;
 
--- Força recarga do cache da API
+-- Força recarga do cache da API do PostgREST (Supabase)
 NOTIFY pgrst, 'reload schema';
 

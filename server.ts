@@ -88,7 +88,7 @@ async function startServer() {
     });
   };
 
-  // --- Initialize Database (formerly PostgreSQL) ---
+  // --- Initialize Database ---
   
   // Recurring Demands Logic
   async function processDemands() {
@@ -685,48 +685,35 @@ async function startServer() {
   }
 
   // --- INICIALIZAÇÃO E CORREÇÃO DE DADOS ---
-  async function runMigrations() {
-    console.log("[INIT] Verificando esquema do banco de dados...");
+  async function checkDbConnection() {
+    console.log("[INIT] Verificando conexão com Supabase...");
     try {
-      // Ensure designer_name exists in art_orders
-      const { error: rpcError } = await supabase.rpc('add_column_if_not_exists', { 
-        t_name: 'art_orders', 
-        c_name: 'designer_name', 
-        c_type: 'TEXT' 
-      });
-      
-      if (rpcError) {
-        // Fallback if RPC doesn't exist - try a dummy select to see if column exists
-        const { error: selectError } = await supabase.from('art_orders').select('designer_name').limit(1);
-        if (selectError) {
-             console.log("[INIT] Coluna designer_name não encontrada em art_orders. Verifique seu banco.");
-        }
-      }
-      
-      // Since we can't easily run arbitrary SQL via supabase-js without an RPC,
-      // we assume the user applied full_init.sql.
-    } catch (e) {
-      console.warn("[INIT] Aviso ao verificar esquema:", e);
+      const { data, error } = await supabase.from('users').select('count', { count: 'exact', head: true });
+      if (error) throw error;
+      console.log("[INIT] Conexão com Supabase OK.");
+    } catch (e: any) {
+      console.error("[INIT] ALERTA: Não foi possível conectar ao banco ou tabelas faltantes:", e.message);
     }
   }
 
   async function fixUserData() {
     try {
       const { data: users, error } = await supabase.from('users').select('*');
-      if (error) throw error;
+      if (error) return;
 
       for (const user of users) {
-        // Se for OWNER e não tiver owner_id, ou owner_id for diferente do próprio ID
-        if (user.role === 'OWNER' && (!user.owner_id || user.owner_id !== user.id)) {
+        const dbOwnerId = user.owner_id;
+        if (user.role === 'OWNER' && (!dbOwnerId || dbOwnerId !== user.id)) {
           await supabase.from('users').update({ owner_id: user.id }).eq('id', user.id);
           console.log(`[FIX] Atualizado owner_id para o proprietário: ${user.name}`);
         }
       }
     } catch (err) {
-      console.error('[FIX] Erro ao corrigir dados de usuários:', err);
+      // Ignorar silenciosamente se a tabela não existir ainda
     }
   }
-  runMigrations();
+
+  checkDbConnection();
   fixUserData();
   // --- FIM CORREÇÃO ---
 

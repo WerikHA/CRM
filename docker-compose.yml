@@ -1,20 +1,38 @@
 services:
   amplifica-crm:
-    build: .
+    image: werikplaystore/amplifica-crm:latest # Substitua pelo seu usuário se necessário
     container_name: amplifica-crm
     restart: unless-stopped
     ports:
-      - "${PORT:-3000}:3000"
-    env_file:
-      - .env
+      - "3000:3000"
     environment:
+      # --- CONFIGURAÇÕES DO SERVIDOR ---
       - NODE_ENV=production
       - PORT=3000
+      - APP_URL=https://seu-endereco-aqui.com # IMPORTANTE: URL onde o CRM estará acessível
+
+      # --- CONEXÃO SUPABASE (Obrigatório) ---
+      # No ZimaOS, você cola estas chaves diretamente na interface de Variáveis de Ambiente
+      - SUPABASE_URL=https://wfdvszqfsvnrtdouuygy.supabase.co
+      - SUPABASE_ANON_KEY=sb_publishable_rjAkTZq7AlDqZ-ibucO0SA_k6UJy8l6
+      - SUPABASE_SERVICE_ROLE_KEY=SUA_SERVICE_ROLE_KEY_AQUI
+
+      # --- INTELIGÊNCIA ARTIFICIAL ---
+      - GEMINI_API_KEY=SUA_GEMINI_KEY_AQUI
+
+      # --- FRONTEND CONFIG (VITE) ---
+      - VITE_SUPABASE_URL=https://wfdvszqfsvnrtdouuygy.supabase.co
+      - VITE_SUPABASE_ANON_KEY=sb_publishable_rjAkTZq7AlDqZ-ibucO0SA_k6UJy8l6
+      - VITE_COMPANY_NAME=Amplifica CRM
+      - VITE_PRIMARY_COLOR=#4f46e5
+
     volumes:
+      # Volumes persistentes para sessões do WhatsApp e logs
       - ./whatsapp_auth_sessions:/app/whatsapp_auth_sessions
       - ./whatsapp_polls.json:/app/whatsapp_polls.json
       - ./whatsapp_interaction_logs.txt:/app/whatsapp_interaction_logs.txt
       - ./n8n_interaction_logs.txt:/app/n8n_interaction_logs.txt
+    
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
