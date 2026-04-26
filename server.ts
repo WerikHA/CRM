@@ -40,6 +40,18 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   
+  // --- Runtime Env Config for Docker ---
+  app.get("/env-config.js", (req, res) => {
+    const config = {
+      VITE_COMPANY_NAME: process.env.VITE_COMPANY_NAME || "Amplifica CRM",
+      VITE_PRIMARY_COLOR: process.env.VITE_PRIMARY_COLOR || "#4f46e5",
+      VITE_SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
+    };
+    res.type("application/javascript");
+    res.send(`window._env_ = ${JSON.stringify(config)};`);
+  });
+  
   console.log(`[INIT] Supabase URL: ${process.env.SUPABASE_URL ? 'Configurada' : 'MISSING'}`);
   console.log(`[INIT] Supabase Service Role Key: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Presente' : 'MISSING (RLS pode causar erros)'}`);
 

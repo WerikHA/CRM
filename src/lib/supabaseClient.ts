@@ -1,8 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-let supabaseUrl = (process.env.SUPABASE_URL || '').trim();
-let supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || '').trim();
-let supabaseServiceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const getEnv = (key: string) => {
+  if (typeof window !== 'undefined' && (window as any)._env_) {
+    return (window as any)._env_[key];
+  }
+  return process.env[key] || '';
+};
+
+let supabaseUrl = (getEnv('VITE_SUPABASE_URL') || getEnv('SUPABASE_URL') || '').trim();
+let supabaseAnonKey = (getEnv('VITE_SUPABASE_ANON_KEY') || getEnv('SUPABASE_ANON_KEY') || '').trim();
+let supabaseServiceRoleKey = (getEnv('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
 
 // Use Service Role Key for server-side operations if available, fallback to Anon Key
 const supabaseKey = supabaseServiceRoleKey || supabaseAnonKey;

@@ -85,9 +85,13 @@ const VIEW_LABELS: Record<ViewType, string> = {
 };
 
 // Configuração da Agência
+const getEnv = (key: string, defaultValue: string) => {
+  return (window as any)._env_?.[key] || import.meta.env[key] || defaultValue;
+};
+
 const DEFAULT_AGENCY_CONFIG = {
-  name: import.meta.env.VITE_COMPANY_NAME || 'Amplifica CRM',
-  primaryColor: import.meta.env.VITE_PRIMARY_COLOR || '#4f46e5',
+  name: getEnv('VITE_COMPANY_NAME', 'Amplifica CRM'),
+  primaryColor: getEnv('VITE_PRIMARY_COLOR', '#4f46e5'),
   logoBgColor: '#6366f1',
   logoUrl: '',
   currency: 'R$',

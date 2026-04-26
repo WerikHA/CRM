@@ -76,6 +76,11 @@ export default function ClientsView({ clients, setClients, users, partners, curr
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name?.trim()) {
+      notifyError('Atenção', 'O nome do cliente é obrigatório.');
+      return;
+    }
+    
     try {
       if (editingClient) {
         const updated = await api.updateClient(editingClient.id, formData);

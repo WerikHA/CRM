@@ -246,6 +246,12 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!formData.company?.trim() || !formData.contactName?.trim() || !formData.email?.trim()) {
+      alert('Preencha os campos obrigatórios (Empresa, Contato e E-mail) para continuar.');
+      return;
+    }
+
     try {
       if (editingLead) {
         const updatedLead = await api.updateLead(editingLead.id, formData);
@@ -572,7 +578,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
         <form className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2 space-y-1">
-              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Empresa</label>
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Empresa <span className="text-red-500">*</span></label>
               <input 
                 type="text" 
                 value={formData.company}
@@ -582,7 +588,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Contato</label>
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Contato <span className="text-red-500">*</span></label>
               <input 
                 type="text" 
                 value={formData.contactName}
@@ -602,7 +608,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">E-mail</label>
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">E-mail <span className="text-red-500">*</span></label>
               <input 
                 type="email" 
                 value={formData.email}

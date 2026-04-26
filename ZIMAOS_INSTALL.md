@@ -20,7 +20,8 @@ Este CRM foi preparado para rodar em containers Docker, garantindo persistência
 5. **Instalar**: Clique em "Install".
 
 ## Ferramentas Incluídas
-- **App Principal**: `http://<IP-DO-ZIMAOS>:3000`
+- **App Principal (CRM + Landing Page)**: `http://<IP-DO-ZIMAOS>:3000`
+- **Landing Page**: A página inicial já está inclusa e pode ser personalizada via variáveis de ambiente (`VITE_COMPANY_NAME` e `VITE_PRIMARY_COLOR`).
 - **Gestor de Banco Local**: Embora a aplicação use Supabase, o `docker-compose` inclui um PostgreSQL local para backups e integração futura.
   - **pgAdmin**: `http://<IP-DO-ZIMAOS>:8080`
   - *Login padrão:* `admin@agency.com` / `admin`

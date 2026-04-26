@@ -97,6 +97,11 @@ export default function PartnersView({
 
   const handleAgencySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!agencyFormData.name?.trim() || !agencyFormData.email?.trim()) {
+      alert('Nome e e-mail da agência são obrigatórios.');
+      return;
+    }
+    
     try {
       if (editingAgency) {
         const updated = await api.updatePartner(editingAgency.id, agencyFormData);
@@ -165,6 +170,10 @@ export default function PartnersView({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.title?.trim()) {
+      alert('O título da solicitação é obrigatório.');
+      return;
+    }
     try {
       if (editingRequest) {
         const updated = await api.updatePartnerRequest(editingRequest.id, formData);

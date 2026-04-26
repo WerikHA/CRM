@@ -1,15 +1,21 @@
 services:
   amplifica-crm:
-    image: werikplaystore/amplifica-crm:latest # Substitua pelo seu usuário se necessário
+    # A recomendação é sempre usar uma tag específica de versão (ex: v1.0.0, v1.1.0)
+    # em vez de 'latest'. Assim você terá controle sobre quando atualizar o CRM.
+    image: werikplaystore/amplifica-crm:v1.0.0 
     container_name: amplifica-crm
     restart: unless-stopped
     ports:
-      - "45.167.187.80:3009:3000"
+      - "3000:3000" # Porta padrão do CRM (inclui a Landing Page)
     environment:
+      # --- CONFIGURAÇÕES DA LANDING PAGE & MARCA ---
+      - VITE_COMPANY_NAME=Amplifica CRM # Nome que aparece na Landing Page e no Header
+      - VITE_PRIMARY_COLOR=#4f46e5    # Cor base da sua marca (Hex)
+      
       # --- CONFIGURAÇÕES DO SERVIDOR ---
       - NODE_ENV=production
       - PORT=3000
-      - APP_URL=https://seu-endereco-aqui.com # IMPORTANTE: URL onde o CRM estará acessível
+      - APP_URL=http://localhost:3000 # Troque pelo seu IP/Domínio final
 
       # --- CONEXÃO SUPABASE (Obrigatório) ---
       # No ZimaOS, você cola estas chaves diretamente na interface de Variáveis de Ambiente
