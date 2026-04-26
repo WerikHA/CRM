@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Plus, Filter, MoreHorizontal, Mail, LayoutGrid, List, ChevronRight, Info, Trash2 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, notifyError } from '../lib/utils';
 import { Lead, LeadStatus, Client } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../services/api';
@@ -248,7 +248,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
     e.preventDefault();
     
     if (!formData.company?.trim() || !formData.contactName?.trim() || !formData.email?.trim()) {
-      alert('Preencha os campos obrigatórios (Empresa, Contato e E-mail) para continuar.');
+      notifyError('Preencha os campos obrigatórios (Empresa, Contato e E-mail) para continuar.', 'Atenção');
       return;
     }
 

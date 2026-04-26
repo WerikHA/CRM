@@ -67,6 +67,7 @@ import { api } from './services/api';
 import { VideoOrder, SupportTicket, DemandTask } from './types';
 import ProductivityView from './components/ProductivityView';
 import ErrorNotifier from './components/ErrorNotifier';
+import { ToastContainer } from './components/ui/Toast';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   dashboard: 'Painel',
@@ -711,6 +712,7 @@ export default function App() {
         </section>
       </main>
       <ErrorNotifier />
+      <ToastContainer />
     </div>
   );
 }
