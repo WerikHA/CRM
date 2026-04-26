@@ -24,4 +24,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: werikoliveira/amplifica-crm:latest
+          tags: |
+            werikoliveira/amplifica-crm:latest
+            werikoliveira/amplifica-crm:v1.0.0
