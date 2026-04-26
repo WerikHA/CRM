@@ -260,18 +260,18 @@ export default function App() {
           api.getDemandTasks()
         ]);
 
-        setLeads(leadsData);
-        setClients(clientsData);
-        setReceivables(receivablesData);
-        setArtOrders(artOrdersData);
-        setPartners(partnersData);
-        setPartnerRequests(partnerRequestsData);
-        setTickets(ticketsData);
-        setVideoOrders(videoOrdersData);
-        setDemandTasks(demandTasksData);
-        setUsers(usersData);
+        setLeads(leadsData || []);
+        setClients(clientsData || []);
+        setReceivables(receivablesData || []);
+        setArtOrders(artOrdersData || []);
+        setPartners(partnersData || []);
+        setPartnerRequests(partnerRequestsData || []);
+        setTickets(ticketsData || []);
+        setVideoOrders(videoOrdersData || []);
+        setDemandTasks(demandTasksData || []);
+        setUsers(usersData || []);
         
-        if (currentUser && usersData.length > 0) {
+        if (currentUser && usersData && usersData.length > 0) {
           const freshSelf = usersData.find(u => u.id === currentUser.id);
           if (freshSelf) {
             setCurrentUser(freshSelf);

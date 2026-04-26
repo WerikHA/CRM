@@ -7,6 +7,7 @@ import { api } from '../services/api';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, getYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { getBrazilianHolidays, Holiday } from '../constants/holidays';
+import { ChatWindow } from './ChatWindow';
 
 interface DesignViewProps {
   artOrders: ArtOrder[];
@@ -47,6 +48,7 @@ export default function DesignView({
   const [whatsappImageBase64, setWhatsappImageBase64] = useState<string>('');
   const [selectedBrandClient, setSelectedBrandClient] = useState<Client | null>(null);
   const [editingOrder, setEditingOrder] = useState<ArtOrder | null>(null);
+  const [chatOrder, setChatOrder] = useState<ArtOrder | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   
   const initialFormData: Partial<ArtOrder> = {
@@ -632,6 +634,13 @@ export default function DesignView({
                   >
                     <Eye size={16} />
                   </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setChatOrder(order); }}
+                    title="Chat da Tarefa"
+                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-all"
+                  >
+                    <MessageSquare size={16} />
+                  </button>
                    <select 
                     value={order.status || 'queue'}
                     onClick={(e) => e.stopPropagation()}
@@ -756,6 +765,24 @@ export default function DesignView({
         })}
         </div>
         
+        <Modal
+          isOpen={!!chatOrder}
+          onClose={() => setChatOrder(null)}
+          title={`Chat: ${chatOrder?.title}`}
+        >
+          <div className="h-[500px]">
+             {chatOrder && (
+               <ChatWindow 
+                 chatType="task"
+                 referenceId={chatOrder.id}
+                 senderId={currentUser.id}
+                 senderName={currentUser.name}
+                 ownerId={currentUser.ownerId || currentUser.id}
+               />
+             )}
+          </div>
+        </Modal>
+
         <Modal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}

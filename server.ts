@@ -17,6 +17,21 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// --- Chat DB Constants ---
+const CHAT_DB_PATH = path.join(process.cwd(), 'chat_messages_v2.json');
+if (!fs.existsSync(CHAT_DB_PATH)) {
+    fs.writeFileSync(CHAT_DB_PATH, JSON.stringify([]));
+}
+function readChats(): any[] {
+    try {
+        const data = fs.readFileSync(CHAT_DB_PATH, 'utf-8');
+        return JSON.parse(data);
+    } catch (e) { return []; }
+}
+function writeChats(chats: any[]) {
+    fs.writeFileSync(CHAT_DB_PATH, JSON.stringify(chats, null, 2));
+}
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
@@ -205,6 +220,14 @@ async function startServer() {
         }
       }
 
+      // Cleanup task chat if finished
+      if (updates.status === 'done' || updates.status === 'finished') {
+          const chats = readChats();
+          const filtered = chats.filter(c => c.referenceId !== id);
+          writeChats(filtered);
+          console.log(`[CHAT] Cleanup triggered for finished task ${id}`);
+      }
+
       res.json(updatedTask);
     } catch (err: any) {
       console.error("[DEMANDS] Erro ao atualizar demanda:", err);
@@ -282,18 +305,74 @@ async function startServer() {
   supabaseCrud("leads", "leads");
   supabaseCrud("clients", "clients");
   supabaseCrud("receivables", "receivables");
+  
+  // Art Orders with Cleanup
+  app.put("/api/art-orders/:id", async (req, res) => {
+    try {
+      const updated = await dbService.update('art_orders', req.params.id, req.body, getContext(req));
+      if (req.body.status === 'done' || req.body.status === 'finished') {
+        const chats = readChats();
+        const filtered = chats.filter(c => c.referenceId !== req.params.id);
+        writeChats(filtered);
+        console.log(`[CHAT] Cleanup triggered for art order ${req.params.id}`);
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   supabaseCrud("art-orders", "art_orders");
+
   supabaseCrud("partners", "partners");
   supabaseCrud("partner-requests", "partner_requests");
   supabaseCrud("support-tickets", "support_tickets");
+  
+  // Video Orders with Cleanup
+  app.put("/api/video-orders/:id", async (req, res) => {
+    try {
+      const updated = await dbService.update('video_orders', req.params.id, req.body, getContext(req));
+      if (req.body.status === 'done' || req.body.status === 'finished') {
+        const chats = readChats();
+        const filtered = chats.filter(c => c.referenceId !== req.params.id);
+        writeChats(filtered);
+        console.log(`[CHAT] Cleanup triggered for video order ${req.params.id}`);
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   supabaseCrud("video-orders", "video_orders");
+
   supabaseCrud("demand-tasks", "demand_tasks");
   supabaseCrud("users", "users");
   supabaseCrud("notifications", "notifications");
   supabaseCrud("prospecting/lists", "prospecting_lists");
   supabaseCrud("prospecting/leads", "prospecting_leads");
   supabaseCrud("prospecting/campaigns", "campaigns");
-  supabaseCrud("prospecting/history", "message_history");
+  // Chat Operations (Local Storage Fallback)
+  app.get("/api/chat-messages", (req, res) => {
+    res.json(readChats());
+  });
+
+  app.post("/api/chat-messages", (req, res) => {
+    const chats = readChats();
+    const newMessage = {
+        id: Math.random().toString(36).substr(2, 9),
+        ...req.body,
+        createdAt: new Date().toISOString()
+    };
+    chats.push(newMessage);
+    writeChats(chats);
+    res.status(201).json(newMessage);
+  });
+
+  app.delete("/api/chat-cleanup/:refId", (req, res) => {
+    const chats = readChats();
+    const filtered = chats.filter(c => c.referenceId !== req.params.refId);
+    writeChats(filtered);
+    res.status(204).end();
+  });
 
   // Finance Config
   app.get("/api/finance/config", (req, res) => res.json(getFinanceConfig()));
@@ -425,6 +504,31 @@ async function startServer() {
         console.error("No OWNER found to send WhatsApp message");
     }
   );
+
+  // Chat Cleanup Scheduler (Every 24 hours)
+  async function performChatCleanup() {
+      console.log("[CHAT] Invocando limpeza programada...");
+      try {
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          
+          const chats = readChats();
+          const filtered = chats.filter(c => {
+              if (c.chatType === 'team') {
+                  return new Date(c.createdAt) > thirtyDaysAgo;
+              }
+              return true;
+          });
+          
+          writeChats(filtered);
+          console.log("[CHAT] Limpeza de 30 dias (Team) concluída.");
+      } catch (err) {
+          console.error("[CHAT] Erro na limpeza programada:", err);
+      }
+  }
+
+  performChatCleanup();
+  setInterval(performChatCleanup, 1000 * 60 * 60 * 24);
 
   // --- Vite & Static Assets ---
   if (process.env.NODE_ENV !== "production") {

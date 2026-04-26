@@ -85,6 +85,7 @@ export const api = {
   // LEADS
   async getLeads(): Promise<Lead[]> {
     const data = await request('/leads', 'GET');
+    if (!Array.isArray(data)) return [];
     return data.map((item: any) => ({
       ...item,
       estimatedValue: Number(item.estimatedValue)
@@ -103,6 +104,7 @@ export const api = {
   // CLIENTS
   async getClients(): Promise<Client[]> {
     const data = await request('/clients', 'GET');
+    if (!Array.isArray(data)) return [];
     return data.map((item: any) => ({
       ...item,
       monthlyValue: Number(item.monthlyValue),
@@ -122,6 +124,7 @@ export const api = {
   // RECEIVABLES
   async getReceivables(): Promise<Receivable[]> {
     const data = await request('/receivables', 'GET');
+    if (!Array.isArray(data)) return [];
     return data.map((item: any) => ({
       ...item,
       amount: Number(item.amount),
@@ -155,6 +158,7 @@ export const api = {
   // PARTNERS
   async getPartners(): Promise<Partner[]> {
     const data = await request('/partners', 'GET');
+    if (!Array.isArray(data)) return [];
     return data.map((item: any) => ({
       ...item,
       commissionValue: Number(item.commissionValue)
@@ -173,6 +177,7 @@ export const api = {
   // PARTNER REQUESTS
   async getPartnerRequests(): Promise<any[]> {
     const data = await request('/partner-requests', 'GET');
+    if (!Array.isArray(data)) return [];
     return data.map((item: any) => ({
       ...item,
       cost: Number(item.cost)
@@ -314,5 +319,19 @@ export const api = {
   },
   async deleteNotification(id: string): Promise<void> {
     return request(`/notifications/${id}`, 'DELETE');
+  },
+
+  // GENERIC METHODS
+  async get(endpoint: string): Promise<any> {
+    return request(endpoint, 'GET');
+  },
+  async post(endpoint: string, data: any): Promise<any> {
+    return request(endpoint, 'POST', data);
+  },
+  async put(endpoint: string, data: any): Promise<any> {
+    return request(endpoint, 'PUT', data);
+  },
+  async delete(endpoint: string): Promise<any> {
+    return request(endpoint, 'DELETE');
   }
 };

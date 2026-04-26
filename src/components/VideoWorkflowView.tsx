@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { Film, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, Filter, Check, X as XIcon, RefreshCcw, Eye, Copy, ChevronLeft, ChevronRight, Video, Play, Pause, Square } from 'lucide-react';
+import { Film, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, Filter, Check, X as XIcon, RefreshCcw, Eye, Copy, ChevronLeft, ChevronRight, Video, Play, Pause, Square, MessageSquare } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { VideoOrder, Client, WorkStatus, ApprovalStatus, User, Receivable } from '../types';
 import Modal from './Modal';
 import { api } from '../services/api';
+import { ChatWindow } from './ChatWindow';
 
 interface VideoWorkflowViewProps {
   videoOrders: VideoOrder[];
@@ -29,6 +30,7 @@ export default function VideoWorkflowView({
   const [editorFilter, setEditorFilter] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<VideoOrder | null>(null);
+  const [chatOrder, setChatOrder] = useState<VideoOrder | null>(null);
   
   const initialFormData: Partial<VideoOrder> = {
     title: '',
@@ -275,6 +277,13 @@ export default function VideoWorkflowView({
                       <option value="review" className="dark:bg-gray-900">Revisão</option>
                       <option value="done" className="dark:bg-gray-900">Finalizado</option>
                     </select>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setChatOrder(order); }}
+                      title="Chat da Tarefa"
+                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-all"
+                    >
+                      <MessageSquare size={16} />
+                    </button>
                     {(isAdminOrOwner || isPartner) && (
                       <button 
                         onClick={(e) => handleDeleteOrder(e, order.id)}
@@ -337,6 +346,24 @@ export default function VideoWorkflowView({
           })
         )}
       </div>
+
+      <Modal
+        isOpen={!!chatOrder}
+        onClose={() => setChatOrder(null)}
+        title={`Chat: ${chatOrder?.title}`}
+      >
+        <div className="h-[500px]">
+           {chatOrder && (
+             <ChatWindow 
+               chatType="task"
+               referenceId={chatOrder.id}
+               senderId={currentUser.id}
+               senderName={currentUser.name}
+               ownerId={currentUser.ownerId || currentUser.id}
+             />
+           )}
+        </div>
+      </Modal>
 
       <Modal
         isOpen={isModalOpen}

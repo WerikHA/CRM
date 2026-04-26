@@ -125,6 +125,7 @@ export interface ArtOrder {
   observation?: string; // Limite de 300 caracteres
   rejectionNotes?: string; // Observações de reprovação do cliente
   feedbackRequested?: boolean; // Flag para indicar que o link de ajustes foi enviado
+  ownerId?: string; // Master owner of the agency
 }
 
 export type PartnerRequestStatus = 'pending' | 'ongoing' | 'completed' | 'requested' | 'delivered';

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Palette, Send, CheckCircle2, MessageSquare, AlertCircle } from 'lucide-react';
-import { ArtOrder, Client } from '../types';
+import { ArtOrder, Client, User } from '../types';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
+import { ChatWindow } from './ChatWindow';
+import { Mic, Square } from 'lucide-react';
 
 interface DesignModificationFormProps {
   orderId: string;
@@ -16,6 +18,7 @@ export default function DesignModificationForm({ orderId, onSuccess }: DesignMod
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [owner, setOwner] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,6 +38,11 @@ export default function DesignModificationForm({ orderId, onSuccess }: DesignMod
         const clients = await api.getClients();
         const foundClient = clients.find(c => c.id === foundOrder.clientId);
         setClient(foundClient || null);
+        
+        // Load owner info for the chat
+        const users = await api.getUsers();
+        const foundOwner = foundOrder.ownerId ? users.find(u => u.id === foundOrder.ownerId) : null;
+        setOwner(foundOwner || null);
         
         setLoading(false);
       } catch (err) {
@@ -60,6 +68,13 @@ export default function DesignModificationForm({ orderId, onSuccess }: DesignMod
         progress: 40,
         feedbackRequested: false // Reseta a flag
       });
+      
+      // Cleanup feedback chat messages via API
+      try {
+        await api.delete(`/chat-cleanup/${orderId}`);
+      } catch (err) {
+        console.warn("Falha ao limpar chat de feedback:", err);
+      }
       
       setSubmitted(true);
       setTimeout(() => {
@@ -120,54 +135,70 @@ export default function DesignModificationForm({ orderId, onSuccess }: DesignMod
         </div>
 
         <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-gray-800 overflow-hidden transition-all duration-300">
-           <div className="p-8 md:p-10">
-              <div className="flex items-start gap-4 mb-8 bg-indigo-50/50 dark:bg-indigo-500/5 p-4 rounded-2xl border border-indigo-100/50 dark:border-indigo-500/10">
-                 <div className="p-2 bg-indigo-500 text-white rounded-xl shadow-md">
-                   <MessageSquare size={20} />
-                 </div>
-                 <div>
-                   <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1">Instruções para Ajustes</p>
-                   <p className="text-xs text-gray-600 dark:text-gray-400 font-medium italic">Seja o mais específico possível sobre o que deseja alterar (cores, textos, fontes, imagens, etc).</p>
-                 </div>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2 px-1">O que você deseja alterar?</label>
-                  <textarea
-                    required
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={6}
-                    placeholder="Ex: Gostaria de trocar a cor principal para azul marinho e aumentar o tamanho do logo..."
-                    className="w-full px-6 py-4 rounded-[1.5rem] bg-gray-50 dark:bg-gray-800 border border-transparent focus:bg-white dark:focus:bg-gray-900 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all text-gray-900 dark:text-gray-100 outline-none text-sm leading-relaxed"
-                  />
+           <div className="p-8 md:p-10 flex flex-col md:flex-row gap-8">
+              <div className="flex-1">
+                <div className="flex items-start gap-4 mb-8 bg-indigo-50/50 dark:bg-indigo-500/5 p-4 rounded-2xl border border-indigo-100/50 dark:border-indigo-500/10">
+                  <div className="p-2 bg-indigo-500 text-white rounded-xl shadow-md">
+                    <MessageSquare size={20} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1">Instruções para Ajustes</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 font-medium italic">Seja o mais específico possível sobre o que deseja alterar (cores, textos, fontes, imagens, etc).</p>
+                  </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={submitting || !notes.trim()}
-                  className={cn(
-                    "w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95",
-                    submitting || !notes.trim() 
-                      ? "bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed" 
-                      : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-indigo-900/50"
-                  )}
-                >
-                  {submitting ? (
-                    'Enviando...'
-                  ) : (
-                    <>
-                      Enviar Solicitação de Ajuste
-                      <Send size={18} />
-                    </>
-                  )}
-                </button>
-              </form>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2 px-1">O que você deseja alterar?</label>
+                    <textarea
+                      required
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={6}
+                      placeholder="Ex: Gostaria de trocar a cor principal para azul marinho e aumentar o tamanho do logo..."
+                      className="w-full px-6 py-4 rounded-[1.5rem] bg-gray-50 dark:bg-gray-800 border border-transparent focus:bg-white dark:focus:bg-gray-900 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all text-gray-900 dark:text-gray-100 outline-none text-sm leading-relaxed"
+                    />
+                  </div>
 
-              <div className="mt-8 pt-8 border-t border-gray-50 dark:border-gray-800 text-center">
-                 <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-[0.2em]">© {new Date().getFullYear()} - Sistema de Gestão de Artes</p>
+                  <button
+                    type="submit"
+                    disabled={submitting || !notes.trim()}
+                    className={cn(
+                      "w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95",
+                      submitting || !notes.trim() 
+                        ? "bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed" 
+                        : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-indigo-900/50"
+                    )}
+                  >
+                    {submitting ? (
+                      'Enviando...'
+                    ) : (
+                      <>
+                        Enviar Solicitação de Ajuste
+                        <Send size={18} />
+                      </>
+                    )}
+                  </button>
+                </form>
               </div>
+
+              <div className="w-full md:w-80 flex flex-col">
+                 <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4 text-center">Chat de Feedback / Áudio</label>
+                 <div className="flex-1 min-h-[400px]">
+                    <ChatWindow 
+                      chatType="feedback"
+                      referenceId={orderId}
+                      senderId="client-guest"
+                      senderName={client?.name || 'Cliente'}
+                      ownerId={order.ownerId || ''}
+                      title="Explicação via Áudio"
+                    />
+                 </div>
+              </div>
+           </div>
+
+           <div className="px-8 pb-8 text-center border-t border-gray-50 dark:border-gray-800 pt-8">
+                 <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-[0.2em]">© {new Date().getFullYear()} - Sistema de Gestão de Artes</p>
            </div>
         </div>
       </div>

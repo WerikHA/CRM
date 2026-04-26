@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert } from 'lucide-react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare } from 'lucide-react';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import { IntegrationConfig, Lead, Client, ArtOrder, Receivable, User } from '../types';
 import Modal from './Modal';
+import { ChatWindow } from './ChatWindow';
 
 // Componente Interno para Gestão do QR do WhatsApp Cloud
 function N8nLogs({ isAdmin }: { isAdmin: boolean }) {
@@ -379,6 +380,12 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
                <div className="mt-3 p-3 bg-white dark:bg-black/20 rounded-xl border border-rose-100 dark:border-rose-500/10">
                   <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">O que fazer?</p>
                   <p className="text-xs text-gray-700 dark:text-gray-300 font-medium">{errorInfo.action}</p>
+                  <button 
+                    onClick={handleLogout}
+                    className="mt-3 w-full py-2 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all"
+                  >
+                    Sair / Desconectar para Tentar Novamente
+                  </button>
                </div>
              </div>
            </div>
@@ -465,6 +472,7 @@ export default function AdminView({
   currentUser
 }: AdminViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'personalizacao' | 'whatsapp'>('integrations');
+  const [isTeamChatOpen, setIsTeamChatOpen] = useState(false);
   const isOwner = currentUser.role === 'OWNER';
   const isAdmin = currentUser.role === 'ADMIN';
   const canManageSystem = isOwner || isAdmin;
@@ -1286,6 +1294,35 @@ export default function AdminView({
           <button type="submit" className="hidden" />
         </form>
       </Modal>
+
+      {/* Floating Team Chat Trigger */}
+      <div className="fixed bottom-8 right-8 z-50">
+        <button 
+          onClick={() => setIsTeamChatOpen(!isTeamChatOpen)}
+          className={cn(
+            "w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl transition-all duration-300 group",
+            isTeamChatOpen ? "bg-rose-500 rotate-90" : "bg-indigo-600 hover:bg-indigo-700"
+          )}
+        >
+          {isTeamChatOpen ? <X size={24} className="text-white" /> : <MessageSquare size={24} className="text-white group-hover:scale-110" />}
+          {!isTeamChatOpen && (
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-gray-950"></div>
+          )}
+        </button>
+        
+        <div className={cn(
+          "absolute bottom-20 right-0 w-[350px] sm:w-[400px] h-[550px] sm:h-[600px] transition-all duration-500 origin-bottom-right",
+          isTeamChatOpen ? "scale-100 opacity-100 translate-y-0" : "scale-0 opacity-0 translate-y-10 pointer-events-none"
+        )}>
+           <ChatWindow 
+              chatType="team"
+              senderId={currentUser.id}
+              senderName={currentUser.name}
+              ownerId={currentUser.ownerId || currentUser.id}
+              title="Chat da Equipe"
+           />
+        </div>
+      </div>
     </>
   );
 }
