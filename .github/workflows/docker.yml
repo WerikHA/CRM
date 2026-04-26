@@ -17,7 +17,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: werikoliveira
-          password: We12wi25k*
+          password: We12wi25k#3912*
 
       - name: Build e Push
         uses: docker/build-push-action@v5
