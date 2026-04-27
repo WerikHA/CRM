@@ -10,7 +10,7 @@ export interface DbContext {
 const toSnakeCase = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 const toCamelCase = (str: string) => str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 
-const keysToSnake = (obj: any): any => {
+export const keysToSnake = (obj: any): any => {
   if (typeof obj !== 'object' || obj === null) {
     if (obj === "") return null;
     return obj;
@@ -23,7 +23,7 @@ const keysToSnake = (obj: any): any => {
   return n;
 };
 
-const keysToCamel = (obj: any): any => {
+export const keysToCamel = (obj: any): any => {
   if (typeof obj !== 'object' || obj === null) return obj;
   if (Array.isArray(obj)) return obj.map(keysToCamel);
   const n: any = {};

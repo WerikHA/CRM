@@ -14,7 +14,7 @@ import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } 
 import { supabase } from "./src/lib/supabaseClient.ts";
 import { getEmailConfig, saveEmailConfig, resetTransporter, sendEmail } from "./src/services/emailService.ts";
 
-import { dbService, DbContext } from "./src/services/dbService.ts";
+import { dbService, DbContext, keysToCamel, keysToSnake } from "./src/services/dbService.ts";
 import { UserRole } from "./src/types.ts";
 
 dotenv.config();
@@ -570,27 +570,28 @@ async function startServer() {
     }
     
     email = email.trim().toLowerCase();
-    password = password.trim();
     
     console.log(`[AUTH] Tentativa de login para: ${email}`);
     
     try {
-      const { data: userFound, error } = await supabase
+      const { data: userRaw, error } = await supabase
         .from('users')
         .select('*')
         .eq('email', email)
-        .single();
+        .maybeSingle(); // Better than .single() as it doesn't throw if not found
       
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return res.status(401).json({ error: "E-mail ou senha incorretos" });
-        }
-        throw error;
+      if (error) throw error;
+      
+      if (!userRaw) {
+        console.log(`[AUTH] Usuário não encontrado: ${email}`);
+        return res.status(401).json({ error: "E-mail ou senha incorretos" });
       }
 
-      const data = userFound && userFound.password === password ? userFound : null;
+      // Convert from snake_case (DB) to camelCase (App)
+      const data = keysToCamel(userRaw);
         
-      if (!data) {
+      if (data.password !== password) {
+        console.log(`[AUTH] Senha incorreta para: ${email}`);
         return res.status(401).json({ error: "E-mail ou senha incorretos" });
       }
       
@@ -603,12 +604,12 @@ async function startServer() {
         { expiresIn: '7d' }
       );
 
-      res.json({ success: true, user: data, token });
+      // Don't send password back to frontend
+      const { password: _, ...userSafe } = data;
+      res.json({ success: true, user: userSafe, token });
     } catch (err: any) {
       console.error(`[AUTH] Erro crítico no login do usuário ${email}:`, err);
-      // Return specific error if possible to help frontend debugging
-      const errorMessage = err.message || "Erro interno no servidor de autenticação";
-      res.status(500).json({ error: errorMessage, details: err });
+      res.status(500).json({ error: "Erro interno no servidor de autenticação", details: err.message });
     }
   });
 
@@ -619,40 +620,53 @@ async function startServer() {
     }
 
     email = email.trim().toLowerCase();
-    const newUser = { name, email, password, role: 'OWNER' as const };
-
+    
     try {
-      const { data: existingUser } = await supabase
+      const { data: existingUser, error: checkError } = await supabase
         .from('users')
         .select('id')
         .eq('email', email)
-        .single();
+        .maybeSingle();
         
+      if (checkError) throw checkError;
+
       if (existingUser) {
         return res.status(400).json({ error: "E-mail já cadastrado" });
       }
 
-      // Create owner user (system context)
-      const { data, error } = await supabase.from('users').insert({
+      // Create owner user (using mapping helper to be safe)
+      const newUserRaw = keysToSnake({
         name,
         email,
         password,
         role: 'OWNER'
-      }).select().single();
+      });
 
-      if (error) throw error;
+      const { data: userRaw, error: insertError } = await supabase
+        .from('users')
+        .insert(newUserRaw)
+        .select()
+        .single();
 
-      await supabase.from('users').update({ owner_id: data.id }).eq('id', data.id);
+      if (insertError) throw insertError;
+
+      const user = keysToCamel(userRaw);
+
+      // Update owner_id to be the user's own ID since they are the OWNER
+      await supabase.from('users').update({ owner_id: user.id }).eq('id', user.id);
       
-      await logActivity(data.id, data.id, 'SIGNUP', { email: data.email, role: 'OWNER' });
+      const userWithFullData = { ...user, ownerId: user.id };
+
+      await logActivity(user.id, user.id, 'SIGNUP', { email: user.email, role: 'OWNER' });
 
       const token = jwt.sign(
-        { id: data.id, role: data.role, ownerId: data.id },
+        { id: user.id, role: user.role, ownerId: user.id },
         JWT_SECRET,
         { expiresIn: '7d' }
       );
 
-      res.json({ success: true, user: { ...data, ownerId: data.id }, token });
+      const { password: _, ...userSafe } = userWithFullData;
+      res.json({ success: true, user: userSafe, token });
     } catch (err: any) {
       console.error("[AUTH] Erro no signup:", err);
       res.status(500).json({ error: `Erro ao criar conta: ${err.message}` });
