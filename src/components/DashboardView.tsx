@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { TrendingUp, Users, DollarSign, Palette, ArrowUpRight, ArrowDownRight, BarChart3, PieChart as PieChartIcon, CheckCircle2, Handshake, Clock, Receipt, Briefcase, ArrowUp } from 'lucide-react';
+import { TrendingUp, Users, DollarSign, Palette, ArrowUpRight, ArrowDownRight, BarChart3, PieChart as PieChartIcon, CheckCircle2, Handshake, Clock, Receipt, Briefcase, ArrowUp, Video } from 'lucide-react';
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -342,6 +342,18 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
              'Bem-vindo de volta! Aqui está o resumo da sua agência.'}
           </p>
         </div>
+        {(isAdmin || isOwner) && (
+          <button 
+            onClick={() => {
+              const roomId = Math.random().toString(36).substr(2, 9);
+              (window as any).onJoinMeeting?.(roomId);
+            }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+          >
+            <Video size={18} />
+            <span>Iniciar Videochamada</span>
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

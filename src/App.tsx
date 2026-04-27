@@ -68,6 +68,7 @@ import ProductivityView from './components/ProductivityView';
 import ErrorNotifier from './components/ErrorNotifier';
 import { ToastContainer } from './components/ui/Toast';
 import CookieConsent from './components/CookieConsent';
+import MeetingView from './components/MeetingView';
 
 import { storageService } from './lib/storage';
 
@@ -175,6 +176,19 @@ export default function App() {
     }
     return false;
   });
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const rid = urlParams.get('roomId');
+    if (rid) {
+      console.log("[MEET] Room ID detectado:", rid);
+      setActiveRoomId(rid);
+    }
+
+    (window as any).onJoinMeeting = (id: string) => setActiveRoomId(id);
+    return () => { delete (window as any).onJoinMeeting; };
+  }, []);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -505,6 +519,21 @@ export default function App() {
     }
   };
 
+  if (activeRoomId && !currentUser) {
+    return (
+      <MeetingView 
+        roomId={activeRoomId} 
+        currentUser={null} 
+        onExit={() => {
+          setActiveRoomId(null);
+          const url = new URL(window.location.href);
+          url.searchParams.delete('roomId');
+          window.history.pushState({}, '', url.pathname + url.search);
+        }} 
+      />
+    );
+  }
+
   if (publicOrderId) {
     return (
       <>
@@ -727,6 +756,20 @@ export default function App() {
             </span>
           </div>
           <div className="flex items-center gap-4">
+             {/* Meeting Button Quick Access */}
+             {(effectiveUser.role === 'ADMIN' || effectiveUser.role === 'OWNER') && (
+               <button 
+                onClick={() => {
+                  const id = Math.random().toString(36).substr(2, 9);
+                  setActiveRoomId(id);
+                }}
+                className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold text-[10px] uppercase tracking-widest border border-indigo-100 dark:border-indigo-500/20"
+               >
+                 <Film size={12} />
+                 Meet
+               </button>
+             )}
+
              {/* Theme Toggle */}
              <button 
                onClick={toggleTheme}
@@ -791,6 +834,20 @@ export default function App() {
       <ErrorNotifier />
       <ToastContainer />
       <CookieConsent />
+
+      {activeRoomId && (
+        <MeetingView 
+          roomId={activeRoomId} 
+          currentUser={currentUser} 
+          onExit={() => {
+            setActiveRoomId(null);
+            // Clear URL param
+            const url = new URL(window.location.href);
+            url.searchParams.delete('roomId');
+            window.history.pushState({}, '', url.pathname + url.search);
+          }} 
+        />
+      )}
     </div>
   );
 }

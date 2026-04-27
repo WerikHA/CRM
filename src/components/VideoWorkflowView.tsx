@@ -177,8 +177,8 @@ export default function VideoWorkflowView({
       return;
     }
 
-    // Para ir para revisão, deve ter vídeo
-    if (status === 'review' && !order.videoUrl) {
+    // Para ir para revisão, deve ter vídeo (bloqueio apenas para editores)
+    if (status === 'review' && !order.videoUrl && !isAdminOrOwner) {
       notifyError("Atenção", "Você deve fazer o upload do vídeo antes de enviar para revisão.");
       return;
     }

@@ -13,6 +13,9 @@ import { startBackupScheduler } from "./src/services/backupService.ts";
 import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } from "./src/services/paymentReminderService.ts";
 import { supabase } from "./src/lib/supabaseClient.ts";
 import { getEmailConfig, saveEmailConfig, resetTransporter, sendEmail } from "./src/services/emailService.ts";
+import { Server } from "socket.io";
+import { createServer } from "http";
+import { ExpressPeerServer } from "peer";
 
 import { dbService, DbContext, keysToCamel, keysToSnake } from "./src/services/dbService.ts";
 import { UserRole } from "./src/types.ts";
@@ -91,8 +94,85 @@ async function startServer() {
   });
 
   // Start listening as soon as possible so the platform proxy doesn't show "Starting Server"
-  const server = app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`🚀 Amplifica CRM rodando em https://localhost:${PORT}`);
+  const httpServer = createServer(app);
+  const io = new Server(httpServer, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
+
+  const peerServer = ExpressPeerServer(httpServer, {
+    path: "/peerjs"
+  });
+
+  app.use("/peerjs", peerServer);
+
+  // --- Socket.io Meeting Logic ---
+  const meetingRequests = new Map<string, any[]>(); // room -> requests
+  const activeMeetings = new Map<string, Set<string>>(); // room -> userIds
+
+  io.on("connection", (socket) => {
+    console.log(`[SOCKET] Cliente conectado: ${socket.id}`);
+
+    socket.on("join-room", ({ roomId, user, isGuest }) => {
+      socket.join(roomId);
+      console.log(`[SOCKET] User ${user.name} joined room ${roomId} (Guest: ${isGuest})`);
+      
+      if (!isGuest) {
+        // Host logic: inform existing guests that host is here
+        socket.to(roomId).emit("host-joined", { hostId: socket.id });
+      }
+
+      // Broadcast to others in room
+      socket.to(roomId).emit("user-connected", { userId: socket.id, user });
+
+      socket.on("disconnect", () => {
+        console.log(`[SOCKET] User ${user.name} disconnected from ${roomId}`);
+        socket.to(roomId).emit("user-disconnected", socket.id);
+        
+        // Cleanup requests if host disconnects? Or keep them if others are there
+        // For now, simple cleanup
+      });
+    });
+
+  // Signaling for WebRTC
+    socket.on("signal", ({ to, from, signal }) => {
+      io.to(to).emit("signal", { from, signal });
+    });
+
+    // Meeting Access Control
+    socket.on("request-join", ({ roomId, guestInfo }) => {
+      console.log(`[SOCKET] Guest ${guestInfo.name} requesting entry to ${roomId}. Socket: ${socket.id}`);
+      const requests = meetingRequests.get(roomId) || [];
+      const newRequest = { id: socket.id, ...guestInfo };
+      requests.push(newRequest);
+      meetingRequests.set(roomId, requests);
+
+      // Notify host(s) in the room
+      console.log(`[SOCKET] Notifying room ${roomId} about new guest`);
+      io.to(roomId).emit("new-join-request", newRequest);
+    });
+
+    socket.on("approve-request", ({ roomId, guestId }) => {
+      console.log(`[SOCKET] Host approved ${guestId} for ${roomId}`);
+      io.to(guestId).emit("request-approved", { roomId });
+      
+      // Remove from pending
+      let requests = meetingRequests.get(roomId) || [];
+      requests = requests.filter(r => r.id !== guestId);
+      meetingRequests.set(roomId, requests);
+    });
+
+    socket.on("deny-request", ({ roomId, guestId }) => {
+      console.log(`[SOCKET] Host denied ${guestId} for ${roomId}`);
+      io.to(guestId).emit("request-denied");
+      
+      // Remove from pending
+      let requests = meetingRequests.get(roomId) || [];
+      requests = requests.filter(r => r.id !== guestId);
+      meetingRequests.set(roomId, requests);
+    });
   });
 
   // --- Runtime Env Config for Docker ---
@@ -100,8 +180,6 @@ async function startServer() {
     const config = {
       VITE_COMPANY_NAME: process.env.VITE_COMPANY_NAME || "Amplifica CRM",
       VITE_PRIMARY_COLOR: process.env.VITE_PRIMARY_COLOR || "#4f46e5",
-      // As chaves do Supabase não são mais enviadas ao navegador por segurança.
-      // O CRM agora usa o Proxy Interno /api para todas as operações de banco.
     };
     res.type("application/javascript");
     res.send(`window._env_ = ${JSON.stringify(config)};`);
@@ -121,6 +199,54 @@ async function startServer() {
     };
   }
 
+  // --- HEALTH CHECKS ---
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", message: "Amplifica CRM API is active" });
+  });
+
+  // Health check - Supabase
+  app.get("/api/health/supabase", async (req, res) => {
+    try {
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+      const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+      const activeKey = serviceKey || anonKey;
+      
+      const isServiceRole = activeKey.includes('service_role') || !!serviceKey;
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+      
+      if (!supabaseUrl || !activeKey) {
+        return res.json({ connected: false, message: "URL ou Chave do Supabase ausentes", isServiceRole: false });
+      }
+
+      // Test the connection by running a simple query
+      const { data, error } = await supabase.from('clients').select('id').limit(1);
+      
+      let message = "Conectado com sucesso ao Supabase Cloud";
+      let connected = true;
+      let logs = [];
+
+      if (error) {
+         logs.push(`[PostgREST Error] ${error.code} - ${error.message} - ${error.details || ''}`);
+         if (error.code === '42P01') {
+            message = "Conectado, mas a tabela 'clients' não existe. (Tabelas ausentes)";
+         } else if (error.code === 'PGRST301' || error.message.includes('JWT')) {
+            message = "Conectado. (Erro de JWT/Auth)";
+         } else if (error.message.includes('FetchError') || error.message.includes('fetch failed')) {
+            connected = false;
+            message = "Falha na rede ao conectar no Supabase. URL inválida?";
+         } else {
+            message = "Conectado, mas ocorreu um erro na leitura: " + error.message;
+         }
+      } else {
+         logs.push(`[Success] Tabelas lidas com sucesso. Dados: ${data?.length} registros.`);
+      }
+
+      return res.json({ connected, message, isServiceRole, logs });
+    } catch(err: any) {
+      return res.json({ connected: false, message: err.message || "Unknown error", isServiceRole: false, logs: [err.message] });
+    }
+  });
+
   // --- Auth Middleware ---
   const authMiddleware = (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
     // Skip auth for public routes
@@ -133,13 +259,11 @@ async function startServer() {
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.warn(`[AUTH] Acesso negado (Header ausente/inválido): ${req.method} ${req.originalUrl}`);
       return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor, faça login novamente." });
     }
 
     const token = authHeader.split(" ")[1];
     if (!token || token === 'null' || token === 'undefined') {
-       console.warn(`[AUTH] Token inválido: ${req.method} ${req.originalUrl}`);
        return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor, faça login novamente." });
     }
     try {
@@ -359,8 +483,150 @@ async function startServer() {
     });
   };
 
-  // --- Initialize Database ---
-  
+  // --- CUSTOM DASHBOARD/DEMANDS SPECIFIC ROUTES ---
+  // Chat Operations
+  app.get("/api/chat-messages", (req, res) => {
+    try {
+      const context = getContext(req as AuthRequest);
+      const chats = readChats();
+      const filtered = chats.filter((c: any) => c.ownerId === context?.ownerId);
+      res.json(filtered);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/chat-messages", (req, res) => {
+    try {
+      const context = getContext(req as AuthRequest);
+      if (!context) return res.status(401).json({ error: "Não autorizado" });
+
+      const chats = readChats();
+      const newMessage = {
+          id: Math.random().toString(36).substr(2, 9),
+          ...req.body,
+          ownerId: context.ownerId,
+          createdAt: new Date().toISOString()
+      };
+      chats.push(newMessage);
+      writeChats(chats);
+      res.status(201).json(newMessage);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/chat-cleanup/:refId", (req, res) => {
+    try {
+      const chats = readChats();
+      const filtered = chats.filter((c: any) => c.referenceId !== req.params.refId);
+      writeChats(filtered);
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/demand-tasks", async (req, res) => {
+    try {
+      const data = await dbService.insert('demand_tasks', req.body, getContext(req));
+      res.json(data);
+    } catch (err: any) {
+      console.error("[DEMANDS] Erro ao criar demanda:", err);
+      res.status(500).json({ error: `Erro no banco de dados: ${err.message}` });
+    }
+  });
+
+  app.put("/api/demand-tasks/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+    try {
+      const updatedTask = await dbService.update('demand_tasks', id, updates, getContext(req));
+      if (updates.status === 'done' && updatedTask && updatedTask.type === 'recording') {
+        const clients = await dbService.list('clients', getContext(req));
+        const client = clients.find((c: any) => c.id === updatedTask.clientId);
+        if (client) {
+          const newVideoOrder = {
+            title: `Edição: ${updatedTask.title || updatedTask.observations || 'Sem título'}`,
+            clientId: updatedTask.clientId,
+            editorId: updatedTask.editorId || client.demandConfig?.defaultEditorId || '',
+            deadline: updatedTask.postDate || 'Imediato',
+            priority: 'high',
+            progress: 0,
+            status: 'queue'
+          };
+          await dbService.insert('video_orders', newVideoOrder, getContext(req));
+        }
+      }
+      if (updates.status === 'done' || updates.status === 'finished') {
+          const chats = readChats();
+          const filtered = chats.filter(c => c.referenceId !== id);
+          writeChats(filtered);
+      }
+      res.json(updatedTask);
+    } catch (err: any) {
+      res.status(500).json({ error: `Erro ao salvar demanda: ${err.message}` });
+    }
+  });
+
+  app.put("/api/art-orders/:id", async (req, res) => {
+    try {
+      const updated = await dbService.update('art_orders', req.params.id, req.body, getContext(req));
+      if (req.body.status === 'done' || req.body.status === 'finished') {
+        const chats = readChats();
+        const filtered = chats.filter((c: any) => c.referenceId !== req.params.id);
+        writeChats(filtered);
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/video-orders/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = { ...req.body };
+    const context = getContext(req as AuthRequest);
+    delete updates.approvedAt;
+    delete updates.approved_at;
+    try {
+      const currentOrder = await dbService.getById('video_orders', id, context);
+      if (updates.status === 'production' && currentOrder.videoUrl) {
+        const filename = currentOrder.videoUrl.replace('/api/files/', '');
+        const filePath = path.join(UPLOADS_DIR, filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+        updates.videoUrl = null;
+      }
+      if (updates.status === 'done' || updates.status === 'finished') {
+        const chats = readChats();
+        const filtered = chats.filter((c: any) => c.referenceId !== id);
+        writeChats(filtered);
+      }
+      const updated = await dbService.update('video_orders', id, updates, context);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- Initialize Generic CRUD Routes ---
+  supabaseCrud("users", "users");
+  supabaseCrud("leads", "leads");
+  supabaseCrud("clients", "clients");
+  supabaseCrud("receivables", "receivables");
+  supabaseCrud("video-orders", "video_orders");
+  supabaseCrud("demand-tasks", "demand_tasks");
+  supabaseCrud("notifications", "notifications");
+  supabaseCrud("partners", "partners");
+  supabaseCrud("partner-requests", "partner_requests");
+  supabaseCrud("support-tickets", "support_tickets");
+  supabaseCrud("art-orders", "art_orders");
+  supabaseCrud("prospecting/lists", "prospecting_lists");
+  supabaseCrud("prospecting/leads", "prospecting_leads");
+  supabaseCrud("prospecting/campaigns", "campaigns");
+
   // Recurring Demands Logic
   async function processDemands() {
     console.log("[DEMANDS] Iniciando processamento de demandas recorrentes...");
@@ -704,66 +970,6 @@ async function startServer() {
   });
   supabaseCrud("art-orders", "art_orders");
 
-  supabaseCrud("partners", "partners");
-  supabaseCrud("partner-requests", "partner_requests");
-  supabaseCrud("support-tickets", "support_tickets");
-  
-  // Video Orders with Cleanup and special approval/rejection handling
-  app.put("/api/video-orders/:id", async (req, res) => {
-    const { id } = req.params;
-    const updates = { ...req.body };
-    const context = getContext(req as AuthRequest);
-    
-    // Explicitly delete approvedAt if sent from client to avoid Supabase schema error
-    // because approved_at might not exist in the DB schema yet, or we only want server to handle it
-    delete updates.approvedAt;
-    delete updates.approved_at;
-
-    try {
-      // Get current order to check for existing video file
-      const currentOrder = await dbService.getById('video_orders', id, context);
-      
-      // If rejecting (moving back to production), delete the video file immediately
-      if (updates.status === 'production' && currentOrder.videoUrl) {
-        const filename = currentOrder.videoUrl.replace('/api/files/', '');
-        const filePath = path.join(UPLOADS_DIR, filename);
-        
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-          console.log(`[VIDEO] Vídeo deletado por reprovação: ${filename}`);
-        }
-        updates.videoUrl = null; // Clear the URL
-      }
-      
-      // Logic from deleted duplicate route: cleanup chat when done
-      if (updates.status === 'done' || updates.status === 'finished') {
-        const chats = readChats();
-        const filtered = chats.filter((c: any) => c.referenceId !== id);
-        writeChats(filtered);
-        console.log(`[CHAT] Cleanup triggered for video order ${id}`);
-        
-        // If approving, set the approval timestamp (server-side only if it wasn't already done)
-        // We still don't send this to DB if the column is missing, but if the column IS there,
-        // we'll comment it out or keep it hidden until confirmed.
-        // For now, let's just NOT send it to dbService.update to fix the user's error.
-      }
-
-      const updated = await dbService.update('video_orders', id, updates, context);
-      res.json(updated);
-    } catch (err: any) {
-      console.error("[VIDEO] Erro ao atualizar pedido de vídeo:", err);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  supabaseCrud("video-orders", "video_orders");
-
-  supabaseCrud("demand-tasks", "demand_tasks"); // Unified path
-  supabaseCrud("notifications", "notifications");
-  supabaseCrud("prospecting/lists", "prospecting_lists");
-  supabaseCrud("prospecting/leads", "prospecting_leads");
-  supabaseCrud("prospecting/campaigns", "campaigns");
-  
   // --- Email Service Routes ---
   app.get("/api/email/config", (req, res) => {
     res.json(getEmailConfig() || {
@@ -1089,6 +1295,11 @@ async function startServer() {
 
   checkDbConnection().catch(e => console.error("[STARTUP] Erro na conexão inicial:", e));
   fixUserData().catch(e => console.error("[STARTUP] Erro ao corrigir dados:", e));
+
+  // Start the server
+  httpServer.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`🚀 Amplifica CRM rodando em http://localhost:${PORT}`);
+  });
 }
 
 startServer();
