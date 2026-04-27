@@ -32,6 +32,8 @@ export default function VideoWorkflowView({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<VideoOrder | null>(null);
   const [chatOrder, setChatOrder] = useState<VideoOrder | null>(null);
+  const [rejectingOrder, setRejectingOrder] = useState<VideoOrder | null>(null);
+  const [rejectionNotes, setRejectionNotes] = useState('');
   
   const initialFormData: Partial<VideoOrder> = {
     title: '',
@@ -187,10 +189,15 @@ export default function VideoWorkflowView({
     else if (status === 'review') progress = 90;
     else if (status === 'done') progress = 100;
     
-    setVideoOrders(prev => prev.map(o => o.id === id ? { ...o, status, progress } : o));
+    // Update otimista local
+    setVideoOrders(prev => prev.map(o => o.id === id ? { ...o, status, progress, approvedAt: status === 'done' ? new Date().toISOString() : o.approvedAt } : o));
     
     try {
-      await api.updateVideoOrder(id, { status, progress });
+      const updates: any = { status, progress };
+      if (status === 'done') {
+        updates.approvedAt = new Date().toISOString();
+      }
+      await api.updateVideoOrder(id, updates);
       notifySuccess(`Status atualizado: ${getStatusLabel(status)}`);
     } catch (err: any) {
       console.error('Falha ao atualizar status:', err);
@@ -240,7 +247,8 @@ export default function VideoWorkflowView({
       
       await api.updateVideoOrder(id, { 
         status: 'done', 
-        progress: 100 
+        progress: 100,
+        approvedAt
       });
       
       notifySuccess("Vídeo aprovado! Ele ficará disponível por 7 dias.");
@@ -249,26 +257,29 @@ export default function VideoWorkflowView({
     }
   };
 
-  const handleRejectVideo = async (id: string) => {
-    const notes = prompt("Por que o vídeo foi reprovado?");
-    if (notes === null) return;
+  const handleRejectVideo = async () => {
+    if (!rejectingOrder || !rejectionNotes.trim()) return;
     
+    const id = rejectingOrder.id;
     try {
       setVideoOrders(prev => prev.map(o => o.id === id ? { 
         ...o, 
         status: 'production', 
         progress: 50,
         videoUrl: undefined,
-        rejectionNotes: notes 
+        rejectionNotes: rejectionNotes 
       } : o));
       
       await api.updateVideoOrder(id, { 
         status: 'production', 
         progress: 50,
-        rejectionNotes: notes 
+        videoUrl: null, // Clear URL in DB
+        rejectionNotes: rejectionNotes 
       });
       
       notifySuccess("Vídeo reprovado e arquivos deletados. Voltando para edição.");
+      setRejectingOrder(null);
+      setRejectionNotes('');
     } catch (err: any) {
       notifyError("Erro ao reprovar", err.message);
     }
@@ -479,7 +490,7 @@ export default function VideoWorkflowView({
                           <Check size={14} /> Aprovar Vídeo
                         </button>
                         <button 
-                          onClick={(e) => { e.stopPropagation(); handleRejectVideo(order.id); }}
+                          onClick={(e) => { e.stopPropagation(); setRejectingOrder(order); }}
                           className="flex-1 py-2 bg-rose-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-rose-600 transition-colors shadow-sm"
                         >
                           <XIcon size={14} /> Reprovar
@@ -512,19 +523,38 @@ export default function VideoWorkflowView({
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
-                    {order.status === 'production' && (
-                      <button className="flex-1 py-1.5 bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-sky-100 transition-colors">
+                    <div className="flex gap-2">
+                    {order.videoUrl && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(order.videoUrl, '_blank');
+                        }}
+                        className="flex-1 py-1.5 bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-sky-100 transition-colors"
+                      >
                         <Play size={12} fill="currentColor" /> Assistir Prévia
                       </button>
                     )}
                     {order.status === 'review' && (
-                      <button className="flex-1 py-1.5 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-amber-100 transition-colors">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          notifySuccess("Abrindo pauta/briefing... (Função em desenvolvimento)");
+                        }}
+                        className="flex-1 py-1.5 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-amber-100 transition-colors"
+                      >
                         <Eye size={12} /> Abrir Pauta
                       </button>
                     )}
-                    {order.status === 'done' && (
-                      <button className="flex-1 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors">
+                    {order.status === 'done' && order.videoUrl && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(order.videoUrl!);
+                          notifySuccess("Link copiado!");
+                        }}
+                        className="flex-1 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors"
+                      >
                         <Check size={12} /> Link Finalizado
                       </button>
                     )}
@@ -638,6 +668,44 @@ export default function VideoWorkflowView({
             </div>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!rejectingOrder}
+        onClose={() => setRejectingOrder(null)}
+        title="Reprovar Vídeo e Solicitar Ajustes"
+        footer={
+          <div className="flex justify-end gap-3 w-full">
+            <button 
+              onClick={() => setRejectingOrder(null)}
+              className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleRejectVideo}
+              disabled={!rejectionNotes.trim()}
+              className="px-6 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-500/20 disabled:opacity-50"
+            >
+              Confirmar Reprovação
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4 py-2 text-gray-900 dark:text-gray-100">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Forneça detalhes sobre o que precisa ser ajustado no vídeo <strong>{rejectingOrder?.title}</strong>.
+          </p>
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">Observações para o Editor</label>
+            <textarea 
+              value={rejectionNotes}
+              onChange={(e) => setRejectionNotes(e.target.value)}
+              placeholder="Ex: O áudio está baixo nos primeiros 10 segundos, por favor adicione legenda na cena X..."
+              className="w-full h-32 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 transition-all outline-none resize-none"
+            />
+          </div>
+        </div>
       </Modal>
     </div>
   );

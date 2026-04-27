@@ -124,14 +124,16 @@ function FloatingChat({ currentUser }: { currentUser: User }) {
         "absolute bottom-20 right-0 w-[350px] sm:w-[400px] h-[550px] sm:h-[600px] transition-all duration-500 origin-bottom-right",
         isOpen ? "scale-100 opacity-100 translate-y-0" : "scale-0 opacity-0 translate-y-10 pointer-events-none"
       )}>
-         <ChatWindow 
-            chatType="team"
-            senderId={currentUser.id}
-            senderName={currentUser.name}
-            ownerId={currentUser.ownerId || currentUser.id}
-            title="Chat da Equipe"
-            onClose={() => setIsOpen(false)}
-         />
+         {isOpen && (
+           <ChatWindow 
+              chatType="team"
+              senderId={currentUser.id}
+              senderName={currentUser.name}
+              ownerId={currentUser.ownerId || currentUser.id}
+              title="Chat da Equipe"
+              onClose={() => setIsOpen(false)}
+           />
+         )}
       </div>
     </div>
   );
@@ -228,10 +230,11 @@ export default function App() {
     try {
       setIsAuthLoading(true);
       const res = await api.login(email, password);
-      setCurrentUser(res.user);
-      setIsAuthenticated(true);
+      // Set storage BEFORE state to avoid race conditions with components that fetch on mount
       storageService.setItem('agency_user', JSON.stringify(res.user), true);
       storageService.setItem('agency_token', res.token, true);
+      setCurrentUser(res.user);
+      setIsAuthenticated(true);
     } catch (err) {
       throw err;
     } finally {
@@ -243,10 +246,11 @@ export default function App() {
     try {
       setIsAuthLoading(true);
       const res = await api.signup(name, email, password);
-      setCurrentUser(res.user);
-      setIsAuthenticated(true);
+      // Set storage BEFORE state to avoid race conditions
       storageService.setItem('agency_user', JSON.stringify(res.user), true);
       storageService.setItem('agency_token', res.token, true);
+      setCurrentUser(res.user);
+      setIsAuthenticated(true);
     } catch (err) {
       throw err;
     } finally {

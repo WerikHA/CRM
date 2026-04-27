@@ -125,19 +125,26 @@ async function startServer() {
   const authMiddleware = (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
     // Skip auth for public routes
     const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js"];
-    if (publicPaths.some(p => req.originalUrl.startsWith(p))) {
+    const isPublic = publicPaths.some(p => req.originalUrl.startsWith(p) || req.path.startsWith(p.replace('/api', '')));
+    
+    if (isPublic) {
       return next();
     }
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.warn(`[AUTH] Acesso negado (Header ausente/inválido): ${req.method} ${req.originalUrl}`);
       return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor, faça login novamente." });
     }
 
     const token = authHeader.split(" ")[1];
+    if (!token || token === 'null' || token === 'undefined') {
+       console.warn(`[AUTH] Token inválido: ${req.method} ${req.originalUrl}`);
+       return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor, faça login novamente." });
+    }
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
-      req.user = {
+      (req as any).user = {
         id: decoded.id,
         role: decoded.role,
         ownerId: decoded.ownerId
@@ -164,12 +171,14 @@ async function startServer() {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       
+      // Use updated_at as a fallback since approved_at column is missing from DB cache
+      // This will clean up videos that haven't been updated in 7 days and are in 'done' status
       const { data: oldVideos, error } = await supabase
         .from('video_orders')
         .select('*')
+        .eq('status', 'done')
         .not('video_url', 'is', null)
-        .not('approved_at', 'is', null)
-        .lt('approved_at', sevenDaysAgo.toISOString());
+        .lt('updated_at', sevenDaysAgo.toISOString());
       
       if (error) throw error;
       
@@ -699,27 +708,17 @@ async function startServer() {
   supabaseCrud("partner-requests", "partner_requests");
   supabaseCrud("support-tickets", "support_tickets");
   
-  // Video Orders with Cleanup
-  app.put("/api/video-orders/:id", async (req, res) => {
-    try {
-      const updated = await dbService.update('video_orders', req.params.id, req.body, getContext(req));
-      if (req.body.status === 'done' || req.body.status === 'finished') {
-        const chats = readChats();
-        const filtered = chats.filter((c: any) => c.referenceId !== req.params.id);
-        writeChats(filtered);
-        console.log(`[CHAT] Cleanup triggered for video order ${req.params.id}`);
-      }
-      res.json(updated);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  // Update video order with special approval/rejection handling
+  // Video Orders with Cleanup and special approval/rejection handling
   app.put("/api/video-orders/:id", async (req, res) => {
     const { id } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
     const context = getContext(req as AuthRequest);
     
+    // Explicitly delete approvedAt if sent from client to avoid Supabase schema error
+    // because approved_at might not exist in the DB schema yet, or we only want server to handle it
+    delete updates.approvedAt;
+    delete updates.approved_at;
+
     try {
       // Get current order to check for existing video file
       const currentOrder = await dbService.getById('video_orders', id, context);
@@ -736,9 +735,17 @@ async function startServer() {
         updates.videoUrl = null; // Clear the URL
       }
       
-      // If approving, set the approval timestamp
-      if (updates.status === 'done' && currentOrder.status !== 'done') {
-        updates.approvedAt = new Date().toISOString();
+      // Logic from deleted duplicate route: cleanup chat when done
+      if (updates.status === 'done' || updates.status === 'finished') {
+        const chats = readChats();
+        const filtered = chats.filter((c: any) => c.referenceId !== id);
+        writeChats(filtered);
+        console.log(`[CHAT] Cleanup triggered for video order ${id}`);
+        
+        // If approving, set the approval timestamp (server-side only if it wasn't already done)
+        // We still don't send this to DB if the column is missing, but if the column IS there,
+        // we'll comment it out or keep it hidden until confirmed.
+        // For now, let's just NOT send it to dbService.update to fix the user's error.
       }
 
       const updated = await dbService.update('video_orders', id, updates, context);
