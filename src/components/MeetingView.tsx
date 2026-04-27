@@ -232,6 +232,7 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
         },
         onJoinRequest: (req) => setJoinRequests(prev => [...prev, req]),
         onApproved: () => {
+          console.log("[MEET] [VIEW] Recebido callback onApproved. Alterando step para 'meeting'.");
           setStep('meeting');
           setIsJoined(true);
           

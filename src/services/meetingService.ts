@@ -80,7 +80,7 @@ class MeetingService {
     });
 
     this.socket.on("request-approved", () => {
-      console.log("[MEET] Approved, emitting join-room");
+      console.log("[MEET] [SERVICE] Recebido evento: request-approved. Chamando onApproved.");
       this.onApproved();
       this.socket?.emit("join-room", { roomId, user, isGuest: true });
     });
