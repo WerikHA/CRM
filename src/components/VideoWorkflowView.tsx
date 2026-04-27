@@ -160,6 +160,27 @@ export default function VideoWorkflowView({
   };
 
   const handleUpdateStatus = async (id: string, status: WorkStatus) => {
+    const order = videoOrders.find(o => o.id === id);
+    if (!order) return;
+
+    // Apenas o proprietário/admin pode aprovar (finalizar)
+    if (status === 'done' && !isAdminOrOwner) {
+      notifyError("Permissão Negada", "Apenas o proprietário pode aprovar e finalizar o vídeo.");
+      return;
+    }
+
+    // Apenas o proprietário/admin pode tirar de revisão para reprovar (voltar para produção)
+    if (order.status === 'review' && status === 'production' && !isAdminOrOwner) {
+      notifyError("Permissão Negada", "Apenas o proprietário pode reprovar o vídeo.");
+      return;
+    }
+
+    // Para ir para revisão, deve ter vídeo
+    if (status === 'review' && !order.videoUrl) {
+      notifyError("Atenção", "Você deve fazer o upload do vídeo antes de enviar para revisão.");
+      return;
+    }
+
     let progress = 0;
     if (status === 'queue') progress = 10;
     else if (status === 'production') progress = 50;
@@ -391,7 +412,7 @@ export default function VideoWorkflowView({
                         {isUploading === (order.id as any) ? 'Enviando...' : 'Subir Vídeo'}
                       </button>
                     )}
-                     <select 
+                    <select 
                       value={order.status || 'queue'}
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) => handleUpdateStatus(order.id, e.target.value as WorkStatus)}
@@ -403,9 +424,9 @@ export default function VideoWorkflowView({
                       )}
                     >
                       <option value="queue" className="dark:bg-gray-900">Roteiro</option>
-                      <option value="production" className="dark:bg-gray-900">Edição</option>
-                      <option value="review" className="dark:bg-gray-900">Revisão</option>
-                      <option value="done" className="dark:bg-gray-900">Finalizado</option>
+                      <option value="production" className="dark:bg-gray-900" disabled={order.status === 'review' && !isAdminOrOwner}>Edição</option>
+                      <option value="review" className="dark:bg-gray-900" disabled={!order.videoUrl && !isAdminOrOwner}>Revisão</option>
+                      <option value="done" className="dark:bg-gray-900" disabled={!isAdminOrOwner}>Finalizado</option>
                     </select>
                     <button 
                       onClick={(e) => { e.stopPropagation(); setChatOrder(order); }}
@@ -440,6 +461,7 @@ export default function VideoWorkflowView({
                     {order.videoUrl && (
                       <div className="rounded-xl overflow-hidden bg-black aspect-video relative group/video">
                         <video 
+                          key={order.videoUrl}
                           src={order.videoUrl} 
                           controls 
                           className="w-full h-full object-contain"

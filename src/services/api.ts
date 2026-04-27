@@ -62,6 +62,13 @@ async function request(endpoint: string, method: string, data?: any) {
       const err = await res.json().catch(() => ({}));
       const errorMessage = err.error || `Failed to ${method} ${endpoint}`;
       
+      // Auto-logout on 401 (if not on login/signup)
+      if (res.status === 401 && !endpoint.includes('/login') && !endpoint.includes('/signup')) {
+        if ((window as any).onLogout) {
+          (window as any).onLogout();
+        }
+      }
+      
       // Trigger global error notifier (skip for soft errors like SYSTEM_EMPTY)
       if ((window as any).reportAppError && err.code !== 'SYSTEM_EMPTY') {
         (window as any).reportAppError(errorMessage, `Endpoint: ${endpoint} (${method})`);

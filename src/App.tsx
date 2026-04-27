@@ -230,8 +230,8 @@ export default function App() {
       const res = await api.login(email, password);
       setCurrentUser(res.user);
       setIsAuthenticated(true);
-      storageService.setItem('agency_user', JSON.stringify(res.user));
-      storageService.setItem('agency_token', res.token);
+      storageService.setItem('agency_user', JSON.stringify(res.user), true);
+      storageService.setItem('agency_token', res.token, true);
     } catch (err) {
       throw err;
     } finally {
@@ -245,8 +245,8 @@ export default function App() {
       const res = await api.signup(name, email, password);
       setCurrentUser(res.user);
       setIsAuthenticated(true);
-      storageService.setItem('agency_user', JSON.stringify(res.user));
-      storageService.setItem('agency_token', res.token);
+      storageService.setItem('agency_user', JSON.stringify(res.user), true);
+      storageService.setItem('agency_token', res.token, true);
     } catch (err) {
       throw err;
     } finally {
@@ -259,15 +259,25 @@ export default function App() {
     setCurrentUser(null);
     storageService.removeItem('agency_user');
     storageService.removeItem('agency_token');
+    setAuthView('landing');
   };
+
+  useEffect(() => {
+    (window as any).onLogout = handleLogout;
+    return () => { delete (window as any).onLogout; };
+  }, []);
 
   // Check persisted auth
   useEffect(() => {
     const savedUser = storageService.getItem('agency_user');
-    if (savedUser) {
+    const token = storageService.getItem('agency_token');
+    
+    if (savedUser && token) {
       setCurrentUser(JSON.parse(savedUser));
       setIsAuthenticated(true);
     } else {
+      setIsAuthenticated(false);
+      setCurrentUser(null);
       setAuthView('landing');
     }
   }, []);
