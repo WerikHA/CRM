@@ -59,9 +59,7 @@ import { LogOut, Film, ClipboardList, MessageSquare } from 'lucide-react';
 
 import LandingPage from './components/LandingPage';
 
-import DatabaseAuditView from './components/DatabaseAuditView';
-
-type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'audit';
+type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity';
 
 import { api } from './services/api';
 import { VideoOrder, SupportTicket, DemandTask } from './types';
@@ -81,7 +79,6 @@ const VIEW_LABELS: Record<ViewType, string> = {
   tickets: 'Suporte',
   prospecting: 'Prospecção',
   productivity: 'Produtividade',
-  audit: 'Banco de Dados',
   admin: 'Configurações'
 };
 
@@ -317,7 +314,6 @@ export default function App() {
       { id: 'productivity', label: 'Produtividade', icon: Activity, roles: ['ADMIN', 'DESIGNER', 'EDITOR', 'OWNER'] },
       { id: 'partners', label: isPartner ? 'Solicitações' : 'Parceiros', icon: Handshake, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
       { id: 'tickets', label: 'Suporte', icon: MessageSquare, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
-      { id: 'audit', label: 'DB Auditoria', icon: Database, roles: ['ADMIN'] },
       { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN', 'OWNER'] },
     ].filter(item => {
       if (effectiveUser.role === 'OWNER' && item.id === 'partners') {
@@ -398,8 +394,6 @@ export default function App() {
           setTickets={setTickets}
           currentUser={effectiveUser}
         />;
-      case 'audit':
-        return <DatabaseAuditView />;
       case 'prospecting':
         return <ProspectingView />;
       case 'videos':

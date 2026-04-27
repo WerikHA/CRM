@@ -64,7 +64,7 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
       }
     });
 
-    return Object.entries(groups).sort((a, b) => {
+    return Object.entries(groups || {}).sort((a, b) => {
         if (a[0] === 'done') return 1;
         if (b[0] === 'done') return -1;
         // Ascending order: older dates first (left)

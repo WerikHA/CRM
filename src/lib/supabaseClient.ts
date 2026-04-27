@@ -1,10 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key: string) => {
-  if (typeof window !== 'undefined' && (window as any)._env_) {
+  if (typeof window !== 'undefined' && (window as any)._env_ && (window as any)._env_[key]) {
     return (window as any)._env_[key];
   }
-  return process.env[key] || '';
+  if (key === 'VITE_SUPABASE_URL' && typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env.VITE_SUPABASE_URL;
+  }
+  if (key === 'VITE_SUPABASE_ANON_KEY' && typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env.VITE_SUPABASE_ANON_KEY;
+  }
+  if (typeof process !== 'undefined' && process.env) {
+    return process.env[key] || '';
+  }
+  return '';
 };
 
 let supabaseUrl = (getEnv('VITE_SUPABASE_URL') || getEnv('SUPABASE_URL') || '').trim();

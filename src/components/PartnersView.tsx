@@ -561,7 +561,7 @@ export default function PartnersView({
             <input 
               type="text" 
               required
-              value={formData.clientName}
+              value={formData.clientName || ''}
               onChange={e => setFormData({...formData, clientName: e.target.value})}
               className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
               placeholder="Ex: Restaurante do Porto"
@@ -587,7 +587,7 @@ export default function PartnersView({
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Custo para o Parceiro (R$)</label>
               <input 
                 type="number" 
-                value={formData.cost}
+                value={formData.cost || 0}
                 onChange={e => setFormData({...formData, cost: Number(e.target.value)})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
               />

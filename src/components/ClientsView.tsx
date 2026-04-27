@@ -303,7 +303,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
             <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Nome do Cliente / Empresa</label>
             <input 
               type="text" 
-              value={formData.name}
+              value={formData.name || ''}
               onChange={e => setFormData({...formData, name: e.target.value})}
               className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
               placeholder="Ex: Empresa de Tecnologia"
@@ -314,7 +314,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">E-mail</label>
               <input 
                 type="email" 
-                value={formData.contactEmail}
+                value={formData.contactEmail || ''}
                 onChange={e => setFormData({...formData, contactEmail: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="contato@empresa.com"
@@ -324,7 +324,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Telefone</label>
               <input 
                 type="text" 
-                value={formData.phone}
+                value={formData.phone || ''}
                 onChange={e => setFormData({...formData, phone: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="(00) 00000-0000"
@@ -334,7 +334,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Mensalidade (R$)</label>
               <input 
                 type="number" 
-                value={formData.monthlyValue}
+                value={formData.monthlyValue || 0}
                 onChange={e => setFormData({...formData, monthlyValue: Number(e.target.value)})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
               />
@@ -343,7 +343,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Data de Renovação</label>
               <input 
                 type="text" 
-                value={formData.renewalDate}
+                value={formData.renewalDate || ''}
                 onChange={e => setFormData({...formData, renewalDate: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="dd/mm/aaaa"
@@ -428,7 +428,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Cores da Marca (Até 5)</label>
                   <div className="flex gap-2 flex-wrap">
-                    {formData.branding?.colors.map((color, idx) => (
+                    {formData.branding?.colors?.map((color, idx) => (
                       <div key={idx} className="flex flex-col gap-1 items-center">
                         <input 
                           type="color" 
@@ -484,7 +484,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Tipo</label>
                       <select 
-                        value={formData.demandConfig.type}
+                        value={formData.demandConfig?.type || 'art'}
                         onChange={e => setFormData({
                           ...formData, 
                           demandConfig: { ...formData.demandConfig!, type: e.target.value as any }
@@ -501,7 +501,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
                       <input 
                         type="number" 
                         min="1"
-                        value={formData.demandConfig.quantity}
+                        value={formData.demandConfig?.quantity || 1}
                         onChange={e => setFormData({
                           ...formData, 
                           demandConfig: { ...formData.demandConfig!, quantity: Number(e.target.value) }
@@ -512,7 +512,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Frequência</label>
                       <select 
-                        value={formData.demandConfig.frequency}
+                        value={formData.demandConfig?.frequency || 'weekly'}
                         onChange={e => setFormData({
                           ...formData, 
                           demandConfig: { ...formData.demandConfig!, frequency: e.target.value as any }
@@ -563,7 +563,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
                   <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Payout do Designer (R$)</label>
                   <input 
                     type="number" 
-                    value={formData.designerPayout}
+                    value={formData.designerPayout || 0}
                     onChange={e => setFormData({...formData, designerPayout: Number(e.target.value)})}
                     className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
                     placeholder="Valor fixo por mês"
@@ -585,7 +585,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
                   <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Payout do Editor (R$)</label>
                   <input 
                     type="number" 
-                    value={formData.videoEditorPayout}
+                    value={formData.videoEditorPayout || 0}
                     onChange={e => setFormData({...formData, videoEditorPayout: Number(e.target.value)})}
                     className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
                     placeholder="Valor fixo por mês"

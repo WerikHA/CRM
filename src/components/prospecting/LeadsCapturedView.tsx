@@ -52,7 +52,7 @@ export default function LeadsCapturedView() {
           <label className="block text-sm font-bold text-gray-700 dark:text-gray-400 mb-1 uppercase tracking-widest text-[10px]">Busca ({source === 'google' ? 'Nicho' : 'Keyword'})</label>
           <input 
             type="text" 
-            value={query} 
+            value={query || ''} 
             onChange={(e) => setQuery(e.target.value)}
             className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
             placeholder={source === 'google' ? 'Ex: Padarias' : 'Ex: @marketing'}
@@ -63,7 +63,7 @@ export default function LeadsCapturedView() {
             <label className="block text-sm font-bold text-gray-700 dark:text-gray-400 mb-1 uppercase tracking-widest text-[10px]">Cidade</label>
             <input 
               type="text" 
-              value={location} 
+              value={location || ''} 
               onChange={(e) => setLocation(e.target.value)}
               className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
               placeholder="Ex: São Paulo"

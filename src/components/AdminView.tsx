@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare } from 'lucide-react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare, Terminal } from 'lucide-react';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import { IntegrationConfig, Lead, Client, ArtOrder, Receivable, User } from '../types';
 import Modal from './Modal';
 import { ChatWindow } from './ChatWindow';
+
+import { EmailConfigView } from './EmailConfigView';
+
+import { ToastContainer, toast } from './ui/Toast';
 
 // Componente Interno para Gestão do QR do WhatsApp Cloud
 function N8nLogs({ isAdmin }: { isAdmin: boolean }) {
@@ -89,7 +93,7 @@ function NetworkStatus() {
         </div>
 
         <div className="space-y-4">
-          {data.allAddresses.map((ip, i) => {
+          {data.allAddresses?.map((ip: string, i: number) => {
             const url = `http://${ip}:${data.port}`;
             return (
               <div key={i} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl transition-colors">
@@ -131,7 +135,7 @@ function NetworkStatus() {
 function DatabaseStatus() {
   const [status, setStatus] = useState<'loading' | 'connected' | 'error'>('loading');
   const [message, setMessage] = useState('');
-  const [dbInfo, setDbInfo] = useState<{ isServiceRole: boolean; message: string } | null>(null);
+  const [dbInfo, setDbInfo] = useState<{ isServiceRole: boolean; message: string; logs?: string[] } | null>(null);
 
   useEffect(() => {
     const checkStatus = async () => {
@@ -140,10 +144,11 @@ function DatabaseStatus() {
         const data = await res.json();
         if (data.connected) {
           setStatus('connected');
-          setDbInfo({ isServiceRole: data.isServiceRole, message: data.message });
+          setDbInfo({ isServiceRole: data.isServiceRole, message: data.message, logs: data.logs });
         } else {
           setStatus('error');
           setMessage(data.message || 'Erro desconhecido ao conectar com Supabase');
+          setDbInfo({ isServiceRole: data.isServiceRole, message: data.message, logs: data.logs });
         }
       } catch (err) {
         setStatus('error');
@@ -174,17 +179,18 @@ function DatabaseStatus() {
           </div>
 
           <h3 className="font-bold text-xl mb-2 dark:text-gray-100 transition-colors uppercase tracking-tight">Banco de Dados Cloud</h3>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 transition-colors mb-6">{dbInfo.message}</p>
+          <p className="text-xs text-emerald-600 font-medium mt-2 transition-colors mb-6">{dbInfo.message}</p>
           
-          <div className="flex justify-center mb-8">
-            <button 
-              onClick={() => (window as any).onNavigate?.('audit')}
-              className="flex items-center gap-2 px-6 py-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold uppercase tracking-widest text-[10px] border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-100 transition-all"
-            >
-              <Database size={14} />
-              Ver Relatório de Integridade Completo
-            </button>
-          </div>
+          {dbInfo.logs && dbInfo.logs.length > 0 && (
+            <div className="mb-8 text-left bg-gray-50 dark:bg-[#0a0a0a] border border-gray-100 dark:border-gray-800 rounded-xl p-4">
+              <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
+                <Terminal size={12} /> Log de Conexão
+              </h4>
+              <pre className="text-[10px] font-mono whitespace-pre-wrap text-emerald-600/80 dark:text-emerald-400/80">
+                {dbInfo.logs.join('\n')}
+              </pre>
+            </div>
+          )}
 
           {!dbInfo.isServiceRole && (
             <div className="space-y-4">
@@ -262,6 +268,18 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`}
           <div className="mt-4 p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-xl">
             <p className="text-xs text-rose-700 dark:text-rose-300 font-mono break-all">{message}</p>
           </div>
+          
+          {dbInfo?.logs && dbInfo.logs.length > 0 && (
+            <div className="mt-6 text-left bg-gray-50 dark:bg-[#0a0a0a] border border-gray-100 dark:border-gray-800 rounded-xl p-4">
+              <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
+                <Terminal size={12} /> Log de Verificação
+              </h4>
+              <pre className="text-[10px] font-mono whitespace-pre-wrap text-rose-600/80 dark:text-rose-400/80">
+                {dbInfo.logs.join('\n')}
+              </pre>
+            </div>
+          )}
+
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
             Dica: Verifique se a URL do Supabase está correta nas configurações (Segredos) e se termina em <span className="font-bold">.co</span> e não em .com.
           </p>
@@ -508,7 +526,7 @@ export default function AdminView({
 
   const handleGenerateLink = () => {
     if (!inviteData.name || !inviteData.email) {
-      alert("Por favor, preencha nome e e-mail antes de gerar o link.");
+      toast.error("Por favor, preencha nome e e-mail antes de gerar o link.");
       return;
     }
     const baseUrl = window.location.origin;
@@ -561,9 +579,9 @@ export default function AdminView({
           const updated = await api.updateUser(editingUser.id, updates);
           setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updated } : u));
           setIsEditUserModalOpen(false);
-          alert('Usuário atualizado com sucesso!');
+          toast.success('Usuário atualizado com sucesso!');
       } catch (error) {
-          alert('Erro ao atualizar usuário: ' + (error as Error).message);
+          toast.error('Erro ao atualizar usuário: ' + (error as Error).message);
       }
   };
 
@@ -584,9 +602,9 @@ export default function AdminView({
       setIsInviteModalOpen(false);
       setInviteData({ name: '', email: '', password: '', role: 'DESIGNER' });
       setGeneratedLink(null);
-      alert(`Usuário ${inviteData.name} criado com sucesso! Ele já pode logar com e-mail e senha.`);
+      toast.success(`Usuário ${inviteData.name} criado com sucesso! Ele já pode logar com e-mail e senha.`);
     } catch (error) {
-      alert('Erro ao criar usuário: ' + (error as Error).message);
+      toast.error('Erro ao criar usuário: ' + (error as Error).message);
     }
   };
 
@@ -692,7 +710,7 @@ export default function AdminView({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
              <div className="space-y-3">
                 <h4 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors text-center">Verificação de Módulos</h4>
-                {auditResults.checks.map((check: any, i: number) => (
+                {auditResults.checks?.map((check: any, i: number) => (
                    <div key={i} className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-50 dark:border-gray-800 transition-colors">
                       <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 transition-colors">{check.name}</span>
                       <span className={cn(
@@ -706,10 +724,10 @@ export default function AdminView({
              </div>
              <div className="space-y-3">
                 <h4 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors text-center">Alertas de Integridade</h4>
-                {auditResults.issues.length === 0 ? (
+                {!auditResults.issues || auditResults.issues.length === 0 ? (
                   <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium italic transition-colors">Nenhum problema de integridade detectado.</p>
                 ) : (
-                  auditResults.issues.map((issue: any, i: number) => (
+                  auditResults.issues?.map((issue: any, i: number) => (
                     <div key={i} className={cn(
                       "p-3 rounded-xl border flex items-center gap-3 transition-colors",
                       issue.type === 'error' ? "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 text-rose-700 dark:text-rose-400" : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20 text-amber-700 dark:text-amber-400"
@@ -774,6 +792,17 @@ export default function AdminView({
               )}
             >
               <Globe size={18} /> Rede & Acesso
+            </button>
+          )}
+          {isAdmin && (
+            <button 
+              onClick={() => setActiveSubTab('email')}
+              className={cn(
+                "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+                activeSubTab === 'email' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              )}
+            >
+              <MessageSquare size={18} /> Servidor de E-mail
             </button>
           )}
         </div>
@@ -964,6 +993,10 @@ export default function AdminView({
             <NetworkStatus />
           )}
 
+          {activeSubTab === 'email' && isAdmin && (
+            <EmailConfigView />
+          )}
+
           {activeSubTab === 'personalizacao' && agencyConfig && setAgencyConfig && (
             <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-all duration-300">
                <div className="p-6 border-b border-gray-50 dark:border-gray-800 transition-colors">
@@ -975,7 +1008,7 @@ export default function AdminView({
                      <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors text-center block">Nome da Empresa</label>
                      <input 
                        type="text" 
-                       value={agencyConfig.name}
+                       value={agencyConfig.name || ''}
                        onChange={e => {
                          const next = { ...agencyConfig, name: e.target.value };
                          setAgencyConfig(next);
@@ -1138,7 +1171,7 @@ export default function AdminView({
               <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Nome</label>
               <input 
                 type="text" 
-                value={editUserData.name}
+                value={editUserData.name || ''}
                 onChange={e => setEditUserData({...editUserData, name: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all"
                 required
@@ -1147,7 +1180,7 @@ export default function AdminView({
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Role</label>
               <select 
-                value={editUserData.role}
+                value={editUserData.role || 'DESIGNER'}
                 onChange={e => setEditUserData({...editUserData, role: e.target.value as any})}
                 className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all"
               >
@@ -1250,7 +1283,7 @@ export default function AdminView({
             <input 
               type="text" 
               required
-              value={inviteData.name}
+              value={inviteData.name || ''}
               onChange={e => setInviteData({...inviteData, name: e.target.value})}
               className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600"
               placeholder="Ex: João Designer"
@@ -1261,7 +1294,7 @@ export default function AdminView({
             <input 
               type="email" 
               required
-              value={inviteData.email}
+              value={inviteData.email || ''}
               onChange={e => setInviteData({...inviteData, email: e.target.value})}
               className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600"
               placeholder="contato@amplifica.com"
@@ -1272,7 +1305,7 @@ export default function AdminView({
             <input 
               type="text" 
               required
-              value={inviteData.password}
+              value={inviteData.password || ''}
               onChange={e => setInviteData({...inviteData, password: e.target.value})}
               className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600"
               placeholder="Ex: design123"

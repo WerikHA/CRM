@@ -238,7 +238,7 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
             <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Assunto</label>
             <input 
               type="text" 
-              value={formData.subject}
+              value={formData.subject || ''}
               onChange={e => setFormData({...formData, subject: e.target.value})}
               className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm"
               placeholder="Ex: Problema com pagamento ou Erro no workflow"
@@ -247,7 +247,7 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Descrição detalhada</label>
             <textarea 
-              value={formData.description}
+              value={formData.description || ''}
               onChange={e => setFormData({...formData, description: e.target.value})}
               className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm min-h-[120px]"
               placeholder="Descreva o que está acontecendo..."

@@ -18,7 +18,7 @@ const keysToSnake = (obj: any): any => {
   }
   if (Array.isArray(obj)) return obj.map(keysToSnake);
   const n: any = {};
-  Object.keys(obj).forEach(k => {
+  Object.keys(obj || {}).forEach(k => {
     n[toSnakeCase(k)] = keysToSnake(obj[k]);
   });
   return n;
@@ -28,7 +28,7 @@ const keysToCamel = (obj: any): any => {
   if (typeof obj !== 'object' || obj === null) return obj;
   if (Array.isArray(obj)) return obj.map(keysToCamel);
   const n: any = {};
-  Object.keys(obj).forEach(k => {
+  Object.keys(obj || {}).forEach(k => {
     n[toCamelCase(k)] = keysToCamel(obj[k]);
   });
   return n;

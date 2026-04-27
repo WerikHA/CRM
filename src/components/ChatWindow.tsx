@@ -122,9 +122,13 @@ export function ChatWindow({ chatType, referenceId, senderId, senderName, ownerI
       timerRef.current = setInterval(() => {
         setRecordingDuration(prev => prev + 1);
       }, 1000);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao acessar microfone:", err);
-      alert("Não foi possível acessar o microfone.");
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        alert("Permissão do microfone negada. Por favor, verifique as configurações do seu navegador.");
+      } else {
+        alert("Não foi possível acessar o microfone. Certifique-se de que ele está conectado e não está sendo usado por outro aplicativo.");
+      }
     }
   };
 

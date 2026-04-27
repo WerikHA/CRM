@@ -9,6 +9,7 @@ import { scraperService } from "./src/services/prospecting/scraper.service.ts";
 import { startBackupScheduler } from "./src/services/backupService.ts";
 import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } from "./src/services/paymentReminderService.ts";
 import { supabase } from "./src/lib/supabaseClient.ts";
+import { getEmailConfig, saveEmailConfig, resetTransporter, sendEmail } from "./src/services/emailService.ts";
 
 import { dbService, DbContext, UserRole } from "./src/services/dbService.ts";
 
@@ -36,9 +37,17 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
+  console.log("[STARTUP] Iniciando servidor Express...");
+
   app.use(compression());
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  
+  // Debug middleware for API
+  app.use("/api", (req, res, next) => {
+    console.log(`[API REQUEST] ${req.method} ${req.url}`);
+    next();
+  });
   
   // --- Runtime Env Config for Docker ---
   app.get("/env-config.js", (req, res) => {
@@ -194,6 +203,43 @@ async function startServer() {
   };
 
   // --- CUSTOM DASHBOARD/DEMANDS SPECIFIC ROUTES ---
+  // Chat Operations (Moved up for priority)
+  app.get("/api/chat-messages", (req, res) => {
+    try {
+      const chats = readChats();
+      res.json(chats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/chat-messages", (req, res) => {
+    try {
+      const chats = readChats();
+      const newMessage = {
+          id: Math.random().toString(36).substr(2, 9),
+          ...req.body,
+          createdAt: new Date().toISOString()
+      };
+      chats.push(newMessage);
+      writeChats(chats);
+      res.status(201).json(newMessage);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/chat-cleanup/:refId", (req, res) => {
+    try {
+      const chats = readChats();
+      const filtered = chats.filter((c: any) => c.referenceId !== req.params.refId);
+      writeChats(filtered);
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Must come before generic CRUD to take precedence
   app.post("/api/demand-tasks", async (req, res) => {
     try {
@@ -248,6 +294,40 @@ async function startServer() {
   });
 
   // Authentication
+  app.post("/api/forgot-password", async (req, res) => {
+    let { email } = req.body;
+    if (!email) return res.status(400).json({ error: "E-mail obrigatório" });
+    
+    try {
+      const users = await dbService.list('users');
+      const userFound = users.find((u: any) => u.email === email.trim().toLowerCase());
+      
+      if (!userFound) {
+        return res.status(404).json({ error: "E-mail não encontrado" });
+      }
+
+      // Generate temp password
+      const tempPassword = Math.random().toString(36).substr(2, 8);
+      
+      await dbService.update('users', userFound.id, { password: tempPassword });
+      
+      const emailBody = `
+        <h3>Recuperação de Senha</h3>
+        <p>Olá ${userFound.name},</p>
+        <p>Uma nova senha foi gerada para você acessar o CRM:</p>
+        <p><strong>Senha:</strong> ${tempPassword}</p>
+        <p>Faça login e altere sua senha imediatamente nas configurações.</p>
+      `;
+      
+      await sendEmail(email, "Sua nova senha de acesso", emailBody);
+      
+      res.json({ success: true, message: "E-mail de recuperação enviado." });
+    } catch (err: any) {
+      console.error("[AUTH] Erro ao redefinir senha:", err);
+      res.status(500).json({ error: "Erro interno: " + err.message });
+    }
+  });
+
   app.post("/api/login", async (req, res) => {
     let { email, password } = req.body;
     if (!email || !password) {
@@ -313,7 +393,6 @@ async function startServer() {
     }
   });
 
-  // --- CRUD API ROUTES ---
   supabaseCrud("leads", "leads");
   supabaseCrud("clients", "clients");
   supabaseCrud("receivables", "receivables");
@@ -324,7 +403,7 @@ async function startServer() {
       const updated = await dbService.update('art_orders', req.params.id, req.body, getContext(req));
       if (req.body.status === 'done' || req.body.status === 'finished') {
         const chats = readChats();
-        const filtered = chats.filter(c => c.referenceId !== req.params.id);
+        const filtered = chats.filter((c: any) => c.referenceId !== req.params.id);
         writeChats(filtered);
         console.log(`[CHAT] Cleanup triggered for art order ${req.params.id}`);
       }
@@ -345,7 +424,7 @@ async function startServer() {
       const updated = await dbService.update('video_orders', req.params.id, req.body, getContext(req));
       if (req.body.status === 'done' || req.body.status === 'finished') {
         const chats = readChats();
-        const filtered = chats.filter(c => c.referenceId !== req.params.id);
+        const filtered = chats.filter((c: any) => c.referenceId !== req.params.id);
         writeChats(filtered);
         console.log(`[CHAT] Cleanup triggered for video order ${req.params.id}`);
       }
@@ -356,34 +435,34 @@ async function startServer() {
   });
   supabaseCrud("video-orders", "video_orders");
 
-  supabaseCrud("demand-tasks", "demand_tasks");
+  supabaseCrud("demand-tasks", "demand_tasks"); // Unified path
   supabaseCrud("users", "users");
   supabaseCrud("notifications", "notifications");
   supabaseCrud("prospecting/lists", "prospecting_lists");
   supabaseCrud("prospecting/leads", "prospecting_leads");
   supabaseCrud("prospecting/campaigns", "campaigns");
-  // Chat Operations (Local Storage Fallback)
-  app.get("/api/chat-messages", (req, res) => {
-    res.json(readChats());
+  
+  // --- Email Service Routes ---
+  app.get("/api/email/config", (req, res) => {
+    res.json(getEmailConfig() || {
+      host: '', port: 465, secure: true, user: '', pass: '', fromAddress: ''
+    });
   });
 
-  app.post("/api/chat-messages", (req, res) => {
-    const chats = readChats();
-    const newMessage = {
-        id: Math.random().toString(36).substr(2, 9),
-        ...req.body,
-        createdAt: new Date().toISOString()
-    };
-    chats.push(newMessage);
-    writeChats(chats);
-    res.status(201).json(newMessage);
+  app.post("/api/email/config", (req, res) => {
+    saveEmailConfig(req.body);
+    resetTransporter();
+    res.json({ success: true });
   });
 
-  app.delete("/api/chat-cleanup/:refId", (req, res) => {
-    const chats = readChats();
-    const filtered = chats.filter(c => c.referenceId !== req.params.refId);
-    writeChats(filtered);
-    res.status(204).end();
+  app.post("/api/email/test", async (req, res) => {
+    const { to } = req.body;
+    try {
+        await sendEmail(to, "Teste do Servidor de Email CRM Amplifica", "<h3>E-mail Configurado com Sucesso!</h3><p>O seu servidor de email interno foi configurado corretamente no CRM.</p>");
+        res.json({ success: true });
+    } catch(err: any) {
+        res.status(500).json({ error: err.message });
+    }
   });
 
   // Finance Config
@@ -469,10 +548,57 @@ async function startServer() {
     }
   });
 
+  // Health check - Supabase
+  app.get("/api/health/supabase", async (req, res) => {
+    try {
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+      const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+      const activeKey = serviceKey || anonKey;
+      
+      const isServiceRole = activeKey.includes('service_role') || !!serviceKey;
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+      
+      if (!supabaseUrl || !activeKey) {
+        return res.json({ connected: false, message: "URL ou Chave do Supabase ausentes", isServiceRole: false });
+      }
+
+      // Test the connection by running a simple query
+      const { data, error } = await supabase.from('clients').select('id').limit(1);
+      
+      let message = "Conectado com sucesso ao Supabase Cloud";
+      let connected = true;
+      let logs = [];
+
+      if (error) {
+         logs.push(`[PostgREST Error] ${error.code} - ${error.message} - ${error.details || ''}`);
+         // If error specifies relation does not exist, we ARE connected to Postgres!
+         if (error.code === '42P01') {
+            message = "Conectado, mas a tabela 'clients' não existe. (Tabelas ausentes)";
+         } else if (error.code === 'PGRST301' || error.message.includes('JWT')) {
+            message = "Conectado. (Erro de JWT/Auth)";
+         } else if (error.message.includes('FetchError') || error.message.includes('fetch failed')) {
+            connected = false;
+            message = "Falha na rede ao conectar no Supabase. URL inválida?";
+         } else {
+            // Other error? Still likely connected if we get a PostgreSQL/PostgREST error code
+            message = "Conectado, mas ocorreu um erro na leitura: " + error.message;
+         }
+      } else {
+         logs.push(`[Success] Tabelas lidas com sucesso. Dados: ${data?.length} registros.`);
+      }
+
+      return res.json({ connected, message, isServiceRole, logs });
+    } catch(err: any) {
+      return res.json({ connected: false, message: err.message || "Unknown error", isServiceRole: false, logs: [err.message] });
+    }
+  });
+
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", message: "Amplifica CRM API is active" });
   });
+
+  console.log("[STARTUP] Rotas registradas.");
 
   // Catch-all API 404 (IMPORTANT: always return JSON for /api requests)
   app.all("/api/*", (req, res) => {
@@ -480,42 +606,52 @@ async function startServer() {
     res.status(404).json({ error: `Endpoint da API não encontrado: ${req.url}` });
   });
 
-  // --- BACKGROUND TASKS ---
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`🚀 Amplifica CRM rodando em http://localhost:${PORT}`);
+  });
+
+  // --- BACKGROUND TASKS & POST-INITIALIZATION ---
+  console.log("[STARTUP] Iniciando tarefas de fundo...");
   
   // Run on start and then every hour
-  processDemands();
+  processDemands().catch(e => console.error("[STARTUP] Falha ao processar demandas:", e));
   setInterval(processDemands, 1000 * 60 * 60);
 
   // Initialize Payment Reminder Scheduler
-  startPaymentReminderScheduler(
-    async () => {
-      try {
-        const { data, error } = await supabase.from('receivables').select('*');
-        if (error) throw error;
-        return data;
-      } catch (err) {
-        console.error("Error fetching receivables in scheduler", err);
-        return [];
-      }
-    },
-    async () => {
-      try {
-        const { data, error } = await supabase.from('clients').select('*');
-        if (error) throw error;
-        return data;
-      } catch (err) {
-        console.error("Error fetching clients in scheduler", err);
-        return [];
-      }
-    },
-    async (phone: string, message: string) => {
-        const owner = await dbService.list('users', { userId: '', userRole: 'ADMIN' } as any).then(list => list.find((u: any) => u.role === 'OWNER'));
-        if (owner) {
-            return whatsappService.sendMessage(owner.id, phone, message);
+  try {
+    startPaymentReminderScheduler(
+      async () => {
+        try {
+          const { data, error } = await supabase.from('receivables').select('*');
+          if (error) throw error;
+          return data;
+        } catch (err) {
+          console.error("Error fetching receivables in scheduler", err);
+          return [];
         }
-        console.error("No OWNER found to send WhatsApp message");
-    }
-  );
+      },
+      async () => {
+        try {
+          const { data, error } = await supabase.from('clients').select('*');
+          if (error) throw error;
+          return data;
+        } catch (err) {
+          console.error("Error fetching clients in scheduler", err);
+          return [];
+        }
+      },
+      async (phone: string, message: string) => {
+          const users = await dbService.list('users', { userId: '', userRole: 'ADMIN' } as any);
+          const owner = users.find((u: any) => u.role === 'OWNER');
+          if (owner) {
+              return whatsappService.sendMessage(owner.id, phone, message);
+          }
+          console.error("No OWNER found to send WhatsApp message");
+      }
+    );
+  } catch (e) {
+    console.error("[STARTUP] Falha ao iniciar agendador de cobranças:", e);
+  }
 
   // Chat Cleanup Scheduler (Every 24 hours)
   async function performChatCleanup() {
@@ -525,7 +661,7 @@ async function startServer() {
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
           
           const chats = readChats();
-          const filtered = chats.filter(c => {
+          const filtered = chats.filter((c: any) => {
               if (c.chatType === 'team') {
                   return new Date(c.createdAt) > thirtyDaysAgo;
               }
@@ -544,12 +680,18 @@ async function startServer() {
 
   // --- Vite & Static Assets ---
   if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    console.log("[STARTUP] Iniciando middleware do Vite...");
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("[STARTUP] Vite middleware pronto.");
+    } catch (e) {
+      console.error("[STARTUP] Falha ao carregar Vite:", e);
+    }
   } else {
     const distPath = path.join(process.cwd(), "dist");
     if (fs.existsSync(distPath)) {
@@ -569,6 +711,8 @@ async function startServer() {
   }
 
   // --- INICIALIZAÇÃO E CORREÇÃO DE DADOS ---
+  console.log("[STARTUP] Verificando banco de dados...");
+
   async function checkDbConnection() {
     console.log("[INIT] Verificando conexão com Supabase...");
     try {
@@ -597,7 +741,6 @@ async function startServer() {
     }
   }
 
-  // Helper para Logs de Atividade (Opção 5)
   async function logActivity(userId: string, ownerId: string, action: string, details: any) {
     try {
       await supabase.from('activity_logs').insert({
@@ -612,13 +755,8 @@ async function startServer() {
     }
   }
 
-  checkDbConnection();
-  fixUserData();
-  // --- FIM CORREÇÃO ---
-
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`🚀 Amplifica CRM rodando em http://localhost:${PORT}`);
-  });
+  checkDbConnection().catch(e => console.error("[STARTUP] Erro na conexão inicial:", e));
+  fixUserData().catch(e => console.error("[STARTUP] Erro ao corrigir dados:", e));
 }
 
 startServer();

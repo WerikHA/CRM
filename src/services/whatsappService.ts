@@ -276,7 +276,7 @@ export class WhatsAppService extends EventEmitter {
           const realContent = getRealContent(msg.message);
           if (!realContent) continue;
 
-          const keys = Object.keys(realContent);
+          const keys = Object.keys(realContent || {});
           
           // Debugging keys to logs
           if (keys.length > 0 && !realContent.pollUpdateMessage) {

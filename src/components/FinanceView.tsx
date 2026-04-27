@@ -84,7 +84,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     return acc;
   }, {});
 
-  const monthlyData = Object.values(monthlyDataMap);
+  const monthlyData = Object.values(monthlyDataMap || {});
 
   // Top clients by revenue
   const clientRevenueMap = receivables.reduce((acc: any, r) => {
@@ -96,7 +96,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     return acc;
   }, {});
 
-  const clientRevenueData = Object.values(clientRevenueMap)
+  const clientRevenueData = Object.values(clientRevenueMap || {})
     .sort((a: any, b: any) => b.total - a.total)
     .slice(0, 5);
 
@@ -558,7 +558,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
             <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Descrição / Referência</label>
             <input 
               type="text" 
-              value={formData.description}
+              value={formData.description || ''}
               onChange={e => setFormData({...formData, description: e.target.value})}
               className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
               placeholder="Ex: Gestão de Tráfego - Abril"
@@ -569,7 +569,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Valor (R$)</label>
               <input 
                 type="number" 
-                value={formData.amount}
+                value={formData.amount || 0}
                 onChange={e => setFormData({...formData, amount: Number(e.target.value)})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
               />
@@ -578,7 +578,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Vencimento</label>
               <input 
                 type="text" 
-                value={formData.dueDate}
+                value={formData.dueDate || ''}
                 onChange={e => setFormData({...formData, dueDate: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="dd/mm/aaaa"

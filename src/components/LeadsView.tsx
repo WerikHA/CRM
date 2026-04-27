@@ -478,7 +478,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
                         statusConfig[lead.status].color
                       )}
                     >
-                      {Object.entries(statusConfig).map(([val, { label }]) => (
+                      {Object.entries(statusConfig || {}).map(([val, { label }]) => (
                         <option key={val} value={val}>{label}</option>
                       ))}
                     </select>
@@ -581,7 +581,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Empresa <span className="text-red-500">*</span></label>
               <input 
                 type="text" 
-                value={formData.company}
+                value={formData.company || ''}
                 onChange={e => setFormData({...formData, company: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 shadow-sm text-gray-900 dark:text-gray-100"
                 placeholder="Ex: Agency S.A"
@@ -591,7 +591,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Contato <span className="text-red-500">*</span></label>
               <input 
                 type="text" 
-                value={formData.contactName}
+                value={formData.contactName || ''}
                 onChange={e => setFormData({...formData, contactName: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="Nome do cliente"
@@ -601,7 +601,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Valor Estimado</label>
               <input 
                 type="number" 
-                value={formData.estimatedValue}
+                value={formData.estimatedValue || 0}
                 onChange={e => setFormData({...formData, estimatedValue: Number(e.target.value)})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="R$ 0,00"
@@ -611,7 +611,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">E-mail <span className="text-red-500">*</span></label>
               <input 
                 type="email" 
-                value={formData.email}
+                value={formData.email || ''}
                 onChange={e => setFormData({...formData, email: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="contato@empresa.com"
@@ -621,7 +621,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Telefone</label>
               <input 
                 type="text" 
-                value={formData.phone}
+                value={formData.phone || ''}
                 onChange={e => setFormData({...formData, phone: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="(00) 00000-0000"
@@ -650,7 +650,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
                 onChange={e => setFormData({...formData, status: e.target.value as LeadStatus})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
               >
-                {Object.entries(statusConfig).map(([val, { label }]) => (
+                {Object.entries(statusConfig || {}).map(([val, { label }]) => (
                   <option key={val} value={val}>{label}</option>
                 ))}
               </select>
@@ -659,7 +659,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Notas / Observações</label>
               <textarea 
                 rows={3}
-                value={formData.notes}
+                value={formData.notes || ''}
                 onChange={e => setFormData({...formData, notes: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm resize-none placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
                 placeholder="Detalhes sobre a negociação..."

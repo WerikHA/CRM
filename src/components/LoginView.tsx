@@ -12,7 +12,7 @@ interface LoginViewProps {
 }
 
 export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 'login', onBack }: LoginViewProps) {
-  const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(initialMode as any);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,6 +22,20 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
     e.preventDefault();
     setError(null);
     try {
+      if (mode === 'forgot') {
+        const res = await fetch('/api/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao recuperar senha');
+        setError(null);
+        alert('Uma nova senha foi enviada para o seu e-mail!');
+        setMode('login');
+        return;
+      }
+
       if (mode === 'login') {
         await onLogin(email, password);
       } else {
@@ -115,25 +129,27 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
               </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2 ml-1">
-                <label className="block text-sm font-bold text-gray-700">Senha de Acesso</label>
-                {mode === 'login' && <button type="button" className="text-xs font-bold text-indigo-600 hover:text-indigo-700">Esqueceu?</button>}
-              </div>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-indigo-600 transition-colors">
-                  <Lock size={18} />
+            {mode !== 'forgot' && (
+              <div>
+                <div className="flex items-center justify-between mb-2 ml-1">
+                  <label className="block text-sm font-bold text-gray-700">Senha de Acesso</label>
+                  {mode === 'login' && <button type="button" onClick={() => setMode('forgot')} className="text-xs font-bold text-indigo-600 hover:text-indigo-700">Esqueceu?</button>}
                 </div>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-11 pr-4 py-4 bg-gray-50 border-2 border-gray-50 rounded-2xl text-gray-900 font-medium placeholder:text-gray-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 focus:bg-white transition-all"
-                  placeholder="••••••••"
-                />
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-indigo-600 transition-colors">
+                    <Lock size={18} />
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="block w-full pl-11 pr-4 py-4 bg-gray-50 border-2 border-gray-50 rounded-2xl text-gray-900 font-medium placeholder:text-gray-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 focus:bg-white transition-all"
+                    placeholder="••••••••"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {error && (
               <motion.div 
@@ -155,20 +171,30 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
                 <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  {mode === 'login' ? 'Entrar no Sistema' : 'Criar minha conta'}
+                  {mode === 'login' ? 'Entrar no Sistema' : mode === 'signup' ? 'Criar minha conta' : 'Confirmar e Enviar'}
                   <LogIn size={20} className="group-hover:translate-x-1 transition-transform" />
                 </>
               )}
             </button>
 
             <div className="text-center">
-              <button 
-                type="button"
-                onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(null); }}
-                className="text-sm font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
-              >
-                {mode === 'login' ? 'Ainda não tem conta? Cadastre-se' : 'Já tem uma conta? Entre aqui'}
-              </button>
+              {mode !== 'login' ? (
+                <button 
+                  type="button"
+                  onClick={() => { setMode('login'); setError(null); }}
+                  className="text-sm font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
+                >
+                  Voltar para o Login
+                </button>
+              ) : (
+                <button 
+                  type="button"
+                  onClick={() => { setMode('signup'); setError(null); }}
+                  className="text-sm font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
+                >
+                  Ainda não tem conta? Cadastre-se
+                </button>
+              )}
             </div>
           </form>
 
