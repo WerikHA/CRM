@@ -3,7 +3,7 @@ services:
     # A recomendação é sempre usar uma tag específica de versão (ex: v1.0.0, v1.1.0)
     # em vez de 'latest'. Assim você terá controle sobre quando atualizar o CRM.
     # Usamos docker.io/ para evitar erros de mirror inválidos do ZimaOS (como 1panel.live)
-    image: docker.io/werikoliveira/amplifica-crm:2.1 
+    image: docker.io/werikoliveira/amplifica-crm:2.2 
     container_name: amplifica-crm
     restart: unless-stopped
     ports:
@@ -41,7 +41,7 @@ services:
       - ./n8n_interaction_logs.txt:/app/n8n_interaction_logs.txt
     
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "https://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -41,6 +41,7 @@ async function startServer() {
   console.log("[STARTUP] Iniciando servidor Express...");
 
   app.use(compression());
+  app.set('trust proxy', true);
   
   // Redirecionar para HTTPS em produção para evitar o aviso "Não Seguro" do navegador
   if (process.env.NODE_ENV === "production" || process.env.FORCE_HTTPS === "true") {
@@ -88,7 +89,7 @@ async function startServer() {
 
   // Start listening as soon as possible so the platform proxy doesn't show "Starting Server"
   const server = app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`🚀 Amplifica CRM rodando em http://localhost:${PORT}`);
+    console.log(`🚀 Amplifica CRM rodando em https://localhost:${PORT}`);
   });
 
   // --- Runtime Env Config for Docker ---
@@ -402,8 +403,10 @@ async function startServer() {
       await logActivity(data.id, data.ownerId || data.id, 'LOGIN', { email: data.email });
       res.json({ success: true, user: data });
     } catch (err: any) {
-      console.error(`[AUTH] Erro interno no login:`, err);
-      res.status(500).json({ error: "Erro interno no servidor de autenticação" });
+      console.error(`[AUTH] Erro crítico no login do usuário ${email}:`, err);
+      // Return specific error if possible to help frontend debugging
+      const errorMessage = err.message || "Erro interno no servidor de autenticação";
+      res.status(500).json({ error: errorMessage, details: err });
     }
   });
 

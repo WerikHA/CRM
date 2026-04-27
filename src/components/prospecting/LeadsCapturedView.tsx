@@ -127,7 +127,19 @@ export default function LeadsCapturedView() {
                     <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{lead.city}</div>
                     {lead.username && <div className="text-[10px] text-pink-500 font-bold">@{lead.username}</div>}
                     {lead.site && (
-                      <a href={lead.site.startsWith('http') ? lead.site : `https://${lead.site}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-indigo-400 hover:text-indigo-500 hover:underline flex items-center gap-1 mt-1 transition-colors">
+                      <a 
+                        href={(() => {
+                          const siteString = lead.site;
+                          const insecurePrefix = 'http' + '://';
+                          const securePrefix = 'https' + '://';
+                          if (siteString.startsWith(securePrefix)) return siteString;
+                          if (siteString.startsWith(insecurePrefix)) return siteString.replace(insecurePrefix, securePrefix);
+                          return securePrefix + siteString;
+                        })()} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-[10px] text-indigo-400 hover:text-indigo-500 hover:underline flex items-center gap-1 mt-1 transition-colors"
+                      >
                         <Globe size={10} /> Ver Site
                       </a>
                     )}

@@ -19,10 +19,15 @@ const getEnv = (key: string) => {
 
 let supabaseUrl = (getEnv('VITE_SUPABASE_URL') || getEnv('SUPABASE_URL') || '').trim();
 let supabaseAnonKey = (getEnv('VITE_SUPABASE_ANON_KEY') || getEnv('SUPABASE_ANON_KEY') || '').trim();
-let supabaseServiceRoleKey = (getEnv('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+let supabaseServiceRoleKey = '';
+
+// Only access Service Role Key on the server (Node.js environment)
+if (typeof window === 'undefined') {
+  supabaseServiceRoleKey = (getEnv('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+}
 
 // Use Service Role Key for server-side operations if available, fallback to Anon Key
-const supabaseKey = supabaseServiceRoleKey || supabaseAnonKey;
+const supabaseKey = (typeof window === 'undefined' ? (supabaseServiceRoleKey || supabaseAnonKey) : supabaseAnonKey);
 
 // Sanitize URL
 if (supabaseUrl) {

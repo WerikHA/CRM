@@ -56,6 +56,7 @@ import DemandsView from './components/DemandsView';
 import DesignModificationForm from './components/DesignModificationForm';
 import NotificationBell from './components/NotificationBell';
 import { LogOut, Film, ClipboardList, MessageSquare } from 'lucide-react';
+import { ChatWindow } from './components/ChatWindow';
 
 import LandingPage from './components/LandingPage';
 
@@ -98,6 +99,43 @@ const DEFAULT_AGENCY_CONFIG = {
   currency: 'R$',
   locale: 'pt-BR'
 };
+
+// Componente de Chat Flutuante Global
+function FloatingChat({ currentUser }: { currentUser: User }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="fixed bottom-8 right-8 z-[9999]">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl transition-all duration-300 group ring-4 ring-white dark:ring-gray-950",
+          isOpen ? "bg-rose-500 rotate-90" : "bg-indigo-600 hover:bg-indigo-700"
+        )}
+        title="Chat da Equipe"
+      >
+        {isOpen ? <X size={24} className="text-white" /> : <MessageSquare size={24} className="text-white group-hover:scale-110" />}
+        {!isOpen && (
+          <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-gray-950 animate-pulse"></div>
+        )}
+      </button>
+      
+      <div className={cn(
+        "absolute bottom-20 right-0 w-[350px] sm:w-[400px] h-[550px] sm:h-[600px] transition-all duration-500 origin-bottom-right",
+        isOpen ? "scale-100 opacity-100 translate-y-0" : "scale-0 opacity-0 translate-y-10 pointer-events-none"
+      )}>
+         <ChatWindow 
+            chatType="team"
+            senderId={currentUser.id}
+            senderName={currentUser.name}
+            ownerId={currentUser.ownerId || currentUser.id}
+            title="Chat da Equipe"
+            onClose={() => setIsOpen(false)}
+         />
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [agencyConfig, setAgencyConfig] = useState(() => {
@@ -719,6 +757,20 @@ export default function App() {
           )}
         </section>
       </main>
+
+      {/* Floating Team Chat Trigger (Global) */}
+      <AnimatePresence>
+        {isAuthenticated && effectiveUser && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+          >
+            <FloatingChat currentUser={effectiveUser} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <ErrorNotifier />
       <ToastContainer />
       <CookieConsent />

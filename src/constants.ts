@@ -40,9 +40,9 @@ export const INITIAL_INTEGRATIONS: IntegrationConfig[] = [
     id: 'i1', 
     service: 'n8n Automações', 
     isActive: true, 
-    webhookUrl: 'https://n8n.seu-servidor.com/webhook/amplifica-leads', 
-    apiKey: 'sk_live_n8n_prod_amplifica_config', 
-    accessUrl: 'http://45.167.187.80:5678', 
+    webhookUrl: '', 
+    apiKey: '', 
+    accessUrl: '', 
     type: 'generic' 
   },
   { 
@@ -52,11 +52,6 @@ export const INITIAL_INTEGRATIONS: IntegrationConfig[] = [
     webhookUrl: 'https://graph.facebook.com/v17.0/', 
     apiKey: '', 
     accessUrl: 'https://developers.facebook.com', 
-    type: 'whatsapp', 
-    whatsappConfig: { 
-      phoneNumberId: '10928374650192', 
-      accessToken: 'EAAG...ZW0Z', 
-      businessAccountId: '2938475601928' 
-    } 
+    type: 'whatsapp'
   },
 ];

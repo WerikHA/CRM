@@ -95,7 +95,7 @@ function NetworkStatus() {
 
         <div className="space-y-4">
           {data.allAddresses?.map((ip: string, i: number) => {
-            const url = `http://${ip}:${data.port}`;
+            const url = `${window.location.protocol}//${ip}:${data.port}`;
             return (
               <div key={i} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl transition-colors">
                 <div className="flex flex-col">
@@ -830,7 +830,7 @@ export default function AdminView({
                   <div className="p-6 border-b border-gray-50 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-800/30 flex items-center justify-between transition-colors">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 flex items-center justify-center text-gray-900 dark:text-gray-100 shadow-sm transition-all duration-300">
-                        {integration.type === 'whatsapp' ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> : <Code size={24} />}
+                        {integration.type === 'whatsapp' ? <svg xmlns="https://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> : <Code size={24} />}
                       </div>
                       <div>
                         <h3 className="font-bold text-gray-900 dark:text-gray-100 transition-colors uppercase tracking-tight">{integration.type === 'whatsapp' ? 'WhatsApp (QR)' : integration.service}</h3>
@@ -989,7 +989,7 @@ export default function AdminView({
                <div className="p-6 border-b border-gray-50 flex items-center justify-between">
                   <div>
                     <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> 
+                       <svg xmlns="https://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> 
                        Configuração do WhatsApp Cloud
                     </h3>
                     <p className="text-sm text-gray-400 mt-1">Vincule seu WhatsApp corporativo lendo o QR Code para enviar propostas e artes via sistema.</p>
@@ -1376,35 +1376,6 @@ export default function AdminView({
           <button type="submit" className="hidden" />
         </form>
       </Modal>
-
-      {/* Floating Team Chat Trigger */}
-      <div className="fixed bottom-8 right-8 z-50">
-        <button 
-          onClick={() => setIsTeamChatOpen(!isTeamChatOpen)}
-          className={cn(
-            "w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl transition-all duration-300 group",
-            isTeamChatOpen ? "bg-rose-500 rotate-90" : "bg-indigo-600 hover:bg-indigo-700"
-          )}
-        >
-          {isTeamChatOpen ? <X size={24} className="text-white" /> : <MessageSquare size={24} className="text-white group-hover:scale-110" />}
-          {!isTeamChatOpen && (
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-gray-950"></div>
-          )}
-        </button>
-        
-        <div className={cn(
-          "absolute bottom-20 right-0 w-[350px] sm:w-[400px] h-[550px] sm:h-[600px] transition-all duration-500 origin-bottom-right",
-          isTeamChatOpen ? "scale-100 opacity-100 translate-y-0" : "scale-0 opacity-0 translate-y-10 pointer-events-none"
-        )}>
-           <ChatWindow 
-              chatType="team"
-              senderId={currentUser.id}
-              senderName={currentUser.name}
-              ownerId={currentUser.ownerId || currentUser.id}
-              title="Chat da Equipe"
-           />
-        </div>
-      </div>
     </>
   );
 }
