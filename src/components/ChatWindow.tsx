@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Mic, Square, Play, Pause, Trash2, X, MessageSquare, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { dbService } from '../services/dbService';
 import { api } from '../services/api';
 
 interface Message {

@@ -1,4 +1,4 @@
-import { api } from "./api.ts";
+import { supabase } from "../lib/supabaseClient.ts";
 import { UserRole } from "../types.ts";
 
 export interface DbContext {
@@ -7,24 +7,88 @@ export interface DbContext {
   ownerId?: string;
 }
 
+const toSnakeCase = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+const toCamelCase = (str: string) => str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+
+const keysToSnake = (obj: any): any => {
+  if (typeof obj !== 'object' || obj === null) {
+    if (obj === "") return null;
+    return obj;
+  }
+  if (Array.isArray(obj)) return obj.map(keysToSnake);
+  const n: any = {};
+  Object.keys(obj || {}).forEach(k => {
+    n[toSnakeCase(k)] = keysToSnake(obj[k]);
+  });
+  return n;
+};
+
+const keysToCamel = (obj: any): any => {
+  if (typeof obj !== 'object' || obj === null) return obj;
+  if (Array.isArray(obj)) return obj.map(keysToCamel);
+  const n: any = {};
+  Object.keys(obj || {}).forEach(k => {
+    n[toCamelCase(k)] = keysToCamel(obj[k]);
+  });
+  return n;
+};
+
 export const dbService = {
   async list(tableName: string, context?: DbContext) {
-    return api.get(`/${tableName.replace(/_/g, '-')}`);
+    let query = supabase.from(tableName).select('*');
+
+    if (context && context.userRole !== 'OWNER' && context.userRole !== 'ADMIN') {
+      const { userId, userRole } = context;
+      
+      if (tableName === 'clients') {
+        if (userRole === 'PARTNER') {
+          query = query.eq('partner_id', userId);
+        } else {
+          query = query.or(`assigned_designer_id.eq.${userId},assigned_video_editor_id.eq.${userId}`);
+        }
+      } else if (tableName === 'users') {
+        query = query.eq('id', userId);
+      } else if (tableName === 'art_orders' || tableName === 'video_orders' || tableName === 'demand_tasks') {
+        const designerField = tableName === 'video_orders' ? 'editor_id' : (tableName === 'demand_tasks' ? 'editor_id' : 'designer_id');
+        query = query.eq(designerField, userId);
+      }
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return keysToCamel(data);
   },
 
   async getById(tableName: string, id: string, context?: DbContext) {
-    return api.get(`/${tableName.replace(/_/g, '-')}/${id}`);
+    let query = supabase.from(tableName).select('*').eq('id', id).single();
+    const { data, error } = await query;
+    if (error) throw error;
+    return keysToCamel(data);
   },
 
   async insert(tableName: string, payload: any, context?: DbContext) {
-    return api.post(`/${tableName.replace(/_/g, '-')}`, payload);
+    const snakePayload = keysToSnake(payload);
+    
+    // Auto-set owner_id if available and not set
+    if (context && !snakePayload.owner_id) {
+      snakePayload.owner_id = context.ownerId || context.userId;
+    }
+
+    const { data, error } = await supabase.from(tableName).insert(snakePayload).select().single();
+    if (error) throw error;
+    return keysToCamel(data);
   },
 
   async update(tableName: string, id: string, payload: any, context?: DbContext) {
-    return api.put(`/${tableName.replace(/_/g, '-')}/${id}`, payload);
+    const snakePayload = keysToSnake(payload);
+    const { data, error } = await supabase.from(tableName).update(snakePayload).eq('id', id).select().single();
+    if (error) throw error;
+    return keysToCamel(data);
   },
 
   async delete(tableName: string, id: string, context?: DbContext) {
-    return api.delete(`/${tableName.replace(/_/g, '-')}/${id}`);
+    const { error } = await supabase.from(tableName).delete().eq('id', id);
+    if (error) throw error;
+    return { success: true };
   }
 };
