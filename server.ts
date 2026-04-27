@@ -83,8 +83,8 @@ async function startServer() {
     const config = {
       VITE_COMPANY_NAME: process.env.VITE_COMPANY_NAME || "Amplifica CRM",
       VITE_PRIMARY_COLOR: process.env.VITE_PRIMARY_COLOR || "#4f46e5",
-      VITE_SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
+      // As chaves do Supabase não são mais enviadas ao navegador por segurança.
+      // O CRM agora usa o Proxy Interno /api para todas as operações de banco.
     };
     res.type("application/javascript");
     res.send(`window._env_ = ${JSON.stringify(config)};`);
