@@ -66,6 +66,9 @@ import { VideoOrder, SupportTicket, DemandTask } from './types';
 import ProductivityView from './components/ProductivityView';
 import ErrorNotifier from './components/ErrorNotifier';
 import { ToastContainer } from './components/ui/Toast';
+import CookieConsent from './components/CookieConsent';
+
+import { storageService } from './lib/storage';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   dashboard: 'Painel',
@@ -99,13 +102,13 @@ const DEFAULT_AGENCY_CONFIG = {
 export default function App() {
   const [agencyConfig, setAgencyConfig] = useState(() => {
     try {
-      const saved = localStorage.getItem('agency_config');
+      const saved = storageService.getItem('agency_config');
       if (saved) {
         const parsed = JSON.parse(saved);
         return { ...DEFAULT_AGENCY_CONFIG, ...parsed };
       }
     } catch (e) {
-      console.error("Erro ao ler agency_config do localStorage:", e);
+      console.error("Erro ao ler agency_config do storageService:", e);
     }
     return DEFAULT_AGENCY_CONFIG;
   });
@@ -126,7 +129,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('theme');
+      const saved = storageService.getItem('theme');
       if (saved) return saved === 'dark';
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
@@ -137,10 +140,10 @@ export default function App() {
     const root = window.document.documentElement;
     if (isDarkMode) {
       root.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
+      storageService.setItem('theme', 'dark');
     } else {
       root.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+      storageService.setItem('theme', 'light');
     }
   }, [isDarkMode]);
 
@@ -189,7 +192,7 @@ export default function App() {
       const res = await api.login(email, password);
       setCurrentUser(res.user);
       setIsAuthenticated(true);
-      localStorage.setItem('agency_user', JSON.stringify(res.user));
+      storageService.setItem('agency_user', JSON.stringify(res.user));
     } catch (err) {
       throw err;
     } finally {
@@ -203,7 +206,7 @@ export default function App() {
       const res = await api.signup(name, email, password);
       setCurrentUser(res.user);
       setIsAuthenticated(true);
-      localStorage.setItem('agency_user', JSON.stringify(res.user));
+      storageService.setItem('agency_user', JSON.stringify(res.user));
     } catch (err) {
       throw err;
     } finally {
@@ -214,12 +217,12 @@ export default function App() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
-    localStorage.removeItem('agency_user');
+    storageService.removeItem('agency_user');
   };
 
   // Check persisted auth
   useEffect(() => {
-    const savedUser = localStorage.getItem('agency_user');
+    const savedUser = storageService.getItem('agency_user');
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
       setIsAuthenticated(true);
@@ -277,7 +280,7 @@ export default function App() {
           const freshSelf = usersData.find(u => u.id === currentUser.id);
           if (freshSelf) {
             setCurrentUser(freshSelf);
-            localStorage.setItem('agency_user', JSON.stringify(freshSelf));
+            storageService.setItem('agency_user', JSON.stringify(freshSelf));
           }
         }
       } catch (error) {
@@ -448,34 +451,45 @@ export default function App() {
   };
 
   if (publicOrderId) {
-    return <DesignModificationForm 
-      orderId={publicOrderId} 
-      onSuccess={() => {
-        window.history.replaceState({}, '', window.location.pathname);
-        setPublicOrderId(null);
-      }} 
-    />;
+    return (
+      <>
+        <DesignModificationForm 
+          orderId={publicOrderId} 
+          onSuccess={() => {
+            window.history.replaceState({}, '', window.location.pathname);
+            setPublicOrderId(null);
+          }} 
+        />
+        <CookieConsent />
+      </>
+    );
   }
 
   if (!isAuthenticated || !currentUser || !effectiveUser) {
     if (authView === 'landing') {
       return (
-        <LandingPage 
-          onLogin={() => setAuthView('login')} 
-          onSignup={() => setAuthView('signup')} 
-          agencyName={agencyConfig.name}
-          primaryColor={agencyConfig.primaryColor}
-        />
+        <>
+          <LandingPage 
+            onLogin={() => setAuthView('login')} 
+            onSignup={() => setAuthView('signup')} 
+            agencyName={agencyConfig.name}
+            primaryColor={agencyConfig.primaryColor}
+          />
+          <CookieConsent />
+        </>
       );
     }
     return (
-      <LoginView 
-        onLogin={handleLogin} 
-        onSignup={handleSignup} 
-        isLoading={isAuthLoading} 
-        initialMode={authView === 'login' ? 'login' : 'signup'}
-        onBack={() => setAuthView('landing')}
-      />
+      <>
+        <LoginView 
+          onLogin={handleLogin} 
+          onSignup={handleSignup} 
+          isLoading={isAuthLoading} 
+          initialMode={authView === 'login' ? 'login' : 'signup'}
+          onBack={() => setAuthView('landing')}
+        />
+        <CookieConsent />
+      </>
     );
   }
 
@@ -707,6 +721,7 @@ export default function App() {
       </main>
       <ErrorNotifier />
       <ToastContainer />
+      <CookieConsent />
     </div>
   );
 }

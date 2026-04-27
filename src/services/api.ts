@@ -1,4 +1,5 @@
 import { Lead, Client, Receivable, ArtOrder, Partner, User, SupportTicket, VideoOrder } from '../types';
+import { storageService } from '../lib/storage';
 
 const API_BASE = '/api';
 
@@ -29,8 +30,8 @@ function toCamelCase(obj: any): any {
 async function request(endpoint: string, method: string, data?: any) {
   const url = `${API_BASE}${endpoint}`;
   
-  // Get user from localStorage to pass role/id headers
-  const storedUser = localStorage.getItem('agency_user');
+  // Get user from storageService to pass role/id headers
+  const storedUser = storageService.getItem('agency_user');
   const user = storedUser ? JSON.parse(storedUser) : null;
   
   const headers: Record<string, string> = {
@@ -298,7 +299,7 @@ export const api = {
   },
 
   async reportError(errorInfo: { message: string, stack?: string, context?: string }): Promise<SupportTicket> {
-    const storedUser = localStorage.getItem('agency_user');
+    const storedUser = storageService.getItem('agency_user');
     const user = storedUser ? JSON.parse(storedUser) : null;
     
     return request('/support-tickets', 'POST', {

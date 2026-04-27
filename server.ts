@@ -48,7 +48,21 @@ async function startServer() {
     console.log(`[API REQUEST] ${req.method} ${req.url}`);
     next();
   });
-  
+
+  // Global Process Error Handlers to prevent crashes from taking down the server
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+  });
+
+  process.on('uncaughtException', (err) => {
+    console.error('[CRITICAL] Uncaught Exception:', err);
+  });
+
+  // Start listening as soon as possible so the platform proxy doesn't show "Starting Server"
+  const server = app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`🚀 Amplifica CRM rodando em http://localhost:${PORT}`);
+  });
+
   // --- Runtime Env Config for Docker ---
   app.get("/env-config.js", (req, res) => {
     const config = {
@@ -393,6 +407,7 @@ async function startServer() {
     }
   });
 
+  supabaseCrud("users", "users");
   supabaseCrud("leads", "leads");
   supabaseCrud("clients", "clients");
   supabaseCrud("receivables", "receivables");
@@ -436,7 +451,6 @@ async function startServer() {
   supabaseCrud("video-orders", "video_orders");
 
   supabaseCrud("demand-tasks", "demand_tasks"); // Unified path
-  supabaseCrud("users", "users");
   supabaseCrud("notifications", "notifications");
   supabaseCrud("prospecting/lists", "prospecting_lists");
   supabaseCrud("prospecting/leads", "prospecting_leads");
@@ -604,10 +618,6 @@ async function startServer() {
   app.all("/api/*", (req, res) => {
     console.warn(`[SERVER] API 404: ${req.method} ${req.url}`);
     res.status(404).json({ error: `Endpoint da API não encontrado: ${req.url}` });
-  });
-
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`🚀 Amplifica CRM rodando em http://localhost:${PORT}`);
   });
 
   // --- BACKGROUND TASKS & POST-INITIALIZATION ---

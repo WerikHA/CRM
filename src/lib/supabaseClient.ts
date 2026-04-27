@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { storageService } from './storage';
 
 const getEnv = (key: string) => {
   if (typeof window !== 'undefined' && (window as any)._env_ && (window as any)._env_[key]) {
@@ -23,8 +24,7 @@ let supabaseServiceRoleKey = (getEnv('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
 // Use Service Role Key for server-side operations if available, fallback to Anon Key
 const supabaseKey = supabaseServiceRoleKey || supabaseAnonKey;
 
-// Sanitize URL: many users type .com instead of .co for supabase
-// Also ensuring it has https://
+// Sanitize URL
 if (supabaseUrl) {
   if (!supabaseUrl.startsWith('http')) {
     supabaseUrl = `https://${supabaseUrl}`;
@@ -33,11 +33,24 @@ if (supabaseUrl) {
     console.warn(`[Supabase] URL detected with .com: ${supabaseUrl}. Correcting to .co`);
     supabaseUrl = supabaseUrl.replace('supabase.com', 'supabase.co');
   }
-  console.log(`[Supabase] Initializing with URL: ${supabaseUrl}`);
 }
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('[Supabase] CRITICAL: SUPABASE_URL or SUPABASE_ANON_KEY (or SERVICE_ROLE_KEY) missing in environment variables.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Implementação de storage customizada para Supabase que respeita consentimento
+const customSupabaseStorage = {
+  getItem: (key: string) => storageService.getItem(key),
+  setItem: (key: string, value: string) => storageService.setItem(key, value),
+  removeItem: (key: string) => storageService.removeItem(key),
+};
+
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    storage: customSupabaseStorage,
+    autoRefreshToken: true,
+    persistSession: true, // O storageService cuidará de bloquear a escrita se não houver consentimento
+    detectSessionInUrl: true
+  }
+});

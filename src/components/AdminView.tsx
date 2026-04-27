@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare, Terminal } from 'lucide-react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare, Terminal, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
+import { storageService } from '../lib/storage';
 import { IntegrationConfig, Lead, Client, ArtOrder, Receivable, User } from '../types';
 import Modal from './Modal';
 import { ChatWindow } from './ChatWindow';
@@ -785,6 +786,17 @@ export default function AdminView({
           </button>
           {isAdmin && (
             <button 
+              onClick={() => setActiveSubTab('privacidade')}
+              className={cn(
+                "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+                activeSubTab === 'privacidade' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              )}
+            >
+              <ShieldCheck size={18} /> Privacidade & Cookies
+            </button>
+          )}
+          {isAdmin && (
+            <button 
               onClick={() => setActiveSubTab('network')}
               className={cn(
                 "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
@@ -989,6 +1001,43 @@ export default function AdminView({
             </div>
           )}
 
+          {activeSubTab === 'privacidade' && (
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 space-y-6">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <ShieldCheck size={24} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg dark:text-gray-100 uppercase tracking-tight">Privacidade & Cookies</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Gerencie as configurações de conformidade com a LGPD.</p>
+                </div>
+              </div>
+
+              <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+                <h4 className="font-bold text-sm mb-2 uppercase tracking-tight">Reiniciar Consentimento</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                  Clique no botão abaixo para remover sua decisão de cookies. O banner aparecerá novamente na próxima recarga da página.
+                </p>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('cookie_consent');
+                    toast.success('Consentimento removido! O banner reaparecerá em breve.');
+                  }}
+                  className="px-6 py-2 bg-rose-500 text-white rounded-xl text-xs font-bold hover:bg-rose-600 transition-all shadow-sm shadow-rose-500/20"
+                >
+                  Limpar Cache de Cookies
+                </button>
+              </div>
+
+              <div className="p-6 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-2xl border border-indigo-100/50 dark:border-indigo-500/10">
+                <h4 className="font-bold text-sm mb-2 uppercase tracking-tight text-indigo-600">Por que isso é necessário?</h4>
+                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed font-medium">
+                  De acordo com a Lei Geral de Proteção de Dados (LGPD), você deve informar aos usuários sobre o uso de cookies e obter seu consentimento antes de coletar dados não essenciais. O CRM Amplifica utiliza essa funcionalidade para garantir que sua agência esteja em conformidade por padrão.
+                </p>
+              </div>
+            </div>
+          )}
+
           {activeSubTab === 'network' && isAdmin && (
             <NetworkStatus />
           )}
@@ -1012,7 +1061,7 @@ export default function AdminView({
                        onChange={e => {
                          const next = { ...agencyConfig, name: e.target.value };
                          setAgencyConfig(next);
-                         localStorage.setItem('agency_config', JSON.stringify(next));
+                         storageService.setItem('agency_config', JSON.stringify(next));
                        }}
                        className="w-full max-w-sm mx-auto block px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all duration-300 shadow-inner"
                        placeholder="Sua Agência Ltda"
@@ -1030,7 +1079,7 @@ export default function AdminView({
                          reader.onloadend = () => {
                            const next = { ...agencyConfig, logoUrl: reader.result as string };
                            setAgencyConfig(next);
-                           localStorage.setItem('agency_config', JSON.stringify(next));
+                            storageService.setItem('agency_config', JSON.stringify(next));
                          };
                          reader.readAsDataURL(file);
                        }}
@@ -1046,7 +1095,7 @@ export default function AdminView({
                             onClick={() => {
                               const next = { ...agencyConfig, logoUrl: '' };
                               setAgencyConfig(next);
-                              localStorage.setItem('agency_config', JSON.stringify(next));
+                              storageService.setItem('agency_config', JSON.stringify(next));
                             }} 
                             className="text-xs font-bold text-rose-500 hover:text-rose-600 px-3 py-1 bg-rose-50 dark:bg-rose-500/10 rounded-lg transition-colors uppercase"
                           >
@@ -1066,7 +1115,7 @@ export default function AdminView({
                             onChange={e => {
                               const next = { ...agencyConfig, primaryColor: e.target.value };
                               setAgencyConfig(next);
-                              localStorage.setItem('agency_config', JSON.stringify(next));
+                              storageService.setItem('agency_config', JSON.stringify(next));
                             }}
                             className="w-12 h-12 rounded-xl cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 transition-all"
                           />
@@ -1082,7 +1131,7 @@ export default function AdminView({
                             onChange={e => {
                               const next = { ...agencyConfig, logoBgColor: e.target.value };
                               setAgencyConfig(next);
-                              localStorage.setItem('agency_config', JSON.stringify(next));
+                              storageService.setItem('agency_config', JSON.stringify(next));
                             }}
                             className="w-12 h-12 rounded-xl cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 transition-all"
                           />
