@@ -178,8 +178,8 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
       
       const fileList = Array.from(files) as File[];
       for (const file of fileList) {
-        if (file.size > 10 * 1024 * 1024) {
-          alert(`Arquivo ${file.name} excede o limite de 10MB.`);
+        if (file.size > 5 * 1024 * 1024 * 1024) {
+          alert(`Arquivo ${file.name} excede o limite de 5GB.`);
           continue;
         }
 

@@ -72,8 +72,8 @@ async function startServer() {
     });
   }
 
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "5000mb" }));
+  app.use(express.urlencoded({ limit: "5000mb", extended: true }));
   
   // Debug middleware for API
   app.use("/api", (req, res, next) => {
@@ -125,7 +125,7 @@ async function startServer() {
   const authMiddleware = (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
     // Skip auth for public routes
     const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js"];
-    if (publicPaths.some(p => req.path.startsWith(p))) {
+    if (publicPaths.some(p => req.originalUrl.startsWith(p))) {
       return next();
     }
 
@@ -207,9 +207,12 @@ async function startServer() {
 
   const upload = multer({
     storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    limits: { fileSize: 5 * 1024 * 1024 * 1024 }, // 5GB limit
     fileFilter: (req, file, cb) => {
-      const allowedExtensions = ['.jpg', '.jpeg', '.png', '.pdf', '.docx', '.csv', '.xlsx', '.mp4', '.mov', '.avi'];
+      const allowedExtensions = [
+        '.jpg', '.jpeg', '.png', '.pdf', '.docx', '.csv', '.xlsx', 
+        '.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.m4v', '.3gp', '.mpeg'
+      ];
       const allowedMimeTypes = [
           'image/jpeg', 
           'image/png', 
@@ -219,7 +222,14 @@ async function startServer() {
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'video/mp4',
           'video/quicktime',
-          'video/x-msvideo'
+          'video/x-msvideo',
+          'video/x-matroska',
+          'video/webm',
+          'video/x-flv',
+          'video/x-ms-wmv',
+          'video/x-m4v',
+          'video/3gpp',
+          'video/mpeg'
       ];
       
       const extension = path.extname(file.originalname).toLowerCase();
