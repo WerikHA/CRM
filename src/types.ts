@@ -49,6 +49,10 @@ export interface Client {
   designerPayout?: number; // Quanto o designer ganha por este cliente
   videoEditorPayout?: number; // Quanto o editor de vídeo ganha por este cliente
   branding?: ClientBranding;
+  socialAccounts?: {
+    facebook?: { connected: boolean; pageName?: string; token?: string; };
+    instagram?: { connected: boolean; handle?: string; token?: string; };
+  };
   demandConfig?: {
     enabled: boolean;
     type: 'art' | 'video' | 'recording';

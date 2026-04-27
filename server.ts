@@ -14,9 +14,9 @@ import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } 
 import { supabase, isUsingServiceRole } from "./src/lib/supabaseClient.ts";
 import { getEmailConfig, saveEmailConfig, resetTransporter, sendEmail } from "./src/services/emailService.ts";
 import { googleDriveService } from "./src/services/googleDriveService.ts";
+import { facebookService } from "./src/services/facebookService.ts";
 import { Server } from "socket.io";
 import { createServer } from "http";
-import { ExpressPeerServer } from "peer";
 
 import { dbService, DbContext, keysToCamel, keysToSnake } from "./src/services/dbService.ts";
 import { UserRole } from "./src/types.ts";
@@ -96,18 +96,16 @@ async function startServer() {
     cors: { origin: "*", methods: ["GET", "POST"] }
   });
 
-  const peerServer = ExpressPeerServer(httpServer, { path: "/" });
-  app.use("/peerjs", peerServer);
-
   // --- Socket.io Meeting Logic ---
   const meetingRequests = new Map<string, any[]>();
   io.on("connection", (socket) => {
     console.log(`[SOCKET] Cliente conectado: ${socket.id}`);
     socket.on("join-room", ({ roomId, user, isGuest }) => {
       socket.join(roomId);
-      if (!isGuest) socket.to(roomId).emit("host-joined", { hostId: socket.id });
-      socket.to(roomId).emit("user-connected", { userId: socket.id, user });
-      socket.on("disconnect", () => socket.to(roomId).emit("user-disconnected", socket.id));
+      (socket as any).userId = user.id; // Save user id on socket for disconnect
+      if (!isGuest) socket.to(roomId).emit("host-joined", { hostId: user.id });
+      socket.to(roomId).emit("user-connected", { userId: user.id, user });
+      socket.on("disconnect", () => socket.to(roomId).emit("user-disconnected", (socket as any).userId));
     });
     socket.on("signal", ({ to, from, signal }) => io.to(to).emit("signal", { from, signal }));
     socket.on("request-join", ({ roomId, guestInfo }) => {
@@ -555,6 +553,59 @@ async function startServer() {
       const sendResult = await whatsappService.sendMessage(ownerId, phone, message, mediaBase64);
       if (poll?.name) await whatsappService.sendPoll(ownerId, phone, poll.name, poll.options, poll.orderId);
       res.json({ success: true, messageId: sendResult?.key?.id });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // --- Facebook Integration Routes ---
+  app.get("/api/facebook/auth-url", (req: AuthRequest, res) => {
+    try {
+      const { clientId } = req.query;
+      if (!clientId) return res.status(400).json({ error: "Client ID ausente" });
+      const url = facebookService.getAuthUrl(clientId as string);
+      res.json({ url });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/facebook/callback", async (req, res) => {
+    const { code, state: clientId } = req.query;
+    if (!code || !clientId) return res.status(400).json({ error: "Código ou ID do cliente ausente" });
+    try {
+      await facebookService.handleCallback(code as string, clientId as string);
+      res.send(`
+        <html>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'FACEBOOK_AUTH_SUCCESS', clientId: '${clientId}' }, '*');
+                window.close();
+              } else {
+                window.location.href = '/?route=social_posts';
+              }
+            </script>
+            <p>Autenticação do Facebook bem-sucedida! Esta janela será fechada...</p>
+          </body>
+        </html>
+      `);
+    } catch (err: any) { 
+      res.status(500).send(`Erro na autenticação: ${err.message}`);
+    }
+  });
+
+  app.get("/api/facebook/status/:clientId", async (req: AuthRequest, res) => {
+    try {
+      const { clientId } = req.params;
+      const connected = facebookService.isConnected(clientId);
+      const pages = facebookService.getPages(clientId);
+      const igAccounts = facebookService.getInstagramAccounts(clientId);
+      res.json({ connected, pages, igAccounts });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/facebook/publish", async (req: AuthRequest, res) => {
+    try {
+      const { clientId, networks, content, mediaUrl, scheduledTimeUnix } = req.body;
+      const results = await facebookService.publishPost(clientId, networks, content, mediaUrl, scheduledTimeUnix);
+      res.json({ success: true, results });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 

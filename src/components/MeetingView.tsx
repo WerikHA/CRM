@@ -209,16 +209,17 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
         name: `${guestName.name} ${guestName.surname}`
       };
 
+      // Initialize peer as soon as joining starts to be ready to receive calls
+      meetingService.initPeer(userData.id);
+      peerInstance.current = (meetingService as any).peer;
+
       if (!currentUser) {
         setStep('waiting');
       } else {
         setStep('meeting');
         setIsJoined(true);
-        meetingService.initPeer(userData.id);
-        peerInstance.current = (meetingService as any).peer;
       }
 
-      // meetingService.initPeer(userData.id);
       meetingService.init(roomId, userData, !currentUser, {
         onParticipantsUpdate: (p) => {
           setParticipants(p);
@@ -239,8 +240,6 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
           console.log("[MEET] [VIEW] Recebido callback onApproved. Alterando step para 'meeting'.");
           setStep('meeting');
           setIsJoined(true);
-          meetingService.initPeer(userData.id);
-          peerInstance.current = (meetingService as any).peer;
         },
         onDenied: () => {
           alert("Sua entrada foi recusada pelo anfitrião.");

@@ -118,12 +118,8 @@ class MeetingService {
   }
 
   initPeer(userId: string) {
-    this.peer = new Peer(userId, {
-        host: window.location.hostname,
-        port: parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80),
-        path: '/peerjs',
-        secure: window.location.protocol === 'https:'
-    });
+    // Relying on standard peer.js public server which is more reliable for simple apps behind proxies/Cloud Run
+    this.peer = new Peer(userId);
     meetLogService.add(`[MEET] Peer iniciado para ID: ${userId}`);
 
     this.peer.on('call', (call) => {

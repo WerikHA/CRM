@@ -27,6 +27,16 @@ services:
       # --- INTELIGÊNCIA ARTIFICIAL ---
       - GEMINI_API_KEY=SUA_GEMINI_KEY_AQUI
 
+      # --- INTEGRAÇÃO GOOGLE ---
+      - GOOGLE_CLIENT_ID=SEU_GOOGLE_CLIENT_ID_AQUI
+      - GOOGLE_CLIENT_SECRET=SEU_GOOGLE_CLIENT_SECRET_AQUI
+      - GOOGLE_REDIRECT_URI=https://seu-dominio.com/api/google/callback
+
+      # --- INTEGRAÇÃO FACEBOOK/INSTAGRAM ---
+      - FACEBOOK_APP_ID=SEU_FACEBOOK_APP_ID_AQUI
+      - FACEBOOK_APP_SECRET=SEU_FACEBOOK_APP_SECRET_AQUI
+      - FACEBOOK_REDIRECT_URI=https://seu-dominio.com/api/facebook/callback
+      
       # --- FRONTEND CONFIG (VITE) ---
       - VITE_SUPABASE_URL=https://wfdvszqfsvnrtdouuygy.supabase.co
       - VITE_SUPABASE_ANON_KEY=sb_publishable_rjAkTZq7AlDqZ-ibucO0SA_k6UJy8l6

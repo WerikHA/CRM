@@ -1283,7 +1283,7 @@ export default function AdminView({
             <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">E-mail</label>
             <input 
               type="email" 
-              value={editUserData.email}
+              value={editUserData.email || ''}
               onChange={e => setEditUserData({...editUserData, email: e.target.value})}
               className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all"
               required
@@ -1302,7 +1302,7 @@ export default function AdminView({
             </div>
             <input 
               type="text" 
-              value={editUserData.password}
+              value={editUserData.password || ''}
               onChange={e => setEditUserData({...editUserData, password: e.target.value})}
               placeholder="Deixe em branco para manter a atual"
               className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all font-mono"

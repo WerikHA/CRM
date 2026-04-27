@@ -56,7 +56,8 @@ import DemandsView from './components/DemandsView';
 import DesignModificationForm from './components/DesignModificationForm';
 import NotificationBell from './components/NotificationBell';
 import GoogleDriveManager from './components/GoogleDriveManager';
-import { LogOut, Film, ClipboardList, MessageSquare, HardDrive } from 'lucide-react';
+import { SocialPostSchedulerView } from './components/SocialPostSchedulerView';
+import { LogOut, Film, ClipboardList, MessageSquare, HardDrive, CalendarClock } from 'lucide-react';
 import { ChatWindow } from './components/ChatWindow';
 
 import LandingPage from './components/LandingPage';
@@ -359,6 +360,7 @@ export default function App() {
       { id: 'leads', label: 'Leads', icon: TrendingUp, roles: ['ADMIN', 'OWNER'] },
       { id: 'clients', label: 'Clientes', icon: Users, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
       { id: 'finance', label: 'Financeiro', icon: DollarSign, roles: ['ADMIN', 'DESIGNER', 'EDITOR', 'OWNER'] },
+      { id: 'social_posts', label: 'Agendamento de Posts', icon: CalendarClock, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
       { id: 'design', label: 'Design', icon: Palette, roles: ['ADMIN', 'DESIGNER', 'PARTNER', 'OWNER'] },
       { id: 'videos', label: 'Edição de Vídeo', icon: Briefcase, roles: ['ADMIN', 'EDITOR', 'PARTNER', 'OWNER'] },
       { id: 'demands', label: 'Demandas', icon: ClipboardList, roles: ['ADMIN', 'DESIGNER', 'PARTNER', 'EDITOR', 'OWNER'] },
@@ -409,6 +411,11 @@ export default function App() {
         return <FinanceView 
           receivables={receivables} 
           setReceivables={setReceivables} 
+          clients={clients}
+          currentUser={effectiveUser}
+        />;
+      case 'social_posts':
+        return <SocialPostSchedulerView
           clients={clients}
           currentUser={effectiveUser}
         />;
