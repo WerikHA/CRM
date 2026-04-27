@@ -208,8 +208,12 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
         name: `${guestName.name} ${guestName.surname}`
       };
 
-      setStep('meeting');
-      setIsJoined(true);
+      if (!currentUser) {
+        setStep('waiting');
+      } else {
+        setStep('meeting');
+        setIsJoined(true);
+      }
 
       meetingService.init(roomId, userData, !currentUser, {
         onParticipantsUpdate: (p) => {
@@ -230,6 +234,22 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
         onApproved: () => {
           setStep('meeting');
           setIsJoined(true);
+          
+          const peer = new Peer(userData.id, {
+            host: window.location.hostname,
+            port: parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80),
+            path: '/',
+            secure: window.location.protocol === 'https:'
+          });
+          peerInstance.current = peer;
+    
+          peer.on('call', (call) => {
+            activeCalls.current[call.peer] = call;
+            call.answer(stream);
+            call.on('stream', (userStream) => {
+              setPeers(prev => ({ ...prev, [call.peer]: userStream }));
+            });
+          });
         },
         onDenied: () => {
           alert("Sua entrada foi recusada pelo anfitrião.");
@@ -238,22 +258,23 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
         }
       });
 
-      const peer = new Peer(userData.id, {
-        host: window.location.hostname,
-        port: parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80),
-        path: '/peerjs',
-        secure: window.location.protocol === 'https:'
-      });
-      peerInstance.current = peer;
-
-      peer.on('call', (call) => {
-        activeCalls.current[call.peer] = call;
-        call.answer(stream);
-        call.on('stream', (userStream) => {
-          setPeers(prev => ({ ...prev, [call.peer]: userStream }));
-        });
-      });
-      
+      if (currentUser) {
+          const peer = new Peer(userData.id, {
+            host: window.location.hostname,
+            port: parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80),
+            path: '/',
+            secure: window.location.protocol === 'https:'
+          });
+          peerInstance.current = peer;
+    
+          peer.on('call', (call) => {
+            activeCalls.current[call.peer] = call;
+            call.answer(stream);
+            call.on('stream', (userStream) => {
+              setPeers(prev => ({ ...prev, [call.peer]: userStream }));
+            });
+          });
+      }
     } catch (err: any) {
       alert("Erro ao acessar câmera/microfone: " + err.message);
     }
