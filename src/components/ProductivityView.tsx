@@ -100,7 +100,7 @@ export default function ProductivityView({ artOrders, videoOrders, demandTasks, 
             </div>
           </div>
           <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={stats.teamProductivity} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                 <XAxis type="number" hide />
@@ -136,7 +136,7 @@ export default function ProductivityView({ artOrders, videoOrders, demandTasks, 
             </div>
           </div>
           <div className="h-[300px] relative">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <PieChart>
                 <Pie
                   data={stats.deliveriesByType}

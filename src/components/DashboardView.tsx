@@ -223,7 +223,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
         </div>
         
         <div className="h-40 w-full relative">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <PieChart>
               <Pie
                 data={data}
@@ -264,7 +264,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
         </div>
       </div>
       <div className="h-64 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-gray-100 dark:text-gray-800" />
             <XAxis 
@@ -536,7 +536,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
                 </div>
               </div>
               <div className="h-32 w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <AreaChart data={getRevenueHistory(totalValue)}>
                       <defs>
                         <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
@@ -563,7 +563,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
                   </div>
                 </div>
                 <div className="h-32 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <AreaChart data={getRevenueHistory(ownRevenue.value)}>
                       <defs>
                         <linearGradient id="colorOwn" x1="0" y1="0" x2="0" y2="1">
@@ -591,7 +591,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
                   </div>
                 </div>
                 <div className="h-32 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <AreaChart data={getRevenueHistory(partner.value)}>
                       <defs>
                         <linearGradient id={`colorPartner-${idx}`} x1="0" y1="0" x2="0" y2="1">
@@ -636,7 +636,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
             </h2>
           </div>
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={leadData}>
                 <defs>
                   <linearGradient id="colorLead" x1="0" y1="0" x2="0" y2="1">
@@ -676,7 +676,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
             </h2>
           </div>
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <PieChart>
                 <Pie
                   data={jobStatusData}

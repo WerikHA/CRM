@@ -243,7 +243,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
         <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors flex flex-col items-center justify-center min-h-[160px]">
            {chartData.length > 0 ? (
              <div className="w-full h-full">
-                <ResponsiveContainer width="100%" height={100}>
+                <ResponsiveContainer width="100%" height={100} minWidth={0}>
                   <PieChart>
                     <Pie
                       data={chartData}
@@ -285,7 +285,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
             </h2>
           </div>
           <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" className="dark:opacity-10" />
                 <XAxis 
@@ -329,7 +329,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
             </h2>
           </div>
           <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={clientRevenueData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" className="dark:opacity-10" />
                 <XAxis type="number" hide />
