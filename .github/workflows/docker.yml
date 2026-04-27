@@ -25,5 +25,4 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/amplifica-crm:latest
-            ${{ secrets.DOCKER_USERNAME }}/amplifica-crm:v1.0.0
+            ${{ secrets.DOCKER_USERNAME }}/amplifica-crm:v1.0.1
