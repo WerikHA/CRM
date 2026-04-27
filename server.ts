@@ -11,7 +11,8 @@ import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } 
 import { supabase } from "./src/lib/supabaseClient.ts";
 import { getEmailConfig, saveEmailConfig, resetTransporter, sendEmail } from "./src/services/emailService.ts";
 
-import { dbService, DbContext, UserRole } from "./src/services/dbService.ts";
+import { dbService, DbContext } from "./src/services/dbService.ts";
+import { UserRole } from "./src/types.ts";
 
 dotenv.config();
 
@@ -42,14 +43,26 @@ async function startServer() {
   app.use(compression());
   
   // Redirecionar para HTTPS em produção para evitar o aviso "Não Seguro" do navegador
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" || process.env.FORCE_HTTPS === "true") {
     app.use((req, res, next) => {
-      // Forçar o navegador a fazer upgrade de requisições HTTP para HTTPS para evitar Mixed Content
-      res.setHeader("Content-Security-Policy", "upgrade-insecure-requests");
+      // Headers de Segurança Recomendados
+      res.setHeader("Content-Security-Policy", "upgrade-insecure-requests; block-all-mixed-content");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Frame-Options", "SAMEORIGIN");
+      res.setHeader("X-XSS-Protection", "1; mode=block");
+      res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+      
+      // HSTS (HTTP Strict Transport Security) - Diz ao navegador para sempre usar HTTPS
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
 
-      // O header 'x-forwarded-proto' é enviado pelo balanceador de carga do Cloud Run/Proxy
-      if (req.headers["x-forwarded-proto"] && req.headers["x-forwarded-proto"] !== "https") {
-        return res.redirect(301, `https://${req.get("Host")}${req.url}`);
+      // Detecção robusta de HTTPS via proxy (Cloud Run, NPM, Traefik)
+      const isHttps = req.headers["x-forwarded-proto"] === "https" || 
+                      req.headers["x-forwarded-ssl"] === "on" || 
+                      req.secure;
+
+      if (!isHttps) {
+        console.log(`[SECURITY] Redirecting non-https request from ${req.headers.host} to https`);
+        return res.redirect(301, `https://${req.headers.host}${req.url}`);
       }
       next();
     });
@@ -543,6 +556,20 @@ async function startServer() {
       }
     } catch (err) {
       res.status(500).send("Erro ao ler logs");
+    }
+  });
+
+  app.get("/api/n8n/logs", (req, res) => {
+    try {
+      const logPath = path.join(process.cwd(), "n8n_interaction_logs.txt");
+      if (fs.existsSync(logPath)) {
+        const logs = fs.readFileSync(logPath, "utf-8");
+        res.send(logs);
+      } else {
+        res.send("Sem logs de n8n registrados ainda. Ative os webhooks para ver as interações.");
+      }
+    } catch (err) {
+      res.status(500).send("Erro ao ler logs de n8n");
     }
   });
 
