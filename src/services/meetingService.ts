@@ -67,8 +67,9 @@ class MeetingService {
     this.onDenied = callbacks.onDenied || (() => {});
 
     if (isGuest) {
-      console.log("[MEET] Requesting join for guest:", user.name, "Room:", roomId);
-      this.socket.emit("request-join", { roomId, guestInfo: user });
+      console.log("[MEET] Guest joining directly:", user.name, "Room:", roomId);
+      this.socket.emit("join-room", { roomId, user, isGuest: true });
+      this.onApproved(); // Immediately trigger "approved" state for local UI
     } else {
       console.log("[MEET] Host joining:", roomId);
       this.socket.emit("join-room", { roomId, user, isGuest: false });

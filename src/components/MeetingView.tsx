@@ -208,12 +208,8 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
         name: `${guestName.name} ${guestName.surname}`
       };
 
-      if (!currentUser) {
-        setStep('waiting');
-      } else {
-        setStep('meeting');
-        setIsJoined(true);
-      }
+      setStep('meeting');
+      setIsJoined(true);
 
       meetingService.init(roomId, userData, !currentUser, {
         onParticipantsUpdate: (p) => {
