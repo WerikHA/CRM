@@ -121,7 +121,7 @@ class MeetingService {
     this.peer = new Peer(userId, {
         host: window.location.hostname,
         port: parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80),
-        path: '/',
+        path: '/peerjs',
         secure: window.location.protocol === 'https:'
     });
     meetLogService.add(`[MEET] Peer iniciado para ID: ${userId}`);
