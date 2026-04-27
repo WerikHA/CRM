@@ -37,8 +37,8 @@ services:
       # Volumes persistentes para sessões do WhatsApp e logs
       - ./whatsapp_auth_sessions:/app/whatsapp_auth_sessions
       - ./whatsapp_polls.json:/app/whatsapp_polls.json
-      - ./whatsapp_interaction_logs.txt:/app/whatsapp_interaction_logs.txt
-      - ./n8n_interaction_logs.txt:/app/n8n_interaction_logs.txt
+      - ./logs/whatsapp_interaction_logs.txt:/app/logs/whatsapp_interaction_logs.txt
+      - ./logs/n8n_interaction_logs.txt:/app/logs/n8n_interaction_logs.txt
     
     healthcheck:
       test: ["CMD", "curl", "-f", "https://localhost:3000/api/health"]

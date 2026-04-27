@@ -25,6 +25,10 @@ let supabaseServiceRoleKey = '';
 if (typeof window === 'undefined') {
   supabaseServiceRoleKey = (getEnv('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
 }
+export const isUsingServiceRole = !!supabaseServiceRoleKey;
+if (typeof window === 'undefined') {
+  console.log('[Supabase] Service Role Key detected:', isUsingServiceRole);
+}
 
 // Use Service Role Key for server-side operations if available, fallback to Anon Key
 const supabaseKey = (typeof window === 'undefined' ? (supabaseServiceRoleKey || supabaseAnonKey) : supabaseAnonKey);

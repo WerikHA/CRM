@@ -11,7 +11,7 @@ import { whatsappService } from "./src/services/whatsappService.ts";
 import { scraperService } from "./src/services/prospecting/scraper.service.ts";
 import { startBackupScheduler } from "./src/services/backupService.ts";
 import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } from "./src/services/paymentReminderService.ts";
-import { supabase } from "./src/lib/supabaseClient.ts";
+import { supabase, isUsingServiceRole } from "./src/lib/supabaseClient.ts";
 import { getEmailConfig, saveEmailConfig, resetTransporter, sendEmail } from "./src/services/emailService.ts";
 import { googleDriveService } from "./src/services/googleDriveService.ts";
 import { Server } from "socket.io";
@@ -46,6 +46,8 @@ async function startServer() {
   const PORT = process.env.PORT || 3000;
 
   console.log("[STARTUP] Iniciando servidor Express...");
+  console.log("[DEBUG] SUPABASE_URL exists:", !!process.env.SUPABASE_URL);
+  console.log("[DEBUG] SUPABASE_SERVICE_ROLE_KEY exists:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   app.use(compression());
   app.set('trust proxy', true);
@@ -644,7 +646,7 @@ async function startServer() {
   app.get("/api/health/supabase", async (req, res) => {
     try {
       const { error } = await supabase.from('clients').select('id').limit(1);
-      res.json({ connected: !error, message: error ? error.message : "OK" });
+      res.json({ connected: !error, isUsingServiceRole: isUsingServiceRole, message: error ? error.message : "OK" });
     } catch(err: any) { res.json({ connected: false, error: err.message }); }
   });
 

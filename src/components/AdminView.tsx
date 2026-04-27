@@ -145,11 +145,11 @@ function DatabaseStatus() {
         const data = await res.json();
         if (data.connected) {
           setStatus('connected');
-          setDbInfo({ isServiceRole: data.isServiceRole, message: data.message, logs: data.logs });
+          setDbInfo({ isServiceRole: data.isUsingServiceRole, message: data.message, logs: data.logs });
         } else {
           setStatus('error');
           setMessage(data.message || 'Erro desconhecido ao conectar com Supabase');
-          setDbInfo({ isServiceRole: data.isServiceRole, message: data.message, logs: data.logs });
+          setDbInfo({ isServiceRole: data.isUsingServiceRole, message: data.message, logs: data.logs });
         }
       } catch (err) {
         setStatus('error');

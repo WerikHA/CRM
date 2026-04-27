@@ -51,6 +51,8 @@ class MeetingService {
     onDenied?: () => void;
   }) {
     if (!this.socket) return;
+    
+    console.log("[MEET] Init:", roomId, "isGuest:", isGuest, "Socket connected:", this.socket.connected);
 
     // Reset listeners to avoid duplicates on re-init
     this.socket.off("new-join-request");
@@ -65,7 +67,7 @@ class MeetingService {
     this.onDenied = callbacks.onDenied || (() => {});
 
     if (isGuest) {
-      console.log("[MEET] Resquesting join:", roomId);
+      console.log("[MEET] Requesting join for guest:", user.name, "Room:", roomId);
       this.socket.emit("request-join", { roomId, guestInfo: user });
     } else {
       console.log("[MEET] Host joining:", roomId);
@@ -78,6 +80,7 @@ class MeetingService {
     });
 
     this.socket.on("request-approved", () => {
+      console.log("[MEET] Approved, emitting join-room");
       this.onApproved();
       this.socket?.emit("join-room", { roomId, user, isGuest: true });
     });

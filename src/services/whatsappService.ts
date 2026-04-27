@@ -78,7 +78,7 @@ export class WhatsAppService extends EventEmitter {
 
   private logInteraction(ownerId: string, message: string) {
     try {
-      const logPath = path.join(process.cwd(), "whatsapp_interaction_logs.txt");
+      const logPath = path.join(process.cwd(), "logs", "whatsapp_interaction_logs.txt");
       const timestamp = new Date().toLocaleString("pt-BR");
       const logLine = `[${timestamp}][Owner: ${ownerId}] ${message}\n`;
       fs.appendFileSync(logPath, logLine);

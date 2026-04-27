@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../services/api';
 import { Notification } from '../types';
 import { cn } from '../lib/utils';
+import { storageService } from '../lib/storage';
 
 export default function NotificationBell({ onNavigate }: { onNavigate?: (view: any) => void }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -13,6 +14,9 @@ export default function NotificationBell({ onNavigate }: { onNavigate?: (view: a
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const fetchNotifications = async () => {
+    const token = storageService.getItem('agency_token');
+    if (!token) return;
+    
     try {
       const data = await api.getNotifications();
       // Ensure we sort by date descending
