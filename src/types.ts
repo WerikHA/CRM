@@ -58,6 +58,18 @@ export interface Client {
   };
 }
 
+export interface ClientDocument {
+  id: string;
+  clientId: string;
+  ownerId: string;
+  name: string;
+  url: string;
+  fileType: string;
+  source: 'local' | 'google_drive';
+  externalId?: string;
+  createdAt: string;
+}
+
 export interface DemandTask {
   id: string;
   clientId: string;
@@ -91,7 +103,7 @@ export interface Receivable {
   id: string;
   clientId: string;
   description: string;
-  amount: number;
+  quantia: number;
   dueDate: string; // dd/mm/aaaa
   status: PaymentStatus;
   designerId?: string; // Designer que receberá parte deste valor

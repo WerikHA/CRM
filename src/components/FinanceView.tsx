@@ -19,7 +19,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
   const [formData, setFormData] = useState<Partial<Receivable>>({
     clientId: '',
     description: '',
-    amount: 0,
+    quantia: 0,
     dueDate: '',
     status: 'pending'
   });
@@ -62,9 +62,9 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     ? receivables.filter(r => r.designerId === currentUser.id)
     : receivables).filter(r => filter === 'all' ? true : r.status === filter);
 
-  const totalAmount = filteredReceivables.filter(r => r.status === 'paid').reduce((acc, r) => acc + (isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount), 0);
-  const totalPending = filteredReceivables.filter(r => r.status === 'pending').reduce((acc, r) => acc + (isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount), 0);
-  const totalOverdue = filteredReceivables.filter(r => r.status === 'overdue').reduce((acc, r) => acc + (isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount), 0);
+  const totalAmount = filteredReceivables.filter(r => r.status === 'paid').reduce((acc, r) => acc + (isDesigner || isEditor ? (r.payoutAmount || 0) : r.quantia), 0);
+  const totalPending = filteredReceivables.filter(r => r.status === 'pending').reduce((acc, r) => acc + (isDesigner || isEditor ? (r.payoutAmount || 0) : r.quantia), 0);
+  const totalOverdue = filteredReceivables.filter(r => r.status === 'overdue').reduce((acc, r) => acc + (isDesigner || isEditor ? (r.payoutAmount || 0) : r.quantia), 0);
 
   const chartData = [
     { name: 'Pago', value: totalAmount, color: '#10b981' },
@@ -79,7 +79,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     const monthNames: any = { '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr', '05': 'Mai', '06': 'Jun', '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez' };
     const monthName = monthNames[month] || month;
     if (!acc[monthName]) acc[monthName] = { name: monthName, total: 0, count: 0 };
-    acc[monthName].total += isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount;
+    acc[monthName].total += isDesigner || isEditor ? (r.payoutAmount || 0) : r.quantia;
     acc[monthName].count += 1;
     return acc;
   }, {});
@@ -92,7 +92,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     if (!client) return acc;
     const clientName = client.name;
     if (!acc[clientName]) acc[clientName] = { name: clientName, total: 0 };
-    acc[clientName].total += isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount;
+    acc[clientName].total += isDesigner || isEditor ? (r.payoutAmount || 0) : r.quantia;
     return acc;
   }, {});
 
@@ -105,7 +105,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     setFormData({
       clientId: clients[0]?.id || '',
       description: '',
-      amount: 0,
+      quantia: 0,
       dueDate: new Date().toLocaleDateString('pt-BR'),
       status: 'pending'
     });
@@ -117,7 +117,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     setFormData({
       clientId: receivable.clientId || '',
       description: receivable.description || '',
-      amount: receivable.amount || 0,
+      quantia: receivable.quantia || 0,
       dueDate: receivable.dueDate || '',
       status: receivable.status || 'pending',
       ...receivable
@@ -179,7 +179,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     const message = financeConfig.reminderTemplate
         .replace('{{clientName}}', client.name)
         .replace('{{description}}', receivable?.description || '')
-        .replace('{{amount}}', receivable?.amount.toString() || '0')
+        .replace('{{quantia}}', receivable?.quantia.toString() || '0')
         .replace('{{pixKey}}', pixKey);
 
     try {
@@ -413,7 +413,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
               {filteredReceivables.map((r) => {
                 const client = clients.find(c => c.id === r.clientId);
-                const displayAmount = isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount;
+                const displayAmount = isDesigner || isEditor ? (r.payoutAmount || 0) : r.quantia;
                 return (
                   <tr key={r.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/50 transition-colors group cursor-pointer" onClick={() => isAdminOrOwner && handleEditReceivable(r)}>
                     <td className="px-6 py-4">
@@ -515,7 +515,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
             />
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-300">
-            Variáveis disponíveis: <code>{'{{clientName}}'}</code>, <code>{'{{description}}'}</code>, <code>{'{{amount}}'}</code>, <code>{'{{pixKey}}'}</code>.
+            Variáveis disponíveis: <code>{'{{clientName}}'}</code>, <code>{'{{description}}'}</code>, <code>{'{{quantia}}'}</code>, <code>{'{{pixKey}}'}</code>.
         </p>
         <button onClick={saveConfig} className="px-4 py-2 bg-indigo-500 text-white text-sm font-semibold rounded-xl hover:bg-indigo-600 transition-colors">Salvar Configurações</button>
       </div>
@@ -569,8 +569,8 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Valor (R$)</label>
               <input 
                 type="number" 
-                value={formData.amount || 0}
-                onChange={e => setFormData({...formData, amount: Number(e.target.value)})}
+                value={formData.quantia || 0}
+                onChange={e => setFormData({...formData, quantia: Number(e.target.value)})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
               />
             </div>

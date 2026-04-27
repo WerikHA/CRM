@@ -37,6 +37,16 @@ export const dbService = {
   async list(tableName: string, context?: DbContext) {
     if (!context) throw new Error("Acesso negado: Contexto de usuário não fornecido.");
 
+    // Special handling for GUESTS
+    if ((context.userRole as any) === 'GUEST') {
+      if (tableName === 'users' || tableName === 'clients') {
+        // GUESTS can only see everything in these tables for now (simplification)
+        // In a real app, we'd filter by some shared token or ID
+        return keysToCamel((await supabase.from(tableName).select('*')).data);
+      }
+      throw new Error("Acesso negado para convidados nesta tabela.");
+    }
+
     let query = supabase.from(tableName).select('*');
 
     // Multi-tenant isolation: always filter by ownerId by default if not super admin
@@ -66,7 +76,21 @@ export const dbService = {
 
     const { data, error } = await query;
     if (error) throw error;
-    return keysToCamel(data);
+    
+    const camelData = keysToCamel(data);
+    
+    // Map amount to quantia for receivables
+    if (tableName === 'receivables' && Array.isArray(camelData)) {
+      return camelData.map(item => {
+        if (item.amount !== undefined) {
+          item.quantia = item.amount;
+          delete item.amount;
+        }
+        return item;
+      });
+    }
+
+    return camelData;
   },
 
   async getById(tableName: string, id: string, context?: DbContext) {
@@ -74,17 +98,33 @@ export const dbService = {
     
     let query = supabase.from(tableName).select('*').eq('id', id);
     
-    if (context.ownerId) {
+    // GUESTS don't have an ownerId, so we skip that filter for them
+    if (context.ownerId && (context.userRole as any) !== 'GUEST') {
       query = query.eq('owner_id', context.ownerId);
     }
 
     const { data, error } = await query.single();
     if (error) throw error;
-    return keysToCamel(data);
+    
+    const camelData = keysToCamel(data);
+    
+    // Map amount to quantia for receivables
+    if (tableName === 'receivables' && camelData && camelData.amount !== undefined) {
+      camelData.quantia = camelData.amount;
+      delete camelData.amount;
+    }
+    
+    return camelData;
   },
 
   async insert(tableName: string, payload: any, context?: DbContext) {
     const snakePayload = keysToSnake(payload);
+    
+    // Special handling for renamed columns
+    if (tableName === 'receivables' && snakePayload.quantia !== undefined) {
+      snakePayload.amount = snakePayload.quantia;
+      delete snakePayload.quantia;
+    }
     
     // Auto-set owner_id if available and not set
     if (context && !snakePayload.owner_id) {
@@ -100,6 +140,12 @@ export const dbService = {
     if (!context) throw new Error("Acesso negado: Contexto de usuário não fornecido.");
     
     const snakePayload = keysToSnake(payload);
+    
+    // Special handling for renamed columns
+    if (tableName === 'receivables' && snakePayload.quantia !== undefined) {
+      snakePayload.amount = snakePayload.quantia;
+      delete snakePayload.quantia;
+    }
     
     // Ensure we only update if it belongs to the owner
     let query = supabase.from(tableName).update(snakePayload).eq('id', id);

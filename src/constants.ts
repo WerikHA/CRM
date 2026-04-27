@@ -22,8 +22,8 @@ export const INITIAL_CLIENTS: Client[] = [
 ];
 
 export const INITIAL_RECEIVABLES: Receivable[] = [
-  { id: 'r1', clientId: 'c1', description: 'Mensalidade Abril', amount: 3500, dueDate: '25/04/2026', status: 'pending', designerId: 'u2', payoutAmount: 450 },
-  { id: 'r2', clientId: 'c2', description: 'Campanha Black Friday (Antecipado)', amount: 1500, dueDate: '10/04/2026', status: 'overdue', designerId: 'u3', payoutAmount: 380 },
+  { id: 'r1', clientId: 'c1', description: 'Mensalidade Abril', quantia: 3500, dueDate: '25/04/2026', status: 'pending', designerId: 'u2', payoutAmount: 450 },
+  { id: 'r2', clientId: 'c2', description: 'Campanha Black Friday (Antecipado)', quantia: 1500, dueDate: '10/04/2026', status: 'overdue', designerId: 'u3', payoutAmount: 380 },
 ];
 
 export const INITIAL_ART_ORDERS: ArtOrder[] = [

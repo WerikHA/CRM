@@ -1,4 +1,4 @@
-import { Lead, Client, Receivable, ArtOrder, Partner, User, SupportTicket, VideoOrder } from '../types';
+import { Lead, Client, Receivable, ArtOrder, Partner, User, SupportTicket, VideoOrder, ClientDocument } from '../types';
 import { storageService } from '../lib/storage';
 
 const API_BASE = '/api';
@@ -132,8 +132,8 @@ export const api = {
     if (!Array.isArray(data)) return [];
     return data.map((item: any) => ({
       ...item,
-      amount: Number(item.amount),
-      payoutAmount: Number(item.payoutAmount)
+      quantia: Number(item.quantia || item.amount || 0),
+      payoutAmount: Number(item.payoutAmount || 0)
     }));
   },
   async createReceivable(receivable: Receivable): Promise<Receivable> {
@@ -144,6 +144,17 @@ export const api = {
   },
   async deleteReceivable(id: string): Promise<void> {
     return request(`/receivables/${id}`, 'DELETE');
+  },
+
+  // CLIENT DOCUMENTS
+  async listClientDocuments(clientId: string): Promise<ClientDocument[]> {
+    return request(`/client-documents?clientId=${clientId}`, 'GET');
+  },
+  async createClientDocument(doc: Partial<ClientDocument>): Promise<ClientDocument> {
+    return request('/client-documents', 'POST', doc);
+  },
+  async deleteClientDocument(id: string): Promise<void> {
+    return request(`/client-documents/${id}`, 'DELETE');
   },
 
   // ART ORDERS
@@ -339,6 +350,11 @@ export const api = {
       status: 'open',
       createdAt: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     });
+  },
+
+  // SYNC
+  async syncData(): Promise<any> {
+    return request('/sync', 'GET');
   },
 
   // NOTIFICATIONS

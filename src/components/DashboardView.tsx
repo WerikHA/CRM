@@ -83,7 +83,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
 
   // Cálculos de métricas (Opção 2)
   const totalRevenue = useMemo(() => 
-    receivables.reduce((acc, r) => acc + (Number(r.amount) || 0), 0)
+    receivables.reduce((acc, r) => acc + (Number(r.quantia) || 0), 0)
   , [receivables]);
 
   const activeLeads = useMemo(() => 
@@ -738,7 +738,7 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
           <div className="space-y-4">
             {filteredReceivables.filter(r => r.status !== 'paid').slice(0, 5).map(r => {
               const client = clients.find(c => c.id === r.clientId);
-              const displayAmount = isDesigner || isEditor ? (r.payoutAmount || 0) : r.amount;
+              const displayAmount = isDesigner || isEditor ? (r.payoutAmount || 0) : r.quantia;
               return (
                 <div key={r.id} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-gray-800 hover:border-indigo-100 dark:hover:border-indigo-500/30 transition-colors">
                   <div className="flex items-center gap-4">

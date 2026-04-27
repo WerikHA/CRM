@@ -55,12 +55,13 @@ import VideoWorkflowView from './components/VideoWorkflowView';
 import DemandsView from './components/DemandsView';
 import DesignModificationForm from './components/DesignModificationForm';
 import NotificationBell from './components/NotificationBell';
-import { LogOut, Film, ClipboardList, MessageSquare } from 'lucide-react';
+import GoogleDriveManager from './components/GoogleDriveManager';
+import { LogOut, Film, ClipboardList, MessageSquare, HardDrive } from 'lucide-react';
 import { ChatWindow } from './components/ChatWindow';
 
 import LandingPage from './components/LandingPage';
 
-type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity';
+type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'drive';
 
 import { api } from './services/api';
 import { VideoOrder, SupportTicket, DemandTask } from './types';
@@ -84,6 +85,7 @@ const VIEW_LABELS: Record<ViewType, string> = {
   tickets: 'Suporte',
   prospecting: 'Prospecção',
   productivity: 'Produtividade',
+  drive: 'Arquivos Drive',
   admin: 'Configurações'
 };
 
@@ -310,43 +312,21 @@ export default function App() {
     const fetchData = async (showLoading = true) => {
       try {
         if (showLoading) setIsLoading(true);
-        const [
-          leadsData, 
-          clientsData, 
-          receivablesData, 
-          artOrdersData, 
-          partnersData,
-          usersData,
-          partnerRequestsData,
-          ticketsData,
-          videoOrdersData,
-          demandTasksData
-        ] = await Promise.all([
-          api.getLeads(),
-          api.getClients(),
-          api.getReceivables(),
-          api.getArtOrders(),
-          api.getPartners(),
-          api.getUsers(),
-          api.getPartnerRequests(),
-          api.getSupportTickets(),
-          api.getVideoOrders(),
-          api.getDemandTasks()
-        ]);
+        const data = await api.syncData();
 
-        setLeads(leadsData || []);
-        setClients(clientsData || []);
-        setReceivables(receivablesData || []);
-        setArtOrders(artOrdersData || []);
-        setPartners(partnersData || []);
-        setPartnerRequests(partnerRequestsData || []);
-        setTickets(ticketsData || []);
-        setVideoOrders(videoOrdersData || []);
-        setDemandTasks(demandTasksData || []);
-        setUsers(usersData || []);
+        setLeads(data.leads || []);
+        setClients(data.clients || []);
+        setReceivables(data.receivables || []);
+        setArtOrders(data.artOrders || []);
+        setPartners(data.partners || []);
+        setPartnerRequests(data.partnerRequests || []);
+        setTickets(data.tickets || []);
+        setVideoOrders(data.videoOrders || []);
+        setDemandTasks(data.demandTasks || []);
+        setUsers(data.users || []);
         
-        if (currentUser && usersData && usersData.length > 0) {
-          const freshSelf = usersData.find(u => u.id === currentUser.id);
+        if (currentUser && data.users && data.users.length > 0) {
+          const freshSelf = data.users.find((u: any) => u.id === currentUser.id);
           if (freshSelf) {
             setCurrentUser(freshSelf);
             storageService.setItem('agency_user', JSON.stringify(freshSelf));
@@ -361,10 +341,10 @@ export default function App() {
 
     fetchData();
 
-    // Auto-refresh data every 30 seconds to catch WhatsApp poll updates
+    // Auto-refresh data every 90 seconds to reduce load and stay within rate limits
     const interval = setInterval(() => {
       fetchData(false);
-    }, 30000);
+    }, 90000);
 
     return () => clearInterval(interval);
   }, [isAuthenticated]);
@@ -384,6 +364,7 @@ export default function App() {
       { id: 'demands', label: 'Demandas', icon: ClipboardList, roles: ['ADMIN', 'DESIGNER', 'PARTNER', 'EDITOR', 'OWNER'] },
       { id: 'prospecting', label: 'Prospecção', icon: Target, roles: ['ADMIN'] },
       { id: 'productivity', label: 'Produtividade', icon: Activity, roles: ['ADMIN', 'DESIGNER', 'EDITOR', 'OWNER'] },
+      { id: 'drive', label: 'Arquivos Drive', icon: HardDrive, roles: ['ADMIN', 'OWNER'] },
       { id: 'partners', label: isPartner ? 'Solicitações' : 'Parceiros', icon: Handshake, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
       { id: 'tickets', label: 'Suporte', icon: MessageSquare, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
       { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN', 'OWNER'] },
@@ -486,6 +467,8 @@ export default function App() {
           demandTasks={demandTasks}
           users={users}
         />;
+      case 'drive':
+        return <GoogleDriveManager />;
       case 'demands':
         return <DemandsView 
           tasks={demandTasks}

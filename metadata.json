@@ -1,6 +1,6 @@
 {
   "name": "Amplifica CRM",
-  "description": "CRM full-stack especializado para agências de marketing com gestão de leads, banco de dados Postgres externo, fluxos de design e integração WhatsApp/n8n.",
+  "description": "CRM full-stack especializado para agências de marketing com gestão de leads, banco de dados Postgres externo, fluxos de design, integração WhatsApp/n8n e gerenciamento de arquivos via Google Drive.",
   "requestFramePermissions": ["microphone", "camera", "display-capture"],
   "majorCapabilities": []
 }

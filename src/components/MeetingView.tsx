@@ -22,7 +22,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { meetingService, Participant, JoinRequest } from '../services/meetingService';
 import { User as AppUser } from '../types';
 import { cn } from '../lib/utils';
-import Peer from 'peerjs';
+import Peer, { MediaConnection } from 'peerjs';
+import { videoEffectService } from '../services/videoEffectService';
 
 interface MeetingViewProps {
   roomId: string;
@@ -49,11 +50,49 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
   const [isBlurEnabled, setIsBlurEnabled] = useState(false);
   const [isAlreadyInCall, setIsAlreadyInCall] = useState(false);
   
+  const [audioLevel, setAudioLevel] = useState(0);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (localStream && !isMuted) {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      const source = audioContext.createMediaStreamSource(localStream);
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const updateLevel = () => {
+        if (analyserRef.current) {
+          if (audioContext.state === 'suspended') {
+            audioContext.resume();
+          }
+          analyserRef.current.getByteFrequencyData(dataArray);
+          const sum = dataArray.reduce((p, c) => p + c, 0);
+          const average = sum / dataArray.length;
+          setAudioLevel(average);
+          animationFrameRef.current = requestAnimationFrame(updateLevel);
+        }
+      };
+      updateLevel();
+
+      return () => {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        audioContext.close();
+      };
+    } else {
+      setAudioLevel(0);
+    }
+  }, [localStream, isMuted]);
+
   const [linkCopiedCount, setLinkCopiedCount] = useState(0);
   const [showCopiedFeedback, setShowCopiedFeedback] = useState(false);
   
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const originalStreamRef = useRef<MediaStream | null>(null);
 
   // Hardware selection states
   const [devices, setDevices] = useState<{
@@ -70,7 +109,7 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
   
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const peerInstance = useRef<Peer | null>(null);
-  const activeCalls = useRef<{ [peerId: string]: Peer.MediaConnection }>({});
+  const activeCalls = useRef<{ [peerId: string]: MediaConnection }>({});
   const hostId = currentUser?.id || `guest_${Math.random().toString(36).substr(2, 6)}`;
   const isHost = !!currentUser && (currentUser.role === 'ADMIN' || currentUser.role === 'OWNER');
 
@@ -85,6 +124,13 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
   }, [participants, guestName, currentUser]);
 
   const meetingLink = `${window.location.origin}/?roomId=${roomId}`;
+
+  // UseEffect to update local video element when stream exists
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }, [localStream, step, isVideoDisabled]);
 
   // Fetch devices when component mounts
   useEffect(() => {
@@ -112,6 +158,8 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
   }, []);
 
   const stopAllMedia = () => {
+    videoEffectService.stopEffect();
+    setIsBlurEnabled(false);
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
     }
@@ -220,7 +268,7 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
     if (!newTrack) return;
 
     // Update participants
-    Object.values(activeCalls.current).forEach(call => {
+    (Object.values(activeCalls.current) as MediaConnection[]).forEach(call => {
       const pc = call.peerConnection;
       if (pc) {
         const senders = pc.getSenders();
@@ -242,15 +290,30 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
       
       const newStream = await navigator.mediaDevices.getUserMedia(constraints);
       
+      let finalStream = newStream;
+      if (isBlurEnabled) {
+        // Re-apply blur to the new camera stream
+        videoEffectService.stopEffect();
+        const blurredStream = await videoEffectService.startEffect(newStream);
+        finalStream = blurredStream;
+      }
+
       // Replace video tracks in peers
-      await replaceTracks(newStream, 'video');
+      await replaceTracks(finalStream, 'video');
 
       // Stop old video tracks
       localStream.getVideoTracks().forEach(t => t.stop());
       
+      // Update original stream ref if blur is enabled
+      if (isBlurEnabled) {
+          originalStreamRef.current = newStream;
+      } else {
+          originalStreamRef.current = null;
+      }
+
       // Merge streams
       const audioTracks = localStream.getAudioTracks();
-      const videoTracks = newStream.getVideoTracks();
+      const videoTracks = finalStream.getVideoTracks();
       const updatedStream = new MediaStream([...audioTracks, ...videoTracks]);
       
       setLocalStream(updatedStream);
@@ -301,6 +364,50 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
       const newState = !isVideoDisabled;
       localStream.getVideoTracks().forEach(track => track.enabled = !newState);
       setIsVideoDisabled(newState);
+    }
+  };
+
+  const toggleBlur = async () => {
+    if (!localStream) return;
+
+    if (isBlurEnabled) {
+      // Disable blur
+      videoEffectService.stopEffect();
+      
+      if (originalStreamRef.current) {
+        const videoTrack = originalStreamRef.current.getVideoTracks()[0];
+        if (videoTrack) {
+          await replaceTracks(originalStreamRef.current, 'video');
+          
+          const audioTracks = localStream.getAudioTracks();
+          const newStream = new MediaStream([...audioTracks, videoTrack]);
+          setLocalStream(newStream);
+          if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
+        }
+      }
+      setIsBlurEnabled(false);
+    } else {
+      // Enable blur
+      try {
+        // Backup original stream if not already backed up
+        if (!originalStreamRef.current) {
+          originalStreamRef.current = new MediaStream(localStream.getTracks());
+        }
+
+        const blurredStream = await videoEffectService.startEffect(localStream);
+        await replaceTracks(blurredStream, 'video');
+        
+        const audioTracks = localStream.getAudioTracks();
+        const videoTrack = blurredStream.getVideoTracks()[0];
+        const newStream = new MediaStream([...audioTracks, videoTrack]);
+        
+        setLocalStream(newStream);
+        if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
+        setIsBlurEnabled(true);
+      } catch (err) {
+        console.error("Error enabling blur:", err);
+        alert("Não foi possível ativar o desfoque de fundo.");
+      }
     }
   };
 
@@ -362,8 +469,13 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
             }
           });
         }
-      } catch (err) {
-        console.error("Screen share error:", err);
+      } catch (err: any) {
+        if (err.name === 'NotAllowedError') {
+          console.log("Usuário cancelou o compartilhamento de tela.");
+        } else {
+          console.error("Screen share error:", err);
+          alert("Erro ao compartilhar tela: " + err.message);
+        }
       }
     }
   };
@@ -517,6 +629,21 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
             </div>
           )}
 
+          {/* Audio feedback visualization (Waiting Room) */}
+          {!isMuted && (
+            <div className="absolute bottom-6 left-6 flex items-end gap-0.5 h-6">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{ 
+                    height: `${Math.max(20, Math.min(100, (audioLevel / 50) * (50 + Math.random() * 50)))}%` 
+                  }}
+                  className="w-1 bg-indigo-500 rounded-full"
+                />
+              ))}
+            </div>
+          )}
+
           {/* Quick Controls in Waiting Screen */}
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/40 backdrop-blur-xl p-3 rounded-3xl border border-white/10 opacity-0 group-hover:opacity-100 transition-all">
             <button 
@@ -530,6 +657,13 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
               className={cn("p-2 rounded-xl transition-all", isVideoDisabled ? "bg-rose-500/20 text-rose-500" : "bg-white/5 text-white hover:bg-white/10")}
             >
               {isVideoDisabled ? <VideoOff size={18} /> : <Video size={18} />}
+            </button>
+            <button 
+              onClick={toggleBlur}
+              className={cn("p-2 rounded-xl transition-all", isBlurEnabled ? "bg-emerald-500/20 text-emerald-500" : "bg-white/5 text-white hover:bg-white/10")}
+              title="Alternar Desfoque de Fundo"
+            >
+              <Palette size={18} />
             </button>
             <button 
               onClick={() => setShowSettingsModal(true)}
@@ -607,15 +741,13 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
               playsInline
               className={cn(
                 "w-full h-full object-cover transition-all",
-                isVideoDisabled && "opacity-0",
-                isBlurEnabled && "blur-xl scale-110"
+                isVideoDisabled && "opacity-0"
               )}
             />
             {isBlurEnabled && (
-                <div className="absolute inset-0 flex items-center justify-center p-8 text-center pointer-events-none">
-                    <div className="bg-black/60 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-                        <p className="text-white text-sm font-bold">Fundo Desfocado (Efeito Aplicado)</p>
-                        <p className="text-xs text-gray-400 mt-1">Sua imagem está sendo transmitida com segurança</p>
+                <div className="absolute top-4 left-1/2 -translate-x-1/2">
+                    <div className="bg-emerald-500/20 backdrop-blur-md px-3 py-1 rounded-full border border-emerald-500/30">
+                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest">Efeito Ativo</p>
                     </div>
                 </div>
             )}
@@ -628,6 +760,17 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
             )}
             <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10">
               <span className="text-xs font-bold text-white uppercase tracking-wider">Você</span>
+              {!isMuted && (
+                <div className="flex items-end gap-0.5 h-3 ml-1">
+                  {[1, 2, 3].map((i) => (
+                    <motion.div
+                      key={i}
+                      animate={{ height: `${Math.max(20, Math.min(100, (audioLevel / 40) * 100))}%` }}
+                      className="w-0.5 bg-indigo-400 rounded-full"
+                    />
+                  ))}
+                </div>
+              )}
               {isMuted && <MicOff size={12} className="text-rose-500" />}
             </div>
             <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -958,6 +1101,24 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
                   </select>
                 </div>
 
+                {/* VU Meter in Settings */}
+                {isJoined && !isMuted && (
+                  <div className="pt-2">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1 mb-2 block">
+                      Teste de Volume
+                    </label>
+                    <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
+                      <motion.div 
+                        animate={{ width: `${Math.min(100, (audioLevel / 50) * 100)}%` }}
+                        className={cn(
+                          "h-full transition-colors",
+                          audioLevel > 40 ? "bg-rose-500" : audioLevel > 20 ? "bg-amber-500" : "bg-emerald-500"
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="pt-4">
                   <button 
                     onClick={() => setShowSettingsModal(false)}
@@ -997,7 +1158,7 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
         </button>
 
         <button 
-          onClick={() => setIsBlurEnabled(!isBlurEnabled)}
+          onClick={toggleBlur}
           className={cn(
             "group flex flex-col items-center gap-1.5 transition-all p-3 rounded-2xl",
             isBlurEnabled ? "bg-emerald-500 text-white" : "bg-zinc-800 text-white hover:bg-zinc-700"

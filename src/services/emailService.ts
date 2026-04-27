@@ -1,6 +1,5 @@
 import nodemailer from 'nodemailer';
-import fs from 'fs';
-import path from 'path';
+import { supabase } from '../lib/supabaseClient.ts';
 
 export interface EmailConfig {
     host: string;
@@ -11,28 +10,35 @@ export interface EmailConfig {
     fromAddress: string;
 }
 
-const CONFIG_PATH = path.join(process.cwd(), 'email_config.json');
-
-export function getEmailConfig(): EmailConfig | null {
+export async function getEmailConfig(ownerId: string): Promise<EmailConfig | null> {
     try {
-        if (fs.existsSync(CONFIG_PATH)) {
-            const data = fs.readFileSync(CONFIG_PATH, 'utf-8');
-            return JSON.parse(data);
-        }
+        const { data } = await supabase
+          .from('system_configs')
+          .select('config_value')
+          .eq('owner_id', ownerId)
+          .eq('config_key', 'email_config')
+          .single();
+        
+        return data?.config_value || null;
     } catch (err) {
         console.error('[EMAIL] Erro ao carregar configuração de e-mail', err);
     }
     return null;
 }
 
-export function saveEmailConfig(config: EmailConfig) {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+export async function saveEmailConfig(ownerId: string, config: EmailConfig) {
+    await supabase.from('system_configs').upsert({
+        owner_id: ownerId,
+        config_key: 'email_config',
+        config_value: config,
+        updated_at: new Date().toISOString()
+    }, { onConflict: 'owner_id,config_key' });
 }
 
 let transporter: nodemailer.Transporter | null = null;
 
-function getTransporter() {
-    const config = getEmailConfig();
+async function getTransporter(ownerId: string) {
+    const config = await getEmailConfig(ownerId);
     if (!config) return null;
     
     if (!transporter) {
@@ -53,9 +59,9 @@ export function resetTransporter() {
     transporter = null;
 }
 
-export async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
-    const config = getEmailConfig();
-    const t = getTransporter();
+export async function sendEmail(ownerId: string, to: string, subject: string, html: string): Promise<boolean> {
+    const config = await getEmailConfig(ownerId);
+    const t = await getTransporter(ownerId);
     
     if (!config || !t) {
         console.warn('[EMAIL] Servidor de e-mail não está configurado. Ignore ou configure antes de usar.');

@@ -4,6 +4,7 @@ import { cn, notifyError } from '../lib/utils';
 import { Client, ClientStatus, User, Partner } from '../types';
 import Modal from './Modal';
 import { api } from '../services/api';
+import ClientDocumentsManager from './ClientDocumentsManager';
 
 interface ClientsViewProps {
   clients: Client[];
@@ -608,6 +609,12 @@ export default function ClientsView({ clients, setClients, users, partners, curr
             </div>
           </div>
         </form>
+
+        {editingClient && (
+          <div className="mt-8 border-t border-gray-100 dark:border-gray-800 pt-6">
+             <ClientDocumentsManager client={editingClient} />
+          </div>
+        )}
       </Modal>
     </div>
   );
