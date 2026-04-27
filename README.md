@@ -60,7 +60,7 @@ A maneira mais rápida de colocar o Amplifica CRM no ar é usando o **Docker Com
 ## 🐋 Imagem Docker Hub
 
 A imagem oficial está disponível no Docker Hub:
-`docker.io/werikoliveira/amplifica-crm:2.2`
+`docker.io/werikoliveira/amplifica-crm:2.2.0` (ou apenas `2.2`)
 
 Para atualizar seu container:
 ```bash
