@@ -40,6 +40,21 @@ async function startServer() {
   console.log("[STARTUP] Iniciando servidor Express...");
 
   app.use(compression());
+  
+  // Redirecionar para HTTPS em produção para evitar o aviso "Não Seguro" do navegador
+  if (process.env.NODE_ENV === "production") {
+    app.use((req, res, next) => {
+      // Forçar o navegador a fazer upgrade de requisições HTTP para HTTPS para evitar Mixed Content
+      res.setHeader("Content-Security-Policy", "upgrade-insecure-requests");
+
+      // O header 'x-forwarded-proto' é enviado pelo balanceador de carga do Cloud Run/Proxy
+      if (req.headers["x-forwarded-proto"] && req.headers["x-forwarded-proto"] !== "https") {
+        return res.redirect(301, `https://${req.get("Host")}${req.url}`);
+      }
+      next();
+    });
+  }
+
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   

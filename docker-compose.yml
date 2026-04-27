@@ -16,7 +16,7 @@ services:
       # --- CONFIGURAÇÕES DO SERVIDOR ---
       - NODE_ENV=production
       - PORT=3000
-      - APP_URL=http://localhost:3000 # Troque pelo seu IP/Domínio final
+      - APP_URL=https://seu-dominio.com # Substitua pelo seu domínio HTTPS final
 
       # --- CONEXÃO SUPABASE (Obrigatório) ---
       # No ZimaOS, você cola estas chaves diretamente na interface de Variáveis de Ambiente
