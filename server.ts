@@ -153,7 +153,7 @@ async function startServer() {
   
   // Generic GET response cache
   const getCache = new Map<string, { data: any, timestamp: number }>();
-  const GET_CACHE_TTL = 5000; // 5 seconds cache for generic data
+  const GET_CACHE_TTL = 30000; // 30 seconds cache for generic data
 
   const authMiddleware = async (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
     const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js"];

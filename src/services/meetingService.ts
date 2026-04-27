@@ -45,6 +45,10 @@ class MeetingService {
     }
   }
 
+  setLocalStream(stream: MediaStream) {
+    this.localStream = stream;
+  }
+
   init(roomId: string, user: { name: string; id: string }, isGuest: boolean, callbacks: {
     onParticipantsUpdate: (p: Participant[]) => void;
     onJoinRequest?: (r: JoinRequest) => void;

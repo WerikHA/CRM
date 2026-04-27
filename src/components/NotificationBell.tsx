@@ -29,7 +29,7 @@ export default function NotificationBell({ onNavigate }: { onNavigate?: (view: a
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000); // 30s refresh for better feel
+    const interval = setInterval(fetchNotifications, 120000); // 120s refresh for better stability
     return () => clearInterval(interval);
   }, []);
 

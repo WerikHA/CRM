@@ -180,6 +180,7 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setLocalStream(stream);
+      meetingService.setLocalStream(stream);
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
       // Sync state with actual tracks being used (often maps to 'default')
@@ -213,8 +214,11 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
       } else {
         setStep('meeting');
         setIsJoined(true);
+        meetingService.initPeer(userData.id);
+        peerInstance.current = (meetingService as any).peer;
       }
 
+      // meetingService.initPeer(userData.id);
       meetingService.init(roomId, userData, !currentUser, {
         onParticipantsUpdate: (p) => {
           setParticipants(p);
@@ -235,22 +239,8 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
           console.log("[MEET] [VIEW] Recebido callback onApproved. Alterando step para 'meeting'.");
           setStep('meeting');
           setIsJoined(true);
-          
-          const peer = new Peer(userData.id, {
-            host: window.location.hostname,
-            port: parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80),
-            path: '/',
-            secure: window.location.protocol === 'https:'
-          });
-          peerInstance.current = peer;
-    
-          peer.on('call', (call) => {
-            activeCalls.current[call.peer] = call;
-            call.answer(stream);
-            call.on('stream', (userStream) => {
-              setPeers(prev => ({ ...prev, [call.peer]: userStream }));
-            });
-          });
+          meetingService.initPeer(userData.id);
+          peerInstance.current = (meetingService as any).peer;
         },
         onDenied: () => {
           alert("Sua entrada foi recusada pelo anfitrião.");
@@ -258,24 +248,9 @@ export default function MeetingView({ roomId, currentUser, onExit }: MeetingView
           onExit();
         }
       });
+      
+      // peerInstance.current = (meetingService as any).peer;
 
-      if (currentUser) {
-          const peer = new Peer(userData.id, {
-            host: window.location.hostname,
-            port: parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80),
-            path: '/',
-            secure: window.location.protocol === 'https:'
-          });
-          peerInstance.current = peer;
-    
-          peer.on('call', (call) => {
-            activeCalls.current[call.peer] = call;
-            call.answer(stream);
-            call.on('stream', (userStream) => {
-              setPeers(prev => ({ ...prev, [call.peer]: userStream }));
-            });
-          });
-      }
     } catch (err: any) {
       alert("Erro ao acessar câmera/microfone: " + err.message);
     }
