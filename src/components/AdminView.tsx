@@ -11,6 +11,8 @@ import { EmailConfigView } from './EmailConfigView';
 
 import { ToastContainer, toast } from './ui/Toast';
 
+import { meetLogService } from '../services/meetLogService';
+
 // Componente Interno para Gestão do QR do WhatsApp Cloud
 function N8nLogs({ isAdmin }: { isAdmin: boolean }) {
   const [logs, setLogs] = useState<string>('');
@@ -57,6 +59,24 @@ function WhatsAppAccountLogs({ userId }: { userId: string }) {
           <span className="opacity-40">{i+1}</span> {line}
         </div>
       )) : 'Nenhum log disponível para este usuário...'}
+    </div>
+  );
+}
+
+function VideoLogsView() {
+  const [logs, setLogs] = useState(meetLogService.getLogs());
+
+  useEffect(() => {
+    return meetLogService.subscribe(setLogs);
+  }, []);
+
+  return (
+    <div className="bg-gray-900 rounded-2xl p-4 font-mono text-[10px] text-emerald-400 h-96 overflow-y-auto border border-gray-800 shadow-inner">
+       {logs.length > 0 ? logs.map((log, i) => (
+         <div key={i} className="mb-1 leading-relaxed">
+           <span className="opacity-40">[{log.timestamp}]</span> {log.message}
+         </div>
+       )) : <div className="text-gray-600 italic">Nenhum log de vídeo disponível...</div>}
     </div>
   );
 }
@@ -490,7 +510,7 @@ export default function AdminView({
   setAgencyConfig,
   currentUser
 }: AdminViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'personalizacao' | 'whatsapp'>('integrations');
+  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'personalizacao' | 'whatsapp' | 'video'>('integrations');
   const [isTeamChatOpen, setIsTeamChatOpen] = useState(false);
   const isOwner = currentUser.role === 'OWNER';
   const isAdmin = currentUser.role === 'ADMIN';
@@ -786,6 +806,17 @@ export default function AdminView({
           </button>
           {isAdmin && (
             <button 
+              onClick={() => setActiveSubTab('video')}
+              className={cn(
+                "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+                activeSubTab === 'video' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              )}
+            >
+              <Activity size={18} /> Logs de Vídeo
+            </button>
+          )}
+          {isAdmin && (
+            <button 
               onClick={() => setActiveSubTab('privacidade')}
               className={cn(
                 "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
@@ -1044,6 +1075,13 @@ export default function AdminView({
 
           {activeSubTab === 'email' && isAdmin && (
             <EmailConfigView />
+          )}
+
+          {activeSubTab === 'video' && isAdmin && (
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 transition-all duration-300">
+               <h3 className="font-bold text-lg dark:text-gray-100 transition-colors uppercase tracking-tight mb-6">Logs de Vídeo</h3>
+               <VideoLogsView />
+            </div>
           )}
 
           {activeSubTab === 'personalizacao' && agencyConfig && setAgencyConfig && (

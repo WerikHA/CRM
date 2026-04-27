@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import Peer from 'peerjs';
+import { meetLogService } from './meetLogService';
 
 export interface Participant {
   id: string;
@@ -52,7 +53,7 @@ class MeetingService {
   }) {
     if (!this.socket) return;
     
-    console.log("[MEET] Init:", roomId, "isGuest:", isGuest, "Socket connected:", this.socket.connected);
+    meetLogService.add(`[MEET] Init: ${roomId}, isGuest: ${isGuest}, Socket connected: ${!!this.socket?.connected}`);
 
     // Reset listeners to avoid duplicates on re-init
     this.socket.off("new-join-request");
@@ -67,20 +68,20 @@ class MeetingService {
     this.onDenied = callbacks.onDenied || (() => {});
 
     if (isGuest) {
-      console.log("[MEET] Requesting join for guest:", user.name, "Room:", roomId);
+      meetLogService.add(`[MEET] Requesting join for guest: ${user.name}, Room: ${roomId}`);
       this.socket.emit("request-join", { roomId, guestInfo: user });
     } else {
-      console.log("[MEET] Host joining:", roomId);
+      meetLogService.add(`[MEET] Host joining: ${roomId}`);
       this.socket.emit("join-room", {roomId, user, isGuest: false});
     }
 
     this.socket.on("new-join-request", (request: JoinRequest) => {
-      console.log("[MEET] Host received join request:", request);
+      meetLogService.add(`[MEET] Host received join request: ${JSON.stringify(request)}`);
       this.onJoinRequest(request);
     });
 
     this.socket.on("request-approved", () => {
-      console.log("[MEET] [SERVICE] Recebido evento: request-approved. Chamando onApproved.");
+      meetLogService.add(`[MEET] [SERVICE] Recebido evento: request-approved. Chamando onApproved.`);
       this.onApproved();
       this.socket?.emit("join-room", { roomId, user, isGuest: true });
     });
@@ -90,13 +91,19 @@ class MeetingService {
     });
 
     this.socket.on("user-connected", ({ userId, user: otherUser }: { userId: string, user: any }) => {
-      console.log("User connected:", otherUser.name);
+      meetLogService.add(`[MEET] User connected: ${otherUser.name}, ID: ${userId}`);
       this.participants.set(userId, { id: userId, name: otherUser.name });
       this.updateParticipants();
       
       // Start WebRTC call logic here if localStream is ready
-      if (this.localStream) {
-          // Send signal for peer connection
+      if (this.localStream && this.peer) {
+          meetLogService.add(`[MEET] Iniciando chamada para: ${userId}`);
+          const call = this.peer.call(userId, this.localStream);
+          call.on('stream', (userStream) => {
+              meetLogService.add(`[MEET] Stream recebido de: ${userId}`);
+              this.participants.get(userId)!.stream = userStream;
+              this.updateParticipants();
+          });
       }
     });
 
@@ -104,10 +111,28 @@ class MeetingService {
       this.participants.delete(userId);
       this.updateParticipants();
     });
+  }
 
-    // --- Signaling logic (Simplified WebRTC) ---
-    // In a real Google Meet, we would use a more complex Mesh or SFU. 
-    // Here we'll do a simple Mesh.
+  initPeer(userId: string) {
+    this.peer = new Peer(userId, {
+        host: window.location.hostname,
+        port: parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80),
+        path: '/',
+        secure: window.location.protocol === 'https:'
+    });
+    meetLogService.add(`[MEET] Peer iniciado para ID: ${userId}`);
+
+    this.peer.on('call', (call) => {
+        meetLogService.add(`[MEET] Chamada recebida de: ${call.peer}`);
+        if (this.localStream) {
+            call.answer(this.localStream);
+            call.on('stream', (userStream) => {
+                meetLogService.add(`[MEET] Stream recebido via 'call' de: ${call.peer}`);
+                this.participants.get(call.peer)!.stream = userStream;
+                this.updateParticipants();
+            });
+        }
+    });
   }
 
   private updateParticipants() {
