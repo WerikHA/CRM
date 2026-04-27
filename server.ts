@@ -96,7 +96,7 @@ async function startServer() {
     cors: { origin: "*", methods: ["GET", "POST"] }
   });
 
-  const peerServer = ExpressPeerServer(httpServer, { path: "/peerjs" });
+  const peerServer = ExpressPeerServer(httpServer, { path: "/" });
   app.use("/peerjs", peerServer);
 
   // --- Socket.io Meeting Logic ---
