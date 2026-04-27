@@ -35,9 +35,19 @@ const keysToCamel = (obj: any): any => {
 
 export const dbService = {
   async list(tableName: string, context?: DbContext) {
+    if (!context) throw new Error("Acesso negado: Contexto de usuário não fornecido.");
+
     let query = supabase.from(tableName).select('*');
 
-    if (context && context.userRole !== 'OWNER' && context.userRole !== 'ADMIN') {
+    // Multi-tenant isolation: always filter by ownerId by default if not super admin
+    // In this system, OWNERS can see all in their agency, and ADMINs can see all in their agency.
+    // If we want total separation between agencies, we MUST filter by owner_id.
+    if (context.ownerId) {
+      query = query.eq('owner_id', context.ownerId);
+    }
+
+    // Role-based sub-filtering
+    if (context.userRole !== 'OWNER' && context.userRole !== 'ADMIN') {
       const { userId, userRole } = context;
       
       if (tableName === 'clients') {
@@ -60,8 +70,15 @@ export const dbService = {
   },
 
   async getById(tableName: string, id: string, context?: DbContext) {
-    let query = supabase.from(tableName).select('*').eq('id', id).single();
-    const { data, error } = await query;
+    if (!context) throw new Error("Acesso negado: Contexto de usuário não fornecido.");
+    
+    let query = supabase.from(tableName).select('*').eq('id', id);
+    
+    if (context.ownerId) {
+      query = query.eq('owner_id', context.ownerId);
+    }
+
+    const { data, error } = await query.single();
     if (error) throw error;
     return keysToCamel(data);
   },
@@ -80,14 +97,32 @@ export const dbService = {
   },
 
   async update(tableName: string, id: string, payload: any, context?: DbContext) {
+    if (!context) throw new Error("Acesso negado: Contexto de usuário não fornecido.");
+    
     const snakePayload = keysToSnake(payload);
-    const { data, error } = await supabase.from(tableName).update(snakePayload).eq('id', id).select().single();
+    
+    // Ensure we only update if it belongs to the owner
+    let query = supabase.from(tableName).update(snakePayload).eq('id', id);
+    
+    if (context.ownerId) {
+      query = query.eq('owner_id', context.ownerId);
+    }
+
+    const { data, error } = await query.select().single();
     if (error) throw error;
     return keysToCamel(data);
   },
 
   async delete(tableName: string, id: string, context?: DbContext) {
-    const { error } = await supabase.from(tableName).delete().eq('id', id);
+    if (!context) throw new Error("Acesso negado: Contexto de usuário não fornecido.");
+
+    let query = supabase.from(tableName).delete().eq('id', id);
+
+    if (context.ownerId) {
+      query = query.eq('owner_id', context.ownerId);
+    }
+
+    const { error } = await query;
     if (error) throw error;
     return { success: true };
   }

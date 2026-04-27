@@ -4,6 +4,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
+import multer from "multer";
+import cron from "node-cron";
 import { whatsappService } from "./src/services/whatsappService.ts";
 import { scraperService } from "./src/services/prospecting/scraper.service.ts";
 import { startBackupScheduler } from "./src/services/backupService.ts";
@@ -107,14 +110,182 @@ async function startServer() {
   console.log(`[INIT] Supabase URL: ${process.env.SUPABASE_URL ? 'Configurada' : 'MISSING'}`);
   console.log(`[INIT] Supabase Service Role Key: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Presente' : 'MISSING (RLS pode causar erros)'}`);
 
-  // --- Middleware for typed user context ---
-  const getContext = (req: express.Request): DbContext | undefined => {
-    const userId = req.headers['x-user-id'] as string;
-    const userRole = req.headers['x-user-role'] as UserRole;
-    const ownerId = req.headers['x-user-owner-id'] as string;
+  const JWT_SECRET = process.env.JWT_SECRET || "amplifica-crm-secure-token-2026";
+
+  // Extend request type for Auth
+  interface AuthRequest extends express.Request {
+    user?: {
+      id: string;
+      role: UserRole;
+      ownerId: string;
+    };
+  }
+
+  // --- Auth Middleware ---
+  const authMiddleware = (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
+    // Skip auth for public routes
+    const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js"];
+    if (publicPaths.some(p => req.path.startsWith(p))) {
+      return next();
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor, faça login novamente." });
+    }
+
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      req.user = {
+        id: decoded.id,
+        role: decoded.role,
+        ownerId: decoded.ownerId
+      };
+      next();
+    } catch (err) {
+      return res.status(401).json({ error: "Token inválido ou expirado" });
+    }
+  };
+
+  app.use("/api", authMiddleware as any);
+  
+  // --- Secure Upload Configuration ---
+  const UPLOADS_DIR = path.join(process.cwd(), 'uploads_secure');
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+
+  // --- Video Cleanup Scheduler ---
+  // Runs every day at midnight
+  cron.schedule('0 0 * * *', async () => {
+    console.log('[CRON] Iniciando limpeza de vídeos aprovados há mais de 7 dias...');
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const { data: oldVideos, error } = await supabase
+        .from('video_orders')
+        .select('*')
+        .not('video_url', 'is', null)
+        .not('approved_at', 'is', null)
+        .lt('approved_at', sevenDaysAgo.toISOString());
+      
+      if (error) throw error;
+      
+      for (const order of (oldVideos || [])) {
+        if (order.video_url && order.video_url.startsWith('/api/files/')) {
+          const filename = order.video_url.replace('/api/files/', '');
+          const filePath = path.join(UPLOADS_DIR, filename);
+          
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`[CRON] Vídeo deletado: ${filename} (Pedido: ${order.id})`);
+          }
+        }
+        
+        // Clear the URL in DB
+        await supabase
+          .from('video_orders')
+          .update({ video_url: null })
+          .eq('id', order.id);
+      }
+    } catch (err) {
+      console.error('[CRON] Erro na limpeza de vídeos:', err);
+    }
+  });
+
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, UPLOADS_DIR);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+  });
+
+  const upload = multer({
+    storage: storage,
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    fileFilter: (req, file, cb) => {
+      const allowedExtensions = ['.jpg', '.jpeg', '.png', '.pdf', '.docx', '.csv', '.xlsx', '.mp4', '.mov', '.avi'];
+      const allowedMimeTypes = [
+          'image/jpeg', 
+          'image/png', 
+          'application/pdf', 
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/csv',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'video/mp4',
+          'video/quicktime',
+          'video/x-msvideo'
+      ];
+      
+      const extension = path.extname(file.originalname).toLowerCase();
+      
+      if (allowedExtensions.includes(extension) && allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Tipo de arquivo não permitido. Apenas JPG, PNG, PDF, DOCX, CSV e XLSX são aceitos.") as any);
+      }
+    }
+  });
+
+  app.post("/api/upload", (req, res, next) => {
+    upload.single('file')(req, res, (err: any) => {
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ error: `Erro no upload: ${err.message}` });
+      } else if (err) {
+        return res.status(400).json({ error: err.message });
+      }
+      
+      if (!req.file) {
+        return res.status(400).json({ error: "Nenhum arquivo enviado" });
+      }
+
+      res.json({ 
+        success: true, 
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        url: `/api/files/${req.file.filename}` 
+      });
+    });
+  });
+
+  app.get("/api/files/:filename", (req, res) => {
+    // Already protected by authMiddleware for any /api route
+    const filename = req.params.filename;
     
-    if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-      return { userId, userRole, ownerId };
+    // Safety check for filename structure
+    if (!/^[a-zA-Z0-9.\-_]+$/.test(filename)) {
+        return res.status(400).json({ error: "Nome de arquivo inválido" });
+    }
+
+    const filePath = path.join(UPLOADS_DIR, filename);
+    if (fs.existsSync(filePath)) {
+      // Never execute - serve with correct Content-Type but forces browser to treat as download or static asset
+      // Responding as attachment helps prevent dynamic execution if it was a malicious script
+      // However, for images we might want to display them
+      const ext = path.extname(filename).toLowerCase();
+      if (['.jpg', '.jpeg', '.png'].includes(ext)) {
+          res.sendFile(filePath);
+      } else {
+          res.download(filePath);
+      }
+    } else {
+      res.status(404).json({ error: "Arquivo não encontrado" });
+    }
+  });
+
+  // --- Middleware for typed user context ---
+  const getContext = (req: AuthRequest): DbContext | undefined => {
+    if (req.user) {
+      return { 
+        userId: req.user.id, 
+        userRole: req.user.role, 
+        ownerId: req.user.ownerId 
+      };
     }
     return undefined;
   };
@@ -249,8 +420,11 @@ async function startServer() {
   // Chat Operations (Moved up for priority)
   app.get("/api/chat-messages", (req, res) => {
     try {
+      const context = getContext(req as AuthRequest);
       const chats = readChats();
-      res.json(chats);
+      // Filter by ownerId to ensure tenant isolation
+      const filtered = chats.filter((c: any) => c.ownerId === context?.ownerId);
+      res.json(filtered);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -258,10 +432,14 @@ async function startServer() {
 
   app.post("/api/chat-messages", (req, res) => {
     try {
+      const context = getContext(req as AuthRequest);
+      if (!context) return res.status(401).json({ error: "Não autorizado" });
+
       const chats = readChats();
       const newMessage = {
           id: Math.random().toString(36).substr(2, 9),
           ...req.body,
+          ownerId: context.ownerId, // Force current ownerId
           createdAt: new Date().toISOString()
       };
       chats.push(newMessage);
@@ -342,10 +520,14 @@ async function startServer() {
     if (!email) return res.status(400).json({ error: "E-mail obrigatório" });
     
     try {
-      const users = await dbService.list('users');
-      const userFound = users.find((u: any) => u.email === email.trim().toLowerCase());
+      // Use direct supabase query for system tasks that skip auth middleware
+      const { data: userFound, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.trim().toLowerCase())
+        .single();
       
-      if (!userFound) {
+      if (error || !userFound) {
         return res.status(404).json({ error: "E-mail não encontrado" });
       }
 
@@ -383,16 +565,19 @@ async function startServer() {
     console.log(`[AUTH] Tentativa de login para: ${email}`);
     
     try {
-      const users = await dbService.list('users');
+      const { data: userFound, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .single();
       
-      if (users.length === 0) {
-        return res.status(404).json({ 
-          error: "Nenhum usuário cadastrado no sistema.", 
-          code: "SYSTEM_EMPTY"
-        });
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return res.status(401).json({ error: "E-mail ou senha incorretos" });
+        }
+        throw error;
       }
-      
-      const userFound = users.find((u: any) => u.email === email);
+
       const data = userFound && userFound.password === password ? userFound : null;
         
       if (!data) {
@@ -401,7 +586,14 @@ async function startServer() {
       
       console.log(`[AUTH] Login bem-sucedido: ${email}`);
       await logActivity(data.id, data.ownerId || data.id, 'LOGIN', { email: data.email });
-      res.json({ success: true, user: data });
+
+      const token = jwt.sign(
+        { id: data.id, role: data.role, ownerId: data.ownerId || data.id },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      res.json({ success: true, user: data, token });
     } catch (err: any) {
       console.error(`[AUTH] Erro crítico no login do usuário ${email}:`, err);
       // Return specific error if possible to help frontend debugging
@@ -420,18 +612,37 @@ async function startServer() {
     const newUser = { name, email, password, role: 'OWNER' as const };
 
     try {
-      const users = await dbService.list('users');
-      const existingUser = users.find((u: any) => u.email === email);
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', email)
+        .single();
         
       if (existingUser) {
         return res.status(400).json({ error: "E-mail já cadastrado" });
       }
 
-      const data = await dbService.insert('users', newUser);
-      await dbService.update('users', data.id, { ownerId: data.id });
+      // Create owner user (system context)
+      const { data, error } = await supabase.from('users').insert({
+        name,
+        email,
+        password,
+        role: 'OWNER'
+      }).select().single();
+
+      if (error) throw error;
+
+      await supabase.from('users').update({ owner_id: data.id }).eq('id', data.id);
       
-      await logActivity(data.id, data.id, 'SIGNUP', { email: data.email, role: data.role });
-      res.json({ success: true, user: { ...data, ownerId: data.id } });
+      await logActivity(data.id, data.id, 'SIGNUP', { email: data.email, role: 'OWNER' });
+
+      const token = jwt.sign(
+        { id: data.id, role: data.role, ownerId: data.id },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      res.json({ success: true, user: { ...data, ownerId: data.id }, token });
     } catch (err: any) {
       console.error("[AUTH] Erro no signup:", err);
       res.status(500).json({ error: `Erro ao criar conta: ${err.message}` });
@@ -479,6 +690,41 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
+  // Update video order with special approval/rejection handling
+  app.put("/api/video-orders/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+    const context = getContext(req as AuthRequest);
+    
+    try {
+      // Get current order to check for existing video file
+      const currentOrder = await dbService.getById('video_orders', id, context);
+      
+      // If rejecting (moving back to production), delete the video file immediately
+      if (updates.status === 'production' && currentOrder.videoUrl) {
+        const filename = currentOrder.videoUrl.replace('/api/files/', '');
+        const filePath = path.join(UPLOADS_DIR, filename);
+        
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`[VIDEO] Vídeo deletado por reprovação: ${filename}`);
+        }
+        updates.videoUrl = null; // Clear the URL
+      }
+      
+      // If approving, set the approval timestamp
+      if (updates.status === 'done' && currentOrder.status !== 'done') {
+        updates.approvedAt = new Date().toISOString();
+      }
+
+      const updated = await dbService.update('video_orders', id, updates, context);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[VIDEO] Erro ao atualizar pedido de vídeo:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   supabaseCrud("video-orders", "video_orders");
 
   supabaseCrud("demand-tasks", "demand_tasks"); // Unified path

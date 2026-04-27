@@ -9,3 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 export function notifyError(message: string, context?: string) {
   toast.error(message);
 }
+
+export function notifySuccess(message: string) {
+  toast.success(message);
+}

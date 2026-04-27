@@ -41,7 +41,6 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.ts ./server.ts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/db ./db
-COPY --from=builder /app/firebase-blueprint.json ./firebase-blueprint.json
 # Copy other necessary files (metadata, etc if needed)
 COPY --from=builder /app/metadata.json ./metadata.json
 

@@ -231,6 +231,7 @@ export default function App() {
       setCurrentUser(res.user);
       setIsAuthenticated(true);
       storageService.setItem('agency_user', JSON.stringify(res.user));
+      storageService.setItem('agency_token', res.token);
     } catch (err) {
       throw err;
     } finally {
@@ -245,6 +246,7 @@ export default function App() {
       setCurrentUser(res.user);
       setIsAuthenticated(true);
       storageService.setItem('agency_user', JSON.stringify(res.user));
+      storageService.setItem('agency_token', res.token);
     } catch (err) {
       throw err;
     } finally {
@@ -256,6 +258,7 @@ export default function App() {
     setIsAuthenticated(false);
     setCurrentUser(null);
     storageService.removeItem('agency_user');
+    storageService.removeItem('agency_token');
   };
 
   // Check persisted auth

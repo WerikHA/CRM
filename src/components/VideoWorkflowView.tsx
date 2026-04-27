@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Film, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, Filter, Check, X as XIcon, RefreshCcw, Eye, Copy, ChevronLeft, ChevronRight, Video, Play, Pause, Square, MessageSquare } from 'lucide-react';
+import { Film, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, Filter, Check, X as XIcon, RefreshCcw, Eye, Copy, ChevronLeft, ChevronRight, Video, Play, Pause, Square, MessageSquare, Upload } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { VideoOrder, Client, WorkStatus, ApprovalStatus, User, Receivable } from '../types';
 import Modal from './Modal';
 import { api } from '../services/api';
 import { ChatWindow } from './ChatWindow';
+import { notifySuccess, notifyError } from '../lib/utils';
 
 interface VideoWorkflowViewProps {
   videoOrders: VideoOrder[];
@@ -44,6 +45,9 @@ export default function VideoWorkflowView({
   };
 
   const [formData, setFormData] = useState<Partial<VideoOrder>>(initialFormData);
+  const [activeTab, setActiveTab] = useState<'all' | 'revision'>('all');
+  const [isUploading, setIsUploading] = useState(false);
+  const videoInputRef = React.useRef<HTMLInputElement>(null);
 
   const isEditor = currentUser.role === 'EDITOR';
   const isAdmin = currentUser.role === 'ADMIN';
@@ -74,8 +78,12 @@ export default function VideoWorkflowView({
       orders = orders.filter(o => partnerClientIds.includes(o.clientId));
     }
 
+    if (activeTab === 'revision') {
+      orders = orders.filter(o => o.status === 'review');
+    }
+
     return orders.filter(o => editorFilter === 'all' ? true : o.editorId === editorFilter);
-  }, [videoOrders, isEditor, isPartner, currentUser.id, clients, editorFilter]);
+  }, [videoOrders, isEditor, isPartner, currentUser.id, clients, editorFilter, activeTab]);
 
   const partnerClients = useMemo(() => {
     if (isAdminOrOwner) return clients;
@@ -162,10 +170,86 @@ export default function VideoWorkflowView({
     
     try {
       await api.updateVideoOrder(id, { status, progress });
+      notifySuccess(`Status atualizado: ${getStatusLabel(status)}`);
     } catch (err: any) {
       console.error('Falha ao atualizar status:', err);
       const latest = await api.getVideoOrders();
       setVideoOrders(latest);
+    }
+  };
+
+  const handleVideoUpload = async (id: string, file: File) => {
+    if (!file) return;
+    
+    setIsUploading(id as any);
+    try {
+      const res = await api.uploadFile(file);
+      if (res.success) {
+        setVideoOrders(prev => prev.map(o => o.id === id ? { 
+          ...o, 
+          videoUrl: res.url, 
+          status: 'review', 
+          progress: 90 
+        } : o));
+        
+        await api.updateVideoOrder(id, { 
+          videoUrl: res.url, 
+          status: 'review', 
+          progress: 90 
+        });
+        
+        notifySuccess("Vídeo enviado para revisão!");
+      }
+    } catch (err: any) {
+      notifyError("Erro no upload", err.message);
+    } finally {
+      setIsUploading(false as any);
+    }
+  };
+
+  const handleApproveVideo = async (id: string) => {
+    try {
+      const approvedAt = new Date().toISOString();
+      setVideoOrders(prev => prev.map(o => o.id === id ? { 
+        ...o, 
+        status: 'done', 
+        progress: 100,
+        approvedAt 
+      } : o));
+      
+      await api.updateVideoOrder(id, { 
+        status: 'done', 
+        progress: 100 
+      });
+      
+      notifySuccess("Vídeo aprovado! Ele ficará disponível por 7 dias.");
+    } catch (err: any) {
+      notifyError("Erro ao aprovar", err.message);
+    }
+  };
+
+  const handleRejectVideo = async (id: string) => {
+    const notes = prompt("Por que o vídeo foi reprovado?");
+    if (notes === null) return;
+    
+    try {
+      setVideoOrders(prev => prev.map(o => o.id === id ? { 
+        ...o, 
+        status: 'production', 
+        progress: 50,
+        videoUrl: undefined,
+        rejectionNotes: notes 
+      } : o));
+      
+      await api.updateVideoOrder(id, { 
+        status: 'production', 
+        progress: 50,
+        rejectionNotes: notes 
+      });
+      
+      notifySuccess("Vídeo reprovado e arquivos deletados. Voltando para edição.");
+    } catch (err: any) {
+      notifyError("Erro ao reprovar", err.message);
     }
   };
 
@@ -186,6 +270,29 @@ export default function VideoWorkflowView({
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Workflow de Vídeo</h1>
           <p className="text-sm text-gray-500 dark:text-gray-300 font-medium">Gestão de edições, roteiros e entregas finais.</p>
+        </div>
+        <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+          <button 
+            onClick={() => setActiveTab('all')}
+            className={cn(
+              "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+              activeTab === 'all' ? "bg-white dark:bg-gray-700 text-indigo-500 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            )}
+          >
+            Todos os Pedidos
+          </button>
+          <button 
+            onClick={() => setActiveTab('revision')}
+            className={cn(
+              "px-4 py-1.5 rounded-lg text-xs font-bold transition-all relative",
+              activeTab === 'revision' ? "bg-white dark:bg-gray-700 text-indigo-500 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            )}
+          >
+            Em Revisão
+            {videoOrders.filter(o => o.status === 'review').length > 0 && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full" />
+            )}
+          </button>
         </div>
         {(isPartner || isAdminOrOwner) && (
           <button 
@@ -261,6 +368,29 @@ export default function VideoWorkflowView({
                     <p className="text-xs font-medium text-gray-400 dark:text-gray-400 italic">Cliente: {client?.name}</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {order.status === 'production' && isEditor && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const input = document.createElement('input');
+                          input.type = 'file';
+                          input.accept = 'video/*';
+                          input.onchange = (ev: any) => {
+                            const file = ev.target.files[0];
+                            if (file) handleVideoUpload(order.id, file);
+                          };
+                          input.click();
+                        }}
+                        disabled={!!isUploading}
+                        className={cn(
+                          "px-3 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 hover:bg-indigo-100 transition-all",
+                          isUploading === (order.id as any) && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        {isUploading === (order.id as any) ? <RefreshCcw size={12} className="animate-spin" /> : <Upload size={12} />}
+                        {isUploading === (order.id as any) ? 'Enviando...' : 'Subir Vídeo'}
+                      </button>
+                    )}
                      <select 
                       value={order.status || 'queue'}
                       onClick={(e) => e.stopPropagation()}
@@ -306,8 +436,45 @@ export default function VideoWorkflowView({
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
+                  <div className="space-y-4">
+                    {order.videoUrl && (
+                      <div className="rounded-xl overflow-hidden bg-black aspect-video relative group/video">
+                        <video 
+                          src={order.videoUrl} 
+                          controls 
+                          className="w-full h-full object-contain"
+                          poster="/logo.png"
+                        />
+                      </div>
+                    )}
+                    
+                    {order.status === 'review' && isAdminOrOwner && (
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleApproveVideo(order.id); }}
+                          className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors shadow-sm"
+                        >
+                          <Check size={14} /> Aprovar Vídeo
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleRejectVideo(order.id); }}
+                          className="flex-1 py-2 bg-rose-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-rose-600 transition-colors shadow-sm"
+                        >
+                          <XIcon size={14} /> Reprovar
+                        </button>
+                      </div>
+                    )}
+
+                    {order.rejectionNotes && order.status !== 'done' && (
+                      <div className="p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-xl">
+                        <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-1 flex items-center gap-1">
+                          <AlertCircle size={12} /> Motivo da Reprovação
+                        </p>
+                        <p className="text-xs text-rose-700 dark:text-rose-300 font-medium italic">{order.rejectionNotes}</p>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Status da Edição</span>
                       <span className="text-sm font-bold text-indigo-500 dark:text-indigo-400">{order.progress}%</span>

@@ -108,6 +108,10 @@ export interface VideoOrder {
   priority: 'low' | 'medium' | 'high';
   progress: number;
   status: WorkStatus;
+  videoUrl?: string;
+  approvedAt?: string;
+  rejectionNotes?: string;
+  ownerId?: string;
 }
 
 export interface ArtOrder {

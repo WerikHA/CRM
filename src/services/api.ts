@@ -30,20 +30,17 @@ function toCamelCase(obj: any): any {
 async function request(endpoint: string, method: string, data?: any) {
   const url = `${API_BASE}${endpoint}`;
   
-  // Get user from storageService to pass role/id headers
+  // Get user/token from storageService
   const storedUser = storageService.getItem('agency_user');
   const user = storedUser ? JSON.parse(storedUser) : null;
+  const token = storageService.getItem('agency_token');
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
   
-  if (user) {
-    headers['x-user-id'] = user.id;
-    headers['x-user-role'] = user.role;
-    if (user.ownerId) {
-      headers['x-user-owner-id'] = user.ownerId;
-    }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   try {
@@ -286,11 +283,37 @@ export const api = {
     return request(`/prospecting/campaigns/${id}`, 'DELETE');
   },
 
-  async login(email: string, password: string): Promise<{ success: boolean; user: User }> {
+  async login(email: string, password: string): Promise<{ success: boolean; user: User; token: string }> {
     return request('/login', 'POST', { email, password });
   },
 
-  async signup(name: string, email: string, password: string): Promise<{ success: boolean; user: User }> {
+  async uploadFile(file: File): Promise<{ success: boolean; url: string; filename: string; originalName: string }> {
+    const url = `${API_BASE}/upload`;
+    const token = storageService.getItem('agency_token');
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Falha no upload do arquivo');
+    }
+    
+    return res.json();
+  },
+
+  async signup(name: string, email: string, password: string): Promise<{ success: boolean; user: User; token: string }> {
     return request('/signup', 'POST', { name, email, password });
   },
 

@@ -18,6 +18,7 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState<Partial<DemandTask>>({});
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editors = users.filter(u => u.role === 'EDITOR' || u.role === 'DESIGNER');
@@ -167,21 +168,36 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
 
-    // Simulate upload - in a real app you'd upload to S3/Firebase and get URLs
-    const newAttachments = [...(formData.attachments || [])];
-    Array.from(files).forEach((file: File) => {
-      if (file.size > 100 * 1024 * 1024) {
-        alert(`Arquivo ${file.name} excede 100MB.`);
-        return;
+    setIsUploading(true);
+    try {
+      const newAttachments = [...(formData.attachments || [])];
+      
+      const fileList = Array.from(files) as File[];
+      for (const file of fileList) {
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`Arquivo ${file.name} excede o limite de 10MB.`);
+          continue;
+        }
+
+        try {
+          const res = await api.uploadFile(file);
+          if (res.success) {
+            newAttachments.push(res.url);
+          }
+        } catch (err: any) {
+          notifyError(`Falha ao subir ${file.name}`, err.message);
+        }
       }
-      // Using object URL as temporary mock string
-      newAttachments.push(URL.createObjectURL(file));
-    });
-    setFormData({ ...formData, attachments: newAttachments });
+      
+      setFormData({ ...formData, attachments: newAttachments });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const attachmentsArray = useMemo(() => {
@@ -461,12 +477,21 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Anexos e Referências (Até 100MB)</label>
             <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full py-6 border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-2xl flex flex-col items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-all"
+              onClick={() => !isUploading && fileInputRef.current?.click()}
+              className={cn(
+                "w-full py-6 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-2 transition-all",
+                isUploading ? "bg-gray-50 dark:bg-gray-800/30 border-indigo-100 dark:border-indigo-900/30 cursor-not-allowed" : "border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
+              )}
             >
-               <Upload size={24} className="text-gray-300" />
-               <p className="text-xs text-gray-400 font-medium">Clique para anexar imagens ou arquivos</p>
-               <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+               {isUploading ? (
+                 <Clock size={24} className="text-indigo-400 animate-spin" />
+               ) : (
+                 <Upload size={24} className="text-gray-300" />
+               )}
+               <p className="text-xs text-gray-400 font-medium">
+                 {isUploading ? "Enviando arquivos..." : "Clique para anexar imagens ou arquivos"}
+               </p>
+               <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileUpload} disabled={isUploading} />
             </div>
             
             {attachmentsArray.length > 0 && (
