@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarClock, Plus, Calendar as CalendarIcon, Clock, Image as ImageIcon, Send, Instagram, Facebook, Check, AlertCircle, Trash2, Edit2, Info, Link as LinkIcon, Unlink } from 'lucide-react';
 import { Client } from '../types';
+import { api } from '../services/api';
 
 interface SocialPost {
   id: string;
@@ -38,9 +39,8 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
       if (event.data?.type === 'FACEBOOK_AUTH_SUCCESS') {
         const { clientId } = event.data;
         try {
-          const res = await fetch(`/api/facebook/status/${clientId}`);
-          if (res.ok) {
-             const status = await res.json();
+          const status = await api.get(`/facebook/status/${clientId}`);
+          if (status) {
              if (status.connected) {
                 // Update client state locally so UI updates
                 setClients(prev => prev.map(c => {
@@ -69,15 +69,14 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
 
   const initiateFacebookAuth = async (clientId: string) => {
     try {
-      const res = await fetch(`/api/facebook/auth-url?clientId=${clientId}`);
-      const data = await res.json();
-      if (res.ok && data.url) {
+      const data = await api.get(`/facebook/auth-url?clientId=${clientId}`);
+      if (data && data.url) {
         window.open(data.url, 'FacebookAuth', 'width=600,height=700');
       } else {
         alert(`Erro de configuração: ${data.error || "O App ID ou Redirect URI do Facebook não estão configurados."}`);
       }
-    } catch (e) {
-      alert("Falha na comunicação com o servidor para iniciar autenticação com o Facebook.");
+    } catch (e: any) {
+      alert(`Falha na comunicação com o servidor para iniciar autenticação com o Facebook. ${e?.message}`);
     }
   };
 
@@ -136,18 +135,14 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
     if (formData.status === 'scheduled' || formData.status === 'published') {
        try {
          const scheduledTimeUnix = isPastOrNow ? undefined : Math.floor(scheduledDateObj.getTime() / 1000);
-         const res = await fetch("/api/facebook/publish", {
-           method: "POST",
-           headers: { "Content-Type": "application/json" },
-           body: JSON.stringify({
+         const data = await api.post("/facebook/publish", {
              clientId: formData.clientId,
              networks: formData.networks,
              content: formData.content,
              mediaUrl: formData.mediaUrls?.[0],
              scheduledTimeUnix
-           })
          });
-         const data = await res.json();
+         
          if (data.success) {
            alert(isPastOrNow ? "Publicado com sucesso!" : "Agendado via API do Facebook com sucesso (Verifique limitações no Instagram).");
            finalStatus = isPastOrNow ? 'published' : 'scheduled';

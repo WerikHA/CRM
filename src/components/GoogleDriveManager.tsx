@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { api } from '../services/api';
+import { storageService } from '../lib/storage';
 import { 
   Folder, 
   File, 
@@ -64,10 +66,7 @@ const GoogleDriveManager: React.FC = () => {
 
   const checkStatus = async () => {
     try {
-      const response = await fetch('/api/google/status', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      const data = await response.json();
+      const data = await api.get('/google/status');
       setIsConnected(data.connected);
     } catch (error) {
       console.error('Error checking Drive status:', error);
@@ -77,11 +76,12 @@ const GoogleDriveManager: React.FC = () => {
 
   const handleConnect = async () => {
     try {
-      const response = await fetch('/api/google/auth-url', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      const { url } = await response.json();
-      window.open(url, 'google_auth', 'width=600,height=600');
+      const data = await api.get('/google/auth-url');
+      if (data && data.url) {
+        window.open(data.url, 'google_auth', 'width=600,height=600');
+      } else {
+        alert("Erro ao gerar link de autenticação com o Google. As variáveis de ambiente estão configuradas?");
+      }
     } catch (error) {
       alert('Erro ao iniciar conexão com Google Drive');
     }
@@ -90,10 +90,7 @@ const GoogleDriveManager: React.FC = () => {
   const handleDisconnect = async () => {
     if (!confirm('Tem certeza que deseja desconectar sua conta do Google Drive?')) return;
     try {
-      await fetch('/api/google/disconnect', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
+      await api.post('/google/disconnect', {});
       setIsConnected(false);
       setFiles([]);
     } catch (error) {
@@ -104,10 +101,7 @@ const GoogleDriveManager: React.FC = () => {
   const loadFiles = async (folderId: string) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/google/files?folderId=${folderId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      const data = await response.json();
+      const data = await api.get(`/google/files?folderId=${folderId}`);
       setFiles(data);
     } catch (error) {
       console.error('Error loading files:', error);
@@ -139,9 +133,10 @@ const GoogleDriveManager: React.FC = () => {
     formData.append('folderId', currentFolder);
 
     try {
+      const token = storageService.getItem('agency_token');
       const response = await fetch('/api/google/upload', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
       if (response.ok) {
@@ -159,17 +154,14 @@ const GoogleDriveManager: React.FC = () => {
 
   const handleShare = async (fileId: string) => {
     try {
-      const response = await fetch('/api/google/share-link', {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ fileId })
-      });
-      const { link } = await response.json();
-      navigator.clipboard.writeText(link);
-      alert('Link de compartilhamento copiado!');
+      const data = await api.post('/google/share-link', { fileId });
+      const shareLink = data.link || data.url;
+      if (shareLink) {
+        navigator.clipboard.writeText(shareLink);
+        alert('Link de compartilhamento copiado!');
+      } else {
+        alert('Erro ao gerar link. Link não retornado.');
+      }
     } catch (error) {
       alert('Erro ao gerar link');
     }
@@ -177,9 +169,11 @@ const GoogleDriveManager: React.FC = () => {
 
   const handleDownload = async (fileId: string, fileName: string) => {
     try {
+      const token = storageService.getItem('agency_token');
       const response = await fetch(`/api/google/download/${fileId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
+      if (!response.ok) throw new Error("Erro no download");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
