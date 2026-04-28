@@ -154,7 +154,7 @@ async function startServer() {
   const GET_CACHE_TTL = 30000; // 30 seconds cache for generic data
 
   const authMiddleware = async (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
-    const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js"];
+    const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js", "/api/facebook/callback", "/api/google/callback"];
     
     // Check if path is public - handle both originalUrl and relative path
     const isPublic = publicPaths.some(p => 
