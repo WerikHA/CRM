@@ -97,7 +97,11 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
         alert(`Erro de configuração: ${data.error || "O App ID ou Redirect URI do Facebook não estão configurados."}`);
       }
     } catch (e: any) {
-      alert(`Falha na comunicação com o servidor para iniciar autenticação com o Facebook. ${e?.message}`);
+      if (e?.message?.includes("não configurado")) {
+         alert("Configuração Incompleta: O Facebook App ID ou Redirect URI não estão configurados. Por favor, adicione as variáveis FACEBOOK_APP_ID e FACEBOOK_REDIRECT_URI na configuração de Ambiente/Servidor (.env).");
+      } else {
+         alert(`Falha ao iniciar autenticação com o Facebook: ${e?.message}`);
+      }
     }
   };
 

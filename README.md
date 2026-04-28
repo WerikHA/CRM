@@ -1,6 +1,6 @@
 # 🚀 Amplifica CRM - Sistema de Gestão para Agências de Marketing (White Label)
 
-![Versão](https://img.shields.io/badge/version-2.8.18-blue.svg)
+![Versão](https://img.shields.io/badge/version-2.8.21-blue.svg)
 ![Status](https://img.shields.io/badge/status-active-brightgreen.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-blue.svg)
 
@@ -64,7 +64,7 @@ A maneira mais rápida de colocar o Amplifica CRM no ar é usando o **Docker Com
 ## 🐋 Imagem Docker Hub
 
 A imagem oficial está disponível no Docker Hub:
-`docker.io/werikoliveira/amplifica-crm:2.8.18` (ou apenas `latest` / `2.8`)
+`docker.io/werikoliveira/amplifica-crm:2.8.21` (ou apenas `latest` / `2.8`)
 
 Para atualizar seu container:
 ```bash

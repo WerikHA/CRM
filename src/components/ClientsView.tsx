@@ -5,6 +5,7 @@ import { Client, ClientStatus, User, Partner } from '../types';
 import Modal from './Modal';
 import { api } from '../services/api';
 import ClientDocumentsManager from './ClientDocumentsManager';
+import ClientSocialAccountsManager from './ClientSocialAccountsManager';
 
 interface ClientsViewProps {
   clients: Client[];
@@ -610,11 +611,18 @@ export default function ClientsView({ clients, setClients, users, partners, curr
           </div>
         </form>
 
-        {editingClient && (
-          <div className="mt-8 border-t border-gray-100 dark:border-gray-800 pt-6">
-             <ClientDocumentsManager client={editingClient} />
-          </div>
-        )}
+        <div className="mt-8 border-t border-gray-100 dark:border-gray-800 pt-6">
+          {editingClient ? (
+            <>
+              <ClientDocumentsManager client={editingClient} />
+              <ClientSocialAccountsManager client={editingClient} />
+            </>
+          ) : (
+            <div className="bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-700 rounded-xl p-4 text-center">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Você precisa salvar o cliente primeiro para poder configurar Integrações e Documentos (Redes Sociais, etc).</p>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );
