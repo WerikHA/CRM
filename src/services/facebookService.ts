@@ -98,7 +98,7 @@ export const facebookService = {
     return facebookTokens.get(clientId)?.instagramAccounts || [];
   },
 
-  async publishPost(clientId: string, networks: string[], content: string, mediaUrl?: string, scheduledTimeUnix?: number) {
+  async publishPost(clientId: string, networks: string[], content: string, mediaUrl?: string, scheduledTimeUnix?: number, selectedPageId?: string, selectedIgAccountId?: string) {
     const data = facebookTokens.get(clientId);
     if (!data) throw new Error("Cliente não possui contas conectadas");
     
@@ -108,7 +108,7 @@ export const facebookService = {
     const results = [];
     
     if (networks.includes("facebook")) {
-      const page = data.pages[0]; // Simplification for MVP
+      const page = selectedPageId ? data.pages.find(p => p.id === selectedPageId) || data.pages[0] : data.pages[0];
       let postUrl = `https://graph.facebook.com/v19.0/${page.id}/feed`;
       const body: any = {
         message: content,
@@ -137,7 +137,7 @@ export const facebookService = {
     }
     
     if (networks.includes("instagram")) {
-      const igAcc = data.instagramAccounts[0]; // Simplification for MVP
+      const igAcc = selectedIgAccountId ? data.instagramAccounts.find(ig => ig.igAccountId === selectedIgAccountId) || data.instagramAccounts[0] : data.instagramAccounts[0];
       // Instagram API requires Image URL or Video URL. We assume mediaUrl is provided.
       // If no media is provided, Instagram does not allow text-only posts
       if (!mediaUrl) {

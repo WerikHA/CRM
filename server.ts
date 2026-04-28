@@ -603,8 +603,8 @@ async function startServer() {
 
   app.post("/api/facebook/publish", async (req: AuthRequest, res) => {
     try {
-      const { clientId, networks, content, mediaUrl, scheduledTimeUnix } = req.body;
-      const results = await facebookService.publishPost(clientId, networks, content, mediaUrl, scheduledTimeUnix);
+      const { clientId, networks, content, mediaUrl, scheduledTimeUnix, selectedPageId, selectedIgAccountId } = req.body;
+      const results = await facebookService.publishPost(clientId, networks, content, mediaUrl, scheduledTimeUnix, selectedPageId, selectedIgAccountId);
       res.json({ success: true, results });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });

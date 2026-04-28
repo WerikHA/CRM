@@ -9,6 +9,8 @@ interface SocialPost {
   content: string;
   mediaUrls: string[];
   networks: ('facebook' | 'instagram')[];
+  selectedPageId?: string;
+  selectedIgAccountId?: string;
   scheduledDate: string; // YYYY-MM-DD
   scheduledTime: string; // HH:mm
   status: 'draft' | 'scheduled' | 'published' | 'failed';
@@ -30,9 +32,28 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
     status: 'scheduled'
   });
 
+  const [availableAccounts, setAvailableAccounts] = useState<{pages: any[], igAccounts: any[]}>({pages: [], igAccounts: []});
+
   useEffect(() => {
     setClients(initialClients);
   }, [initialClients]);
+
+  useEffect(() => {
+    if (formData.clientId) {
+      api.get(`/facebook/status/${formData.clientId}`).then(status => {
+        if (status) {
+          setAvailableAccounts({ pages: status.pages || [], igAccounts: status.igAccounts || [] });
+          setFormData(prev => ({
+            ...prev,
+            selectedPageId: prev.selectedPageId || status.pages?.[0]?.id,
+            selectedIgAccountId: prev.selectedIgAccountId || status.igAccounts?.[0]?.igAccountId
+          }));
+        }
+      }).catch(console.error);
+    } else {
+      setAvailableAccounts({ pages: [], igAccounts: [] });
+    }
+  }, [formData.clientId]);
 
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
@@ -140,7 +161,9 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
              networks: formData.networks,
              content: formData.content,
              mediaUrl: formData.mediaUrls?.[0],
-             scheduledTimeUnix
+             scheduledTimeUnix,
+             selectedPageId: formData.selectedPageId,
+             selectedIgAccountId: formData.selectedIgAccountId
          });
          
          if (data.success) {
@@ -331,35 +354,72 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Redes Sociais</label>
-                  <div className="flex space-x-4">
-                    <label className={`flex items-center p-3 rounded-xl border cursor-pointer transition ${formData.networks?.includes('facebook') ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}>
-                      <input 
-                        type="checkbox" 
-                        className="hidden"
-                        checked={formData.networks?.includes('facebook') || false}
-                        onChange={(e) => {
-                          const n = formData.networks || [];
-                          if (e.target.checked) setFormData({...formData, networks: [...n, 'facebook'] as any});
-                          else setFormData({...formData, networks: n.filter(x => x !== 'facebook')});
-                        }}
-                      />
-                      <Facebook className={`w-5 h-5 mr-2 ${formData.networks?.includes('facebook') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
-                      <span className={`text-sm ${formData.networks?.includes('facebook') ? 'text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>Facebook</span>
-                    </label>
-                    <label className={`flex items-center p-3 rounded-xl border cursor-pointer transition ${formData.networks?.includes('instagram') ? 'bg-pink-50 border-pink-200 dark:bg-pink-900/20 dark:border-pink-800' : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}>
-                      <input 
-                        type="checkbox" 
-                        className="hidden"
-                        checked={formData.networks?.includes('instagram') || false}
-                        onChange={(e) => {
-                          const n = formData.networks || [];
-                          if (e.target.checked) setFormData({...formData, networks: [...n, 'instagram'] as any});
-                          else setFormData({...formData, networks: n.filter(x => x !== 'instagram')});
-                        }}
-                      />
-                      <Instagram className={`w-5 h-5 mr-2 ${formData.networks?.includes('instagram') ? 'text-pink-600 dark:text-pink-400' : 'text-gray-400'}`} />
-                      <span className={`text-sm ${formData.networks?.includes('instagram') ? 'text-pink-700 dark:text-pink-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>Instagram</span>
-                    </label>
+                  <div className="flex flex-col space-y-4">
+                    <div className="flex space-x-4">
+                      <label className={`flex items-center p-3 rounded-xl border cursor-pointer transition flex-1 ${formData.networks?.includes('facebook') ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}>
+                        <input 
+                          type="checkbox" 
+                          className="hidden"
+                          checked={formData.networks?.includes('facebook') || false}
+                          disabled={availableAccounts.pages.length === 0}
+                          onChange={(e) => {
+                            const n = formData.networks || [];
+                            if (e.target.checked) setFormData({...formData, networks: [...n, 'facebook'] as any});
+                            else setFormData({...formData, networks: n.filter(x => x !== 'facebook')});
+                          }}
+                        />
+                        <Facebook className={`w-5 h-5 mr-2 ${formData.networks?.includes('facebook') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
+                        <span className={`text-sm ${formData.networks?.includes('facebook') ? 'text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>Facebook</span>
+                      </label>
+                      <label className={`flex items-center p-3 rounded-xl border cursor-pointer transition flex-1 ${formData.networks?.includes('instagram') ? 'bg-pink-50 border-pink-200 dark:bg-pink-900/20 dark:border-pink-800' : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}>
+                        <input 
+                          type="checkbox" 
+                          className="hidden"
+                          checked={formData.networks?.includes('instagram') || false}
+                          disabled={availableAccounts.igAccounts.length === 0}
+                          onChange={(e) => {
+                            const n = formData.networks || [];
+                            if (e.target.checked) setFormData({...formData, networks: [...n, 'instagram'] as any});
+                            else setFormData({...formData, networks: n.filter(x => x !== 'instagram')});
+                          }}
+                        />
+                        <Instagram className={`w-5 h-5 mr-2 ${formData.networks?.includes('instagram') ? 'text-pink-600 dark:text-pink-400' : 'text-gray-400'}`} />
+                        <span className={`text-sm ${formData.networks?.includes('instagram') ? 'text-pink-700 dark:text-pink-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>Instagram</span>
+                      </label>
+                    </div>
+
+                    {/* Account Selection */}
+                    {formData.networks?.includes('facebook') && availableAccounts.pages.length > 0 && (
+                      <div className="bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                        <label className="block text-xs font-medium text-blue-800 dark:text-blue-300 mb-1">Selecione a Página do Facebook</label>
+                        <select
+                          value={formData.selectedPageId || ''}
+                          onChange={e => setFormData({...formData, selectedPageId: e.target.value})}
+                          className="w-full text-sm px-3 py-2 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-lg focus:ring-1 focus:ring-blue-500 dark:text-white"
+                        >
+                          <option value="">Selecione uma página...</option>
+                          {availableAccounts.pages.map(page => (
+                            <option key={page.id} value={page.id}>{page.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {formData.networks?.includes('instagram') && availableAccounts.igAccounts.length > 0 && (
+                      <div className="bg-pink-50/50 dark:bg-pink-900/10 p-3 rounded-xl border border-pink-100 dark:border-pink-900/30">
+                        <label className="block text-xs font-medium text-pink-800 dark:text-pink-300 mb-1">Selecione a Conta do Instagram</label>
+                        <select
+                          value={formData.selectedIgAccountId || ''}
+                          onChange={e => setFormData({...formData, selectedIgAccountId: e.target.value})}
+                          className="w-full text-sm px-3 py-2 bg-white dark:bg-gray-800 border border-pink-200 dark:border-pink-800 rounded-lg focus:ring-1 focus:ring-pink-500 dark:text-white"
+                        >
+                          <option value="">Selecione uma conta...</option>
+                          {availableAccounts.igAccounts.map(ig => (
+                            <option key={ig.igAccountId} value={ig.igAccountId}>{`@${ig.pageName}`}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
 
