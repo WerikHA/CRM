@@ -71,13 +71,13 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
     try {
       const res = await fetch(`/api/facebook/auth-url?clientId=${clientId}`);
       const data = await res.json();
-      if (data.url) {
+      if (res.ok && data.url) {
         window.open(data.url, 'FacebookAuth', 'width=600,height=700');
       } else {
-        alert("Erro ao gerar link de autenticação. O App ID do Facebook está configurado?");
+        alert(`Erro de configuração: ${data.error || "O App ID ou Redirect URI do Facebook não estão configurados."}`);
       }
     } catch (e) {
-      alert("Falha ao iniciar autenticação com o Facebook.");
+      alert("Falha na comunicação com o servidor para iniciar autenticação com o Facebook.");
     }
   };
 

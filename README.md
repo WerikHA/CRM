@@ -1,6 +1,6 @@
 # 🚀 Amplifica CRM - Sistema de Gestão para Agências de Marketing (White Label)
 
-![Versão](https://img.shields.io/badge/version-2.2.0-blue.svg)
+![Versão](https://img.shields.io/badge/version-2.8.14-blue.svg)
 ![Status](https://img.shields.io/badge/status-active-brightgreen.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-blue.svg)
 
@@ -15,6 +15,8 @@ O **Amplifica CRM** é uma plataforma robusta e moderna projetada especificament
 - **📈 Funil de Vendas (Leads)**: Gestão de prospectos via integração com Landing Pages e Webhooks.
 - **🎨 Workflow de Design & Vídeo**: Sistema de pedidos e aprovação de artes e vídeos integrado para agilizar a entrega.
 - **🔗 Integrações Nativas**:
+  - **Facebook & Instagram**: Conexão com contas (OAuth) e agendamento de posts via API Oficial do Meta.
+  - **Google Drive**: Gerenciamento remoto de arquivos de clientes.
   - **WhatsApp**: Envio de notificações e automação via QR Code.
   - **n8n**: Webhooks automáticos para automação de processos externos.
   - **Supabase**: Banco de dados relacional (PostgreSQL) com alta performance e escalabilidade.
@@ -49,6 +51,8 @@ A maneira mais rápida de colocar o Amplifica CRM no ar é usando o **Docker Com
     - `SUPABASE_URL`: URL do seu projeto Supabase (deve terminar em `.co`).
     - `SUPABASE_ANON_KEY`: Sua chave anônima do Supabase.
     - `SUPABASE_SERVICE_ROLE_KEY`: Chave de serviço (necessária para o Proxy de Segurança).
+    - `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` / `FACEBOOK_REDIRECT_URI`: Para agendamento e conexão de mídias sociais.
+    - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI`: Para integração com arquivos e serviços Google.
 3.  **Inicie o sistema**:
     ```bash
     docker-compose up -d
@@ -60,11 +64,11 @@ A maneira mais rápida de colocar o Amplifica CRM no ar é usando o **Docker Com
 ## 🐋 Imagem Docker Hub
 
 A imagem oficial está disponível no Docker Hub:
-`docker.io/werikoliveira/amplifica-crm:2.2.0` (ou apenas `2.2`)
+`docker.io/werikoliveira/amplifica-crm:2.8.14` (ou apenas `latest` / `2.8`)
 
 Para atualizar seu container:
 ```bash
-docker pull werikoliveira/amplifica-crm:2.2
+docker pull werikoliveira/amplifica-crm:2.8
 docker-compose up -d
 ```
 
