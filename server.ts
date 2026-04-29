@@ -1263,6 +1263,10 @@ async function startServer() {
         index: false // We'll handle index with the catch-all to avoid confusion
       }));
       
+      app.get('/privacy', (req, res) => {
+        res.sendFile(path.join(process.cwd(), "public", "privacy.html"));
+      });
+      
       app.get("*", (req, res, next) => {
         // Se for uma rota de API, deixa passar para o handler de 404 de API
         if (req.path.startsWith('/api')) return next();
