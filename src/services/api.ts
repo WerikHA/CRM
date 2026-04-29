@@ -371,11 +371,12 @@ export const api = {
       try {
         return await request('/sync', 'GET');
       } catch (error: any) {
-        if (attempt === maxRetries || !error.message?.includes('HTML')) throw error;
+        if (attempt === maxRetries || (!error.message?.includes('HTML') && !error.message?.includes('Rate exceeded'))) throw error;
         attempt++;
         await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
       }
     }
+    throw new Error('Falha ao sincronizar dados após várias tentativas.');
   },
 
   // NOTIFICATIONS

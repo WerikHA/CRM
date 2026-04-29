@@ -105,7 +105,7 @@ async function startServer() {
   // Rate Limiting global
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, 
-    limit: 2000, 
+    limit: 5000, 
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { error: "Muitas requisições, por favor tente novamente mais tarde." }
@@ -599,36 +599,24 @@ async function startServer() {
         }
       };
 
-      const results = await Promise.all([
-        safeList('leads'),
-        safeList('clients'),
-        safeList('receivables'),
-        safeList('art_orders'),
-        safeList('partners'),
-        safeList('users'),
-        safeList('partner_requests'),
-        safeList('support_tickets'),
-        safeList('video_orders'),
-        safeList('demand_tasks'),
-        safeList('notifications')
-      ]);
-
-      res.json({
-        leads: results[0],
-        clients: results[1],
-        receivables: results[2],
-        artOrders: results[3],
-        partners: results[4],
-        users: results[5]?.map((u: any) => {
+      const results = {
+        leads: await safeList('leads'),
+        clients: await safeList('clients'),
+        receivables: await safeList('receivables'),
+        artOrders: await safeList('art_orders'),
+        partners: await safeList('partners'),
+        users: (await safeList('users'))?.map((u: any) => {
           const { password, ...safeUser } = u;
           return safeUser;
         }),
-        partnerRequests: results[6],
-        tickets: results[7],
-        videoOrders: results[8],
-        demandTasks: results[9],
-        notifications: results[10]
-      });
+        partnerRequests: await safeList('partner_requests'),
+        tickets: await safeList('support_tickets'),
+        videoOrders: await safeList('video_orders'),
+        demandTasks: await safeList('demand_tasks'),
+        notifications: await safeList('notifications')
+      };
+
+      res.json(results);
     } catch (err: any) {
       console.error("[SYNC CRITICAL ERROR]", err);
       res.status(500).json({ error: err.message });

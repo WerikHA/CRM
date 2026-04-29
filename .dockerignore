@@ -1,5 +1,4 @@
 node_modules
-dist
 .env
 whatsapp_auth_sessions
 whatsapp_auth_info

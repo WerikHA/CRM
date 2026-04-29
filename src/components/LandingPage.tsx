@@ -94,10 +94,10 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
         <div className="max-w-7xl mx-auto px-6 h-16 sm:h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 group cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform"
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform overflow-hidden"
               style={{ backgroundColor: primaryColor }}
             >
-              <Zap size={20} fill="currentColor" />
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
             </div>
             <span className="text-xl font-bold font-display tracking-tight text-slate-900 uppercase">{agencyName}</span>
           </div>
@@ -106,6 +106,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             <a href="#features" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Funcionalidades</a>
             <a href="#workflow" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Como Funciona</a>
             <a href="#pricing" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Preços</a>
+            <a href="/privacy" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Políticas de Privacidade</a>
             <button onClick={onLogin} className="text-xs font-bold uppercase tracking-widest text-slate-900 hover:opacity-70 transition-opacity">Entrar</button>
             <button 
               onClick={onSignup}
@@ -469,8 +470,8 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
           <div className="grid md:grid-cols-3 gap-20 mb-20 text-center md:text-left">
             <div className="space-y-6">
               <div className="flex items-center justify-center md:justify-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg">
-                  <Zap size={20} fill="currentColor" />
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg overflow-hidden">
+                  <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
                 </div>
                 <span className="text-2xl font-black tracking-tighter text-slate-900 uppercase">{agencyName}</span>
               </div>
@@ -491,8 +492,8 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
               <ul className="space-y-4">
                 <li><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Ajuda</a></li>
                 <li><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Contato</a></li>
-                <li><button onClick={onPrivacy} className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Privacidade</button></li>
-                <li><button onClick={onTerms} className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Termos de Uso</button></li>
+                <li><a href="/privacy" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Políticas de Privacidade</a></li>
+                <li><a href="/terms" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Termos de Uso</a></li>
                 <li><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Status</a></li>
               </ul>
             </div>
