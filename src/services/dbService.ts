@@ -79,6 +79,17 @@ export const dbService = {
     
     const camelData = keysToCamel(data);
     
+    // Map quantia to amount for receivables reading
+    if (tableName === 'receivables' && camelData) {
+      if (Array.isArray(camelData)) {
+        camelData.forEach(item => {
+          if (item.quantia !== undefined) item.amount = item.quantia;
+        });
+      } else if (camelData.quantia !== undefined) {
+        camelData.amount = camelData.quantia;
+      }
+    }
+
     return camelData;
   },
 
@@ -97,11 +108,21 @@ export const dbService = {
     
     const camelData = keysToCamel(data);
     
+    // Map quantia to amount for receivables
+    if (tableName === 'receivables' && camelData && camelData.quantia !== undefined) {
+      camelData.amount = camelData.quantia;
+    }
+    
     return camelData;
   },
 
   async insert(tableName: string, payload: any, context?: DbContext) {
     const snakePayload = keysToSnake(payload);
+    
+    // Map amount to quantia for receivables writing
+    if (tableName === 'receivables' && snakePayload.amount !== undefined) {
+      snakePayload.quantia = snakePayload.amount;
+    }
     
     // Auto-set owner_id if available and not set
     if (context && !snakePayload.owner_id) {
@@ -117,6 +138,11 @@ export const dbService = {
     if (!context) throw new Error("Acesso negado: Contexto de usuário não fornecido.");
     
     const snakePayload = keysToSnake(payload);
+    
+    // Map amount to quantia for receivables writing
+    if (tableName === 'receivables' && snakePayload.amount !== undefined) {
+      snakePayload.quantia = snakePayload.amount;
+    }
     
     // Ensure we only update if it belongs to the owner
     let query = supabase.from(tableName).update(snakePayload).eq('id', id);

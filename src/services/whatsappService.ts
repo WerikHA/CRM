@@ -40,6 +40,8 @@ export class WhatsAppService extends EventEmitter {
   private pollStorePath = path.join(process.cwd(), "whatsapp_polls.json");
   private pollStore: Record<string, SentPollData> = {};
   private initializingSessions: Set<string> = new Set();
+  private reconnectionAttempts: Record<string, number> = {};
+  private maxReconnectionAttempts = 10;
   public onMessageCallback?: (phone: string, text: string) => void;
 
   constructor() {
@@ -57,6 +59,7 @@ export class WhatsAppService extends EventEmitter {
     for (const d of dirs) {
       if (d.startsWith("auth_")) {
         const ownerId = d.replace("auth_", "");
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay between initializations
         this.initSession(ownerId);
       }
     }
@@ -151,18 +154,20 @@ export class WhatsAppService extends EventEmitter {
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
-        browser: Browsers.macOS("Desktop"),
+        browser: Browsers.ubuntu("Chrome"),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: true,
-        connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 60000,
-        keepAliveIntervalMs: 30000,
-        retryRequestDelayMs: 5000,
-        msgRetryCounterCache,
-        logger,
-        qrTimeout: 180000,
+        connectTimeoutMs: 120000, // Increased to 2 minutes
+        defaultQueryTimeoutMs: 120000,
+        keepAliveIntervalMs: 20000, // 20s for better heartbeat
         generateHighQualityLinkPreview: false,
+        emitOwnEvents: false,
+        retryRequestDelayMs: 5000,
+        maxMsgRetryCount: 5,
+        getMessage: async (key) => {
+          return { conversation: 'Mensagem antiga ou não disponível' };
+        }
       });
 
       this.sessions[ownerId] = socket;
@@ -210,6 +215,9 @@ export class WhatsAppService extends EventEmitter {
             
             const shouldReconnect = !isLogout;
 
+            // Increment reconnection attempts
+            this.reconnectionAttempts[ownerId] = (this.reconnectionAttempts[ownerId] || 0) + 1;
+
             // Set detailed error
             if (statusCode === DisconnectReason.loggedOut) {
               this.sessionError[ownerId] = {
@@ -221,10 +229,15 @@ export class WhatsAppService extends EventEmitter {
                 message: "Conflito de Sessão: Esta conta foi conectada em outro dispositivo ou a sessão expirou.",
                 action: "Clique em 'Sair / Desconectar' e escaneie o código novamente."
               };
+            } else if (this.reconnectionAttempts[ownerId] > this.maxReconnectionAttempts) {
+              this.sessionError[ownerId] = {
+                message: "Muitas tentativas de reconexão falharam.",
+                action: "Por favor, aguarde alguns minutos e tente reconectar manualmente."
+              };
             } else {
               this.sessionError[ownerId] = {
                 message: `Erro de Conexão (${statusCode || 'Desconhecido'}): ${message.substring(0, 50)}...`,
-                action: "Tente recarregar a página ou reconectar seu WhatsApp."
+                action: "O sistema está tentando reconectar automaticamente..."
               };
             }
 
@@ -233,11 +246,14 @@ export class WhatsAppService extends EventEmitter {
             this.initializingSessions.delete(ownerId);
             this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
 
-            if (shouldReconnect) {
-              const delay = (statusCode === 515 || statusCode === 428) ? 10000 : 5000;
-              this.debugLog(ownerId, `Agendando reconexão em ${delay/1000}s.`);
+            if (shouldReconnect && this.reconnectionAttempts[ownerId] <= this.maxReconnectionAttempts) {
+              // Exponential backoff or progressive delay
+              const baseDelay = (statusCode === 515 || statusCode === 428) ? 10000 : 5000;
+              const delay = Math.min(baseDelay * this.reconnectionAttempts[ownerId], 60000); // Max 60s
+              
+              this.debugLog(ownerId, `Agendando reconexão (#${this.reconnectionAttempts[ownerId]}) em ${delay/1000}s.`);
               setTimeout(() => this.initSession(ownerId), delay);
-            } else {
+            } else if (isLogout) {
               this.debugLog(ownerId, "Limpando auth por logout.");
               this.clearAuth(ownerId);
               if (this.sessions[ownerId]) {
@@ -253,6 +269,7 @@ export class WhatsAppService extends EventEmitter {
             this.sessionStatus[ownerId] = "connected";
             this.sessionError[ownerId] = null;
             this.qrDataUrls[ownerId] = null;
+            this.reconnectionAttempts[ownerId] = 0; // Reset attempts on success
             this.initializingSessions.delete(ownerId);
             this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
           }

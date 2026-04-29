@@ -365,18 +365,27 @@ async function startServer() {
       const context = getContext(req);
       if (!context) return res.status(401).json({ error: "Não autorizado" });
 
+      const safeList = async (table: string) => {
+        try {
+          return await dbService.list(table, context);
+        } catch (err: any) {
+          console.error(`[SYNC ERROR] Failed to load table: ${table}`, err.message);
+          return [];
+        }
+      };
+
       const results = await Promise.all([
-        dbService.list('leads', context),
-        dbService.list('clients', context),
-        dbService.list('receivables', context),
-        dbService.list('art_orders', context),
-        dbService.list('partners', context),
-        dbService.list('users', context),
-        dbService.list('partner_requests', context),
-        dbService.list('support_tickets', context),
-        dbService.list('video_orders', context),
-        dbService.list('demand_tasks', context),
-        dbService.list('notifications', context)
+        safeList('leads'),
+        safeList('clients'),
+        safeList('receivables'),
+        safeList('art_orders'),
+        safeList('partners'),
+        safeList('users'),
+        safeList('partner_requests'),
+        safeList('support_tickets'),
+        safeList('video_orders'),
+        safeList('demand_tasks'),
+        safeList('notifications')
       ]);
 
       res.json({
@@ -393,6 +402,7 @@ async function startServer() {
         notifications: results[10]
       });
     } catch (err: any) {
+      console.error("[SYNC CRITICAL ERROR]", err);
       res.status(500).json({ error: err.message });
     }
   });
