@@ -7,7 +7,7 @@ services:
     container_name: amplifica-crm
     restart: unless-stopped
     ports:
-      - "3000:3000" # Porta padrão do CRM (inclui a Landing Page)
+      - "3009:3009" # Porta configurada no ZimaOS para o CRM
     environment:
       # --- CONFIGURAÇÕES DA LANDING PAGE & MARCA ---
       - VITE_COMPANY_NAME=Amplifica CRM # Nome que aparece na Landing Page e no Header
@@ -15,7 +15,7 @@ services:
       
       # --- CONFIGURAÇÕES DO SERVIDOR ---
       - NODE_ENV=production
-      - PORT=3000
+      - PORT=3009
       - APP_URL=https://seu-dominio.com # Substitua pelo seu domínio HTTPS final
 
       # --- CONEXÃO SUPABASE (Obrigatório) ---
@@ -51,7 +51,7 @@ services:
       - ./logs/n8n_interaction_logs.txt:/app/logs/n8n_interaction_logs.txt
     
     healthcheck:
-      test: ["CMD", "curl", "-f", "https://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "https://localhost:3009/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
