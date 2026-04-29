@@ -498,7 +498,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
             <input 
               type="text" 
               placeholder="Chave PIX Global" 
-              value={financeConfig.pixKey} 
+              value={financeConfig.pixKey || ''} 
               onChange={e => setFinanceConfig({...financeConfig, pixKey: e.target.value})} 
               className="px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 text-gray-900 dark:text-gray-100" 
             />
@@ -508,7 +508,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
             </label>
             <textarea 
               placeholder="Mensagem de lembrete" 
-              value={financeConfig.reminderTemplate} 
+              value={financeConfig.reminderTemplate || ''} 
               onChange={e => setFinanceConfig({...financeConfig, reminderTemplate: e.target.value})} 
               className="col-span-2 px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 text-gray-900 dark:text-gray-100" 
               rows={2} 

@@ -34,7 +34,7 @@ interface SentPollData {
 export class WhatsAppService extends EventEmitter {
   private sessions: Record<string, any> = {};
   private qrDataUrls: Record<string, string | null> = {};
-  private sessionStatus: Record<string, "disconnected" | "qr" | "connected"> = {};
+  private sessionStatus: Record<string, "disconnected" | "qr" | "connected" | "connecting"> = {};
   private sessionError: Record<string, { message: string, action: string } | null> = {};
   private authBaseDir = path.join(process.cwd(), "whatsapp_auth_sessions");
   private pollStorePath = path.join(process.cwd(), "whatsapp_polls.json");
@@ -87,18 +87,34 @@ export class WhatsAppService extends EventEmitter {
     }
   }
 
+  private debugLog(ownerId: string, message: string) {
+    try {
+      const logDir = path.join(process.cwd(), "logs");
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+      const logPath = path.join(logDir, "whatsapp_debug.txt");
+      const timestamp = new Date().toISOString();
+      const logLine = `[${timestamp}][Owner: ${ownerId}] ${message}\n`;
+      fs.appendFileSync(logPath, logLine);
+    } catch (err) {
+      console.error("[WHATSAPP] Erro ao gravar debug log:", err);
+    }
+  }
+
   public async initSession(ownerId: string) {
     if (!ownerId) return;
     if (this.initializingSessions.has(ownerId)) {
-      console.log(`[WHATSAPP] Sessão ${ownerId} já está em inicialização...`);
+      this.debugLog(ownerId, "Sessão já está em inicialização.");
       return;
     }
     this.initializingSessions.add(ownerId);
+    this.sessionStatus[ownerId] = "connecting";
 
     const sessionAuthDir = path.join(this.authBaseDir, `auth_${ownerId}`);
 
     try {
-      console.log(`[WHATSAPP] Iniciando sessão para Owner: ${ownerId}...`);
+      this.debugLog(ownerId, `Iniciando initSession. AuthDir: ${sessionAuthDir}`);
 
       if (this.sessions[ownerId]) {
         try {
@@ -110,19 +126,24 @@ export class WhatsAppService extends EventEmitter {
 
       if (!fs.existsSync(sessionAuthDir)) {
         fs.mkdirSync(sessionAuthDir, { recursive: true });
+        this.debugLog(ownerId, "Criado diretório de autenticação.");
       }
 
+      this.debugLog(ownerId, "Chamando useMultiFileAuthState...");
       const { state, saveCreds } = await useMultiFileAuthState(sessionAuthDir);
+      this.debugLog(ownerId, "useMultiFileAuthState concluído.");
       
-      let version: any = [2, 3000, 1017531234]; // Updated fallback version
+      let version: any = [2, 3000, 1015901307];
       try {
+        this.debugLog(ownerId, "Buscando versão mais recente do Baileys...");
         const { version: latestVersion, isLatest } = await fetchLatestBaileysVersion();
         version = latestVersion;
-        console.log(`[WHATSAPP] Usando versão Baileys: ${version.join(".")} (Latest: ${isLatest})`);
-      } catch (err) {
-        console.error("[WHATSAPP] Erro ao buscar versão do Baileys, usando fallback:", err);
+        this.debugLog(ownerId, `Versão Baileys: ${version.join(".")} (Latest: ${isLatest})`);
+      } catch (err: any) {
+        this.debugLog(ownerId, `Erro ao buscar versão: ${err.message}`);
       }
 
+      this.debugLog(ownerId, "Criando socket (makeWASocket)...");
       const socket = makeWASocket({
         version,
         auth: {
@@ -130,7 +151,7 @@ export class WhatsAppService extends EventEmitter {
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
-        browser: ["Amplifica", "Chrome", "1.0.0"],
+        browser: Browsers.macOS("Desktop"),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: true,
@@ -145,6 +166,7 @@ export class WhatsAppService extends EventEmitter {
       });
 
       this.sessions[ownerId] = socket;
+      this.debugLog(ownerId, "Socket criado e armazenado.");
 
       socket.ev.on("creds.update", saveCreds);
 
@@ -158,9 +180,9 @@ export class WhatsAppService extends EventEmitter {
           }>,
         ) => {
           const { connection, lastDisconnect, qr } = update;
+          this.debugLog(ownerId, `Connection Update: ${connection || 'N/A'}${qr ? ' (QR Recibido)' : ''}`);
 
           if (qr) {
-            console.log(`[WHATSAPP] QR Code recebido para ${ownerId}`);
             this.sessionStatus[ownerId] = "qr";
             QRCode.toDataURL(qr)
               .then((url) => {
@@ -172,7 +194,7 @@ export class WhatsAppService extends EventEmitter {
                 });
               })
               .catch((err) => {
-                console.error("[WHATSAPP] Erro ao gerar QR:", err);
+                 this.debugLog(ownerId, `Erro ao gerar QR DataURL: ${err.message}`);
               });
           }
 
@@ -180,20 +202,15 @@ export class WhatsAppService extends EventEmitter {
             const error = lastDisconnect?.error;
             const statusCode = (error as any)?.output?.statusCode || error?.code;
             const message = error?.message || error?.stack || "";
+            this.debugLog(ownerId, `Conexão FECHADA. Status: ${statusCode}. Erro: ${message}`);
             
-            // Reasons that definitely mean we shouldn't reconnect automatically without clearing
             const isLogout = statusCode === DisconnectReason.loggedOut || 
                              statusCode === 401 || 
                              statusCode === 403;
             
-            // Reasons that should trigger a reconnect
             const shouldReconnect = !isLogout;
 
-            console.log(
-              `[WHATSAPP] Conexão FECHADA para ${ownerId}. Status: ${statusCode}. Reconnect: ${shouldReconnect}. Erro: ${message}`,
-            );
-
-            // Set detailed error for the UI
+            // Set detailed error
             if (statusCode === DisconnectReason.loggedOut) {
               this.sessionError[ownerId] = {
                 message: "Você foi desconectado pelo próprio WhatsApp.",
@@ -204,26 +221,11 @@ export class WhatsAppService extends EventEmitter {
                 message: "Conflito de Sessão: Esta conta foi conectada em outro dispositivo ou a sessão expirou.",
                 action: "Clique em 'Sair / Desconectar' e escaneie o código novamente."
               };
-            } else if (statusCode === 428 || message.includes("Connection Closed")) {
-              this.sessionError[ownerId] = {
-                message: "A conexão com o servidor do WhatsApp foi interrompida inesperadamente.",
-                action: "Estamos tentando reconectar automaticamente. Se persistir, reinicie o CRM."
-              };
-            } else if (statusCode === 515 || message.includes("Stream Errored")) {
-              this.sessionError[ownerId] = {
-                message: "Erro de Fluxo (Stream Errored): Ocorreu uma instabilidade na comunicação com o WhatsApp.",
-                action: "Aguarde alguns segundos, estamos reiniciando a conexão."
-              };
             } else {
               this.sessionError[ownerId] = {
                 message: `Erro de Conexão (${statusCode || 'Desconhecido'}): ${message.substring(0, 50)}...`,
                 action: "Tente recarregar a página ou reconectar seu WhatsApp."
               };
-            }
-
-            // Handle specific Baileys error conditions
-            if (statusCode === 515 || message.includes("Stream Errored") || message.includes("conflict")) {
-              console.warn(`[WHATSAPP] Erro de Conflito ou Stream persistente detectado para ${ownerId}.`);
             }
 
             this.sessionStatus[ownerId] = "disconnected";
@@ -232,12 +234,11 @@ export class WhatsAppService extends EventEmitter {
             this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
 
             if (shouldReconnect) {
-              // Exponential-ish backoff or specific delays
               const delay = (statusCode === 515 || statusCode === 428) ? 10000 : 5000;
-              console.log(`[WHATSAPP] Agendando reconexão para ${ownerId} em ${delay/1000}s...`);
+              this.debugLog(ownerId, `Agendando reconexão em ${delay/1000}s.`);
               setTimeout(() => this.initSession(ownerId), delay);
             } else {
-              console.log(`[WHATSAPP] Logout ou Falha Crítica detectada para ${ownerId}. Limpando sessão.`);
+              this.debugLog(ownerId, "Limpando auth por logout.");
               this.clearAuth(ownerId);
               if (this.sessions[ownerId]) {
                 try {
@@ -248,8 +249,7 @@ export class WhatsAppService extends EventEmitter {
               }
             }
           } else if (connection === "open") {
-            console.log(`[WHATSAPP] Conexão ABERTA com sucesso para ${ownerId}!`);
-            this.logInteraction(ownerId, "WhatsApp Conectado.");
+            this.debugLog(ownerId, "Conexão ABERTA!");
             this.sessionStatus[ownerId] = "connected";
             this.sessionError[ownerId] = null;
             this.qrDataUrls[ownerId] = null;

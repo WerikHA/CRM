@@ -126,6 +126,7 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
           for (let i = 1; i <= quantity; i++) {
             const newTaskData = {
               ...cleanFormData,
+              materials_link: cleanFormData.materialsLink,
               title: cleanFormData.title ? `${cleanFormData.title} ${i}` : `Gravação ${i}`,
               quantity: 1
             } as any;
@@ -136,6 +137,7 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
         } else {
           const newTaskData = {
             ...cleanFormData,
+            materials_link: cleanFormData.materialsLink,
           } as any;
           const created = await api.createDemandTask(newTaskData);
           setTasks(prev => [...prev, created]);
@@ -152,7 +154,7 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
           editorId: cleanFormData.editorId,
           title: cleanFormData.title,
           observations: cleanFormData.observations,
-          materialsLink: cleanFormData.materialsLink,
+          materials_link: cleanFormData.materialsLink,
           postDate: cleanFormData.postDate,
           postTime: cleanFormData.postTime,
           attachments: cleanFormData.attachments

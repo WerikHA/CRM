@@ -87,10 +87,12 @@ class MeetingService {
     this.socket.on("request-approved", () => {
       meetLogService.add(`[MEET] [SERVICE] Recebido evento: request-approved. Chamando onApproved.`);
       this.onApproved();
+      meetLogService.add(`[MEET] [SERVICE] Emitindo join-room por request-approved.`);
       this.socket?.emit("join-room", { roomId, user, isGuest: true });
     });
 
     this.socket.on("request-denied", () => {
+      meetLogService.add(`[MEET] [SERVICE] Recebido evento: request-denied.`);
       this.onDenied();
     });
 
@@ -103,15 +105,19 @@ class MeetingService {
       if (this.localStream && this.peer) {
           meetLogService.add(`[MEET] Iniciando chamada para: ${userId}`);
           const call = this.peer.call(userId, this.localStream);
+          call.on('error', (err) => meetLogService.add(`[MEET] Erro na chamada para ${userId}: ${err.message}`));
           call.on('stream', (userStream) => {
               meetLogService.add(`[MEET] Stream recebido de: ${userId}`);
               this.participants.get(userId)!.stream = userStream;
               this.updateParticipants();
           });
+      } else {
+        meetLogService.add(`[MEET] Não foi possível iniciar chamada para ${userId}. localStream: ${!!this.localStream}, peer: ${!!this.peer}`);
       }
     });
 
     this.socket.on("user-disconnected", (userId: string) => {
+      meetLogService.add(`[MEET] User disconnected: ${userId}`);
       this.participants.delete(userId);
       this.updateParticipants();
     });
@@ -119,18 +125,32 @@ class MeetingService {
 
   initPeer(userId: string) {
     // Relying on standard peer.js public server which is more reliable for simple apps behind proxies/Cloud Run
+    if (this.peer) {
+        meetLogService.add(`[MEET] Peer já existe, tentando destruir.`);
+        this.peer.destroy();
+    }
     this.peer = new Peer(userId);
     meetLogService.add(`[MEET] Peer iniciado para ID: ${userId}`);
+
+    this.peer.on('error', (err) => meetLogService.add(`[MEET] Erro no Peer: ${err.type} - ${err.message}`));
 
     this.peer.on('call', (call) => {
         meetLogService.add(`[MEET] Chamada recebida de: ${call.peer}`);
         if (this.localStream) {
+            meetLogService.add(`[MEET] Respondendo chamada de: ${call.peer}`);
             call.answer(this.localStream);
+            call.on('error', (err) => meetLogService.add(`[MEET] Erro na chamada recebida de ${call.peer}: ${err.message}`));
             call.on('stream', (userStream) => {
                 meetLogService.add(`[MEET] Stream recebido via 'call' de: ${call.peer}`);
-                this.participants.get(call.peer)!.stream = userStream;
-                this.updateParticipants();
+                if (this.participants.has(call.peer)) {
+                  this.participants.get(call.peer)!.stream = userStream;
+                  this.updateParticipants();
+                } else {
+                  meetLogService.add(`[MEET] Participante não encontrado: ${call.peer}`);
+                }
             });
+        } else {
+            meetLogService.add(`[MEET] Não foi possível responder a chamada de ${call.peer}. localStream: ${!!this.localStream}`);
         }
     });
   }

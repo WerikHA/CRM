@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare, Terminal, ShieldCheck } from 'lucide-react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare, Terminal, ShieldCheck, Layout, Eye, EyeOff } from 'lucide-react';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import { storageService } from '../lib/storage';
@@ -13,6 +13,16 @@ import { ToastContainer, toast } from './ui/Toast';
 
 import { meetLogService } from '../services/meetLogService';
 
+// Helper para fetch com autenticação automática
+const fetchWithAuth = async (url: string, options: any = {}) => {
+  const token = storageService.getItem('agency_token');
+  const headers = {
+    ...options.headers,
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+  return fetch(url, { ...options, headers });
+};
+
 // Componente Interno para Gestão do QR do WhatsApp Cloud
 function N8nLogs({ isAdmin }: { isAdmin: boolean }) {
   const [logs, setLogs] = useState<string>('');
@@ -20,7 +30,7 @@ function N8nLogs({ isAdmin }: { isAdmin: boolean }) {
     if (!isAdmin) return;
     const fetchLogs = async () => {
       try {
-        const res = await fetch('/api/n8n/logs');
+        const res = await fetchWithAuth('/api/n8n/logs');
         if (res.ok) setLogs(await res.text());
       } catch (err) {}
     };
@@ -43,7 +53,7 @@ function WhatsAppAccountLogs({ userId }: { userId: string }) {
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        const res = await fetch(`/api/whatsapp/logs?ownerId=${userId}`);
+        const res = await fetchWithAuth(`/api/whatsapp/logs?ownerId=${userId}`);
         if (res.ok) setLogs(await res.text());
       } catch (err) {}
     };
@@ -86,7 +96,7 @@ function NetworkStatus() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    fetch('/api/system/network')
+    fetchWithAuth('/api/system/network')
       .then(res => res.json())
       .then(setData)
       .catch(err => console.error('Erro ao buscar rede:', err));
@@ -161,7 +171,7 @@ function DatabaseStatus() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const res = await fetch('/api/health/supabase');
+        const res = await fetchWithAuth('/api/health/supabase');
         const data = await res.json();
         if (data.connected) {
           setStatus('connected');
@@ -287,25 +297,413 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`}
         <>
           <p className="text-rose-600 dark:text-rose-400 font-bold text-lg">Status: Falha na Conexão</p>
           <div className="mt-4 p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-xl">
-            <p className="text-xs text-rose-700 dark:text-rose-300 font-mono break-all">{message}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
+              Dica: Verifique se a URL do Supabase está correta nas configurações (Segredos) e se termina em <span className="font-bold">.co</span> e não em .com.
+            </p>
           </div>
-          
-          {dbInfo?.logs && dbInfo.logs.length > 0 && (
-            <div className="mt-6 text-left bg-gray-50 dark:bg-[#0a0a0a] border border-gray-100 dark:border-gray-800 rounded-xl p-4">
-              <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
-                <Terminal size={12} /> Log de Verificação
-              </h4>
-              <pre className="text-[10px] font-mono whitespace-pre-wrap text-rose-600/80 dark:text-rose-400/80">
-                {dbInfo.logs.join('\n')}
-              </pre>
-            </div>
-          )}
-
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
-            Dica: Verifique se a URL do Supabase está correta nas configurações (Segredos) e se termina em <span className="font-bold">.co</span> e não em .com.
-          </p>
         </>
       )}
+    </div>
+  );
+}
+
+function FormIntegrationsView() {
+  const [forms, setForms] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingForm, setEditingForm] = useState<any>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchForms();
+  }, []);
+
+  const fetchForms = async () => {
+    try {
+      const res = await fetchWithAuth('/api/forms');
+      if (res.ok) setForms(await res.json());
+    } catch (err) {
+      toast.error("Erro ao carregar formulários.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+    const data = {
+      id: editingForm?.id,
+      name: formData.get('name'),
+      success_message: formData.get('success_message'),
+      redirect_url: formData.get('redirect_url'),
+    };
+
+    try {
+      const res = await fetchWithAuth('/api/forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        toast.success("Formulário salvo com sucesso!");
+        fetchForms();
+        setShowModal(false);
+      }
+    } catch (err) {
+      toast.error("Erro ao salvar formulário.");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir este formulário?")) return;
+    try {
+      const res = await fetchWithAuth(`/api/forms/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success("Formulário excluído!");
+        fetchForms();
+      }
+    } catch (err) {
+      toast.error("Erro ao excluir formulário.");
+    }
+  };
+
+  const copyCode = (id: string, type: 'html' | 'embed') => {
+    const baseUrl = window.location.origin;
+    const submitUrl = `${baseUrl}/api/forms/submit/${id}`;
+    
+    let code = '';
+    if (type === 'html') {
+      code = `
+<!-- Formulário de Captura Amplifica CRM -->
+<form action="${submitUrl}" method="POST">
+  <div>
+    <label>Nome:</label>
+    <input type="text" name="contact_name" required>
+  </div>
+  <div>
+    <label>E-mail:</label>
+    <input type="email" name="email" required>
+  </div>
+  <div>
+    <label>Telefone:</label>
+    <input type="tel" name="phone">
+  </div>
+  <div>
+    <label>Empresa:</label>
+    <input type="text" name="company">
+  </div>
+  <div>
+    <label>Mensagem:</label>
+    <textarea name="message"></textarea>
+  </div>
+  <button type="submit">Enviar</button>
+</form>
+      `;
+    } else {
+      code = `
+<script>
+  function submitAmplificaForm(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData.entries());
+    fetch("${submitUrl}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(res => {
+      if(res.redirect) window.location.href = res.redirect;
+      else alert(res.message || "Enviado com sucesso!");
+    })
+    .catch(err => alert("Erro ao enviar formulário"));
+  }
+</script>
+<form onsubmit="submitAmplificaForm(event)">
+  <!-- Mesmos campos do HTML acima -->
+  <input type="text" name="contact_name" placeholder="Nome" required>
+  <input type="email" name="email" placeholder="E-mail" required>
+  <button type="submit">Capturar Lead</button>
+</form>
+      `;
+    }
+
+    navigator.clipboard.writeText(code.trim());
+    setCopiedId(id + type);
+    setTimeout(() => setCopiedId(null), 2000);
+    toast.success("Código copiado!");
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-indigo-600 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-indigo-500/20">
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-4 opacity-80">
+            <Globe size={18} />
+            <span className="text-xs font-bold uppercase tracking-widest">Integração Externa</span>
+          </div>
+          <h2 className="text-3xl font-black tracking-tighter mb-2">CAPTURA DE LEADS</h2>
+          <p className="text-indigo-100 max-w-xl font-medium leading-relaxed">Gere formulários para capturar leads diretamente do seu site. Cada submissão aparecerá automaticamente no seu painel de leads.</p>
+        </div>
+        <button 
+          onClick={() => { setEditingForm(null); setShowModal(true); }}
+          className="mt-6 flex items-center gap-2 bg-white text-indigo-600 px-6 py-3 rounded-2xl font-bold transition-all shadow-xl hover:scale-105 active:scale-95"
+        >
+          <Plus size={20} />
+          Criar Novo Formulário
+        </button>
+        <div className="absolute top-0 right-0 p-8 transform translate-x-1/4 -translate-y-1/4 opacity-10">
+          <Globe size={240} className="text-white" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {forms.map(form => (
+          <div key={form.id} className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-6 shadow-sm hover:shadow-xl hover:border-indigo-100 dark:hover:border-indigo-900 transition-all group relative overflow-hidden">
+            <div className="flex items-center justify-between mb-6">
+              <div className="bg-indigo-50 dark:bg-indigo-500/10 p-3 rounded-2xl">
+                <Layout size={20} className="text-indigo-600" />
+              </div>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
+                <button onClick={() => { setEditingForm(form); setShowModal(true); }} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-xl transition-all"><Settings size={16} /></button>
+                <button onClick={() => handleDelete(form.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/40 rounded-xl transition-all"><Trash2 size={16} /></button>
+              </div>
+            </div>
+
+            <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2 leading-tight uppercase tracking-tight">{form.name}</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-6 truncate italic font-mono">ID: {form.id}</p>
+            
+            <div className="space-y-2">
+              <button 
+                onClick={() => copyCode(form.id, 'html')}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all group/btn"
+              >
+                <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 group-hover/btn:bg-white/20">
+                        <Code size={12} className="group-hover/btn:text-white text-indigo-600" />
+                    </div>
+                  <span className="uppercase tracking-widest">Código HTML</span>
+                </div>
+                {copiedId === form.id + 'html' ? <Check size={14} className="text-green-500 group-hover/btn:text-white" /> : <Copy size={14} className="opacity-40" />}
+              </button>
+
+              <button 
+                onClick={() => copyCode(form.id, 'embed')}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all group/btn"
+              >
+                <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 group-hover/btn:bg-white/20">
+                        <Link size={12} className="group-hover/btn:text-white text-indigo-600" />
+                    </div>
+                  <span className="uppercase tracking-widest">Embed JS</span>
+                </div>
+                {copiedId === form.id + 'embed' ? <Check size={14} className="text-green-500 group-hover/btn:text-white" /> : <Copy size={14} className="opacity-40" />}
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {forms.length === 0 && !loading && (
+          <div className="col-span-full py-20 text-center space-y-4">
+            <div className="w-20 h-20 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Globe size={32} className="text-gray-300" />
+            </div>
+            <p className="text-gray-400 italic font-medium">Nenhum formulário criado ainda.</p>
+          </div>
+        )}
+      </div>
+
+      <Modal 
+        isOpen={showModal} 
+        onClose={() => setShowModal(false)}
+        title={editingForm ? "Editar Formulário" : "Novo Formulário"}
+      >
+        <form onSubmit={handleSave} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Nome do Formulário</label>
+            <input 
+              name="name" 
+              defaultValue={editingForm?.name} 
+              required 
+              className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold" 
+              placeholder="Ex: Landing Page Campanha X" 
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Mensagem de Sucesso</label>
+            <input 
+              name="success_message" 
+              defaultValue={editingForm?.success_message || "Obrigado! Recebemos seus dados."} 
+              className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none focus:ring-2 focus:ring-indigo-500 transition-all" 
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">URL de Redirecionamento (Opcional)</label>
+            <input 
+              name="redirect_url" 
+              defaultValue={editingForm?.redirect_url} 
+              className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm" 
+              placeholder="https://meusite.com/obrigado" 
+            />
+          </div>
+          <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-800 mt-6">
+            <button type="button" onClick={() => setShowModal(false)} className="px-6 py-2 text-sm font-bold text-gray-500">Voltar</button>
+            <button type="submit" className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all">Salvar Configurações</button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+function SqlEditor() {
+  const [query, setQuery] = useState('');
+  const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const executeSql = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchWithAuth('/api/admin/sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao executar SQL');
+      setResult(data);
+      toast.success('Query executada com sucesso!');
+    } catch (err: any) {
+      setError(err.message);
+      toast.error('Erro na execução SQL');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden animate-in fade-in duration-500">
+      <div className="p-6 border-b border-gray-50 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+            <Terminal size={20} />
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-tight">Terminal SQL Direto</h3>
+            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Acesso root ao PostgreSQL do Supabase</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+           <span className="text-[10px] text-rose-500 font-bold uppercase tracking-widest bg-rose-50 dark:bg-rose-500/10 px-3 py-1 rounded-full border border-rose-100 dark:border-rose-500/20 animate-pulse">
+            Modo Super Admin
+           </span>
+        </div>
+      </div>
+      <div className="p-6 space-y-6">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sua Query</label>
+             <button 
+                onClick={() => setQuery('SELECT * FROM receivables LIMIT 10;')}
+                className="text-[10px] text-indigo-500 hover:text-indigo-600 font-bold"
+             >
+                Carregar Exemplo
+             </button>
+          </div>
+          <div className="relative group">
+            <textarea
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full h-48 p-6 bg-gray-900 dark:bg-black text-emerald-400 font-mono text-xs rounded-2xl border border-gray-800 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/50 outline-none transition-all resize-none shadow-inner"
+              placeholder="-- Exemplo: ALTER TABLE receivables ADD COLUMN quantia NUMERIC;
+SELECT * FROM users LIMIT 5;"
+            />
+            <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/20 to-transparent flex justify-end">
+              <button
+                onClick={executeSql}
+                disabled={loading || !query.trim()}
+                className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/25 flex items-center gap-2"
+              >
+                {loading ? <RefreshCcw size={14} className="animate-spin" /> : <Activity size={14} />}
+                EXECUTAR COMANDO
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="p-4 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-2xl flex gap-3 items-start animate-in zoom-in duration-300">
+            <ShieldAlert className="text-rose-500 shrink-0" size={18} />
+            <div>
+              <p className="text-xs font-bold text-rose-800 dark:text-rose-400 uppercase tracking-tight mb-1">Erro do Postgres</p>
+              <pre className="text-[10px] text-rose-700/80 dark:text-rose-500/80 font-mono whitespace-pre-wrap">{error}</pre>
+            </div>
+          </div>
+        )}
+
+        {result && (
+          <div className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="text-emerald-500" size={14} />
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  Resultado: {result.command} {result.rowCount !== null && `(${result.rowCount} registros)`}
+                </h4>
+              </div>
+              <button 
+                onClick={() => setResult(null)} 
+                className="text-[10px] text-gray-400 hover:text-gray-600 uppercase font-bold transition-colors"
+              >
+                Limpar Grade
+              </button>
+            </div>
+            
+            {result.rows && result.rows.length > 0 ? (
+              <div className="overflow-hidden rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                <div className="overflow-x-auto max-h-[350px]">
+                  <table className="w-full text-[10px] font-mono border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 dark:bg-[#0a0a0a] sticky top-0 z-10">
+                        {result.fields?.map((f: any) => (
+                          <th key={f.name} className="px-4 py-3 text-left border-b border-gray-100 dark:border-gray-800 font-bold text-gray-500 dark:text-gray-500 whitespace-nowrap">
+                            {f.name}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                      {result.rows.map((row: any, i: number) => (
+                        <tr key={i} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-500/5 transition-colors group">
+                          {result.fields?.map((f: any) => (
+                            <td key={f.name} className="px-4 py-2 text-gray-600 dark:text-gray-400 whitespace-nowrap border-r border-gray-50/50 dark:border-gray-800/50 last:border-0 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                              {row[f.name] === null ? <span className="text-gray-300 italic opacity-50">null</span> : 
+                               typeof row[f.name] === 'object' ? JSON.stringify(row[f.name]) : String(row[f.name])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : result.command && (
+              <div className="p-8 text-center bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium italic">Comando executado com sucesso, mas não retornou linhas.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="px-6 py-4 bg-indigo-50/30 dark:bg-indigo-500/5 border-t border-indigo-100/50 dark:border-indigo-500/10 flex items-center gap-3">
+         <Shield size={14} className="text-indigo-500" />
+         <p className="text-[10px] text-indigo-700/70 dark:text-indigo-400/70 leading-relaxed italic">
+          Os comandos SQL são executados diretamente no banco de dados com permissões elevadas. Evite comandos que deletem tabelas críticas como <strong>users</strong>, <strong>clients</strong> ou <strong>leads</strong>.
+         </p>
+      </div>
     </div>
   );
 }
@@ -321,7 +719,7 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch(`/api/whatsapp/status?ownerId=${ownerId}`);
+      const res = await fetchWithAuth(`/api/whatsapp/status?ownerId=${ownerId}`);
       if (res.ok) {
         const data = await res.json();
         setStatus(data.status);
@@ -330,7 +728,7 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
       }
       
       if (isAdmin) {
-        const logsRes = await fetch(`/api/whatsapp/logs?ownerId=${ownerId}`);
+        const logsRes = await fetchWithAuth(`/api/whatsapp/logs?ownerId=${ownerId}`);
         if (logsRes.ok) {
           const text = await logsRes.text();
           setLogs(text);
@@ -352,7 +750,7 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
   const handleLogout = async () => {
     if (!canControl) return;
     setLoading(true);
-    await fetch('/api/whatsapp/logout', { 
+    await fetchWithAuth('/api/whatsapp/logout', { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ownerId })
@@ -374,6 +772,7 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
                 <p className="text-xs text-gray-500 dark:text-gray-400 transition-colors">
                   {status === 'connected' ? 'WhatsApp Autenticado e Pronto' : 
                    status === 'qr' ? 'Aguardando Leitura do QR Code' : 
+                   status === 'connecting' ? 'Inicializando Motor...' :
                    'Desconectado'}
                 </p>
              </div>
@@ -387,7 +786,7 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
                 <button 
                   onClick={async () => {
                     setLoading(true);
-                    await fetch('/api/whatsapp/reload', { 
+                    await fetchWithAuth('/api/whatsapp/reload', { 
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ ownerId })
@@ -449,6 +848,14 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
          </div>
        )}
 
+       {status === 'connecting' && (
+         <div className="flex flex-col items-center justify-center p-12 text-center bg-gray-50 dark:bg-gray-800 rounded-3xl transition-colors">
+           <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+           <p className="font-bold text-gray-900 dark:text-gray-100 transition-colors tracking-tight uppercase">Iniciando Serviço</p>
+           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm transition-colors">Estamos preparando o motor de conexão. Isso pode levar alguns segundos...</p>
+         </div>
+       )}
+
        {status === 'disconnected' && canControl && (
          <div className="flex flex-col items-center justify-center p-12 text-center bg-gray-50 dark:bg-gray-800 rounded-3xl transition-colors">
            <AlertTriangle size={48} className="text-amber-400 mb-4" />
@@ -460,25 +867,7 @@ function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, 
          </div>
        )}
 
-       {/* Logs Area */}
-       {isAdmin && (
-         <div className="mt-8 space-y-3">
-            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-              <Activity size={12} /> Log de Interações Recentes
-            </h4>
-            <div className="bg-gray-900 rounded-2xl p-4 font-mono text-[10px] text-emerald-400 h-48 overflow-y-auto border border-gray-800 shadow-inner">
-              {logs ? (
-                logs.split('\n').map((line, i) => (
-                  <div key={i} className="mb-1 leading-relaxed">
-                    <span className="opacity-40">{i+1}</span> {line}
-                  </div>
-                ))
-              ) : (
-                <div className="text-gray-600 italic">Nenhum log disponível...</div>
-              )}
-            </div>
-         </div>
-       )}
+
     </div>
   );
 }
@@ -510,7 +899,7 @@ export default function AdminView({
   setAgencyConfig,
   currentUser
 }: AdminViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'personalizacao' | 'whatsapp' | 'video'>('integrations');
+  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'sql' | 'personalizacao' | 'whatsapp' | 'video' | 'forms' | 'logs' | 'privacidade' | 'network' | 'email'>('integrations');
   const [isTeamChatOpen, setIsTeamChatOpen] = useState(false);
   const isOwner = currentUser.role === 'OWNER';
   const isAdmin = currentUser.role === 'ADMIN';
@@ -538,6 +927,8 @@ export default function AdminView({
     password: '',
     role: 'DESIGNER' as User['role']
   });
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [showInvitePassword, setShowInvitePassword] = useState(false);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -795,6 +1186,17 @@ export default function AdminView({
               <Database size={18} /> Banco de Dados
             </button>
           )}
+          {isAdmin && (
+            <button 
+              onClick={() => setActiveSubTab('sql')}
+              className={cn(
+                "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+                activeSubTab === 'sql' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              )}
+            >
+              <Terminal size={18} /> Editor SQL
+            </button>
+          )}
           <button 
             onClick={() => setActiveSubTab('personalizacao')}
             className={cn(
@@ -804,15 +1206,29 @@ export default function AdminView({
           >
             <Globe size={18} /> Personalização
           </button>
+          {(isAdmin || isOwner) && (
+            <>
+              <button 
+                onClick={() => setActiveSubTab('forms')}
+                className={cn(
+                  "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+                  activeSubTab === 'forms' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                )}
+              >
+                <Globe size={18} />
+                Formulários
+              </button>
+            </>
+          )}
           {isAdmin && (
             <button 
-              onClick={() => setActiveSubTab('video')}
+              onClick={() => setActiveSubTab('logs')}
               className={cn(
                 "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
-                activeSubTab === 'video' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                activeSubTab === 'logs' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               )}
             >
-              <Activity size={18} /> Logs de Vídeo
+              <Terminal size={18} /> Central de Logs
             </button>
           )}
           {isAdmin && (
@@ -916,7 +1332,7 @@ export default function AdminView({
                         <button 
                             onClick={async () => {
                                 try {
-                                    await fetch(`/api/integrations/${integration.id}/trigger`, {
+                                    await fetchWithAuth(`/api/integrations/${integration.id}/trigger`, {
                                         method: 'POST',
                                         headers: {'Content-Type': 'application/json'},
                                         body: JSON.stringify({ test: true })
@@ -1015,6 +1431,10 @@ export default function AdminView({
             <DatabaseStatus />
           )}
 
+          {activeSubTab === 'sql' && isAdmin && (
+            <SqlEditor />
+          )}
+
           {activeSubTab === 'whatsapp' && (
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
                <div className="p-6 border-b border-gray-50 flex items-center justify-between">
@@ -1029,6 +1449,44 @@ export default function AdminView({
                <div className="p-8">
                  <WhatsAppConfig ownerId={currentUser.id} isAdmin={isAdmin} currentUserId={currentUser.id} />
                </div>
+            </div>
+          )}
+
+          {activeSubTab === 'forms' && (
+            <FormIntegrationsView />
+          )}
+
+          {activeSubTab === 'logs' && isAdmin && (
+            <div className="space-y-6">
+              <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <Terminal className="text-indigo-600" size={24} />
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white uppercase tracking-tight">Central de Logs do Sistema</h2>
+                </div>
+                
+                <div className="space-y-8">
+                  <section>
+                    <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Globe size={14} /> Integração n8n / Webhooks
+                    </h3>
+                    <N8nLogs isAdmin={isAdmin} />
+                  </section>
+
+                  <section>
+                    <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <MessageSquare size={14} /> WhatsApp Debug
+                    </h3>
+                    <WhatsAppAccountLogs userId={currentUser.id} />
+                  </section>
+
+                  <section>
+                    <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Activity size={14} /> Processamento de Vídeo
+                    </h3>
+                    <VideoLogsView />
+                  </section>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1075,13 +1533,6 @@ export default function AdminView({
 
           {activeSubTab === 'email' && isAdmin && (
             <EmailConfigView />
-          )}
-
-          {activeSubTab === 'video' && isAdmin && (
-            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 transition-all duration-300">
-               <h3 className="font-bold text-lg dark:text-gray-100 transition-colors uppercase tracking-tight mb-6">Logs de Vídeo</h3>
-               <VideoLogsView />
-            </div>
           )}
 
           {activeSubTab === 'personalizacao' && agencyConfig && setAgencyConfig && (
@@ -1149,7 +1600,7 @@ export default function AdminView({
                        <div className="flex items-center gap-4 justify-center">
                           <input 
                             type="color" 
-                            value={agencyConfig.primaryColor}
+                            value={agencyConfig.primaryColor || '#6366f1'}
                             onChange={e => {
                               const next = { ...agencyConfig, primaryColor: e.target.value };
                               setAgencyConfig(next);
@@ -1165,7 +1616,7 @@ export default function AdminView({
                        <div className="flex items-center gap-4 justify-center">
                           <input 
                             type="color" 
-                            value={agencyConfig.logoBgColor || agencyConfig.primaryColor}
+                            value={agencyConfig.logoBgColor || agencyConfig.primaryColor || '#6366f1'}
                             onChange={e => {
                               const next = { ...agencyConfig, logoBgColor: e.target.value };
                               setAgencyConfig(next);
@@ -1179,17 +1630,7 @@ export default function AdminView({
                   </div>
                </div>
 
-        {/* N8n Logs Area */}
-               {isAdmin && (
-                 <div className="space-y-3 mt-8 pt-6 border-t border-gray-50 dark:border-gray-800 transition-colors">
-                    <h4 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2 transition-colors uppercase justify-center">
-                       <Activity size={12} /> Log de Interações n8n Recentes (Webhooks)
-                    </h4>
-                    <div className="bg-gray-900 dark:bg-black rounded-2xl p-4 font-mono text-[10px] h-40 overflow-y-auto border border-gray-800 dark:border-gray-900 shadow-inner transition-colors">
-                       <N8nLogs isAdmin={isAdmin} />
-                    </div>
-                 </div>
-               )}
+
             </div>
           )}
         </div>
@@ -1300,13 +1741,22 @@ export default function AdminView({
                 Gerar Senha Temporária
               </button>
             </div>
-            <input 
-              type="text" 
-              value={editUserData.password || ''}
-              onChange={e => setEditUserData({...editUserData, password: e.target.value})}
-              placeholder="Deixe em branco para manter a atual"
-              className="w-full px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all font-mono"
-            />
+            <div className="relative group">
+              <input 
+                type={showEditPassword ? "text" : "password"} 
+                value={editUserData.password || ''}
+                onChange={e => setEditUserData({...editUserData, password: e.target.value})}
+                placeholder="Deixe em branco para manter a atual"
+                className="w-full pl-4 pr-10 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 transition-all font-mono placeholder:font-sans"
+              />
+              <button
+                type="button"
+                onClick={() => setShowEditPassword(!showEditPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-indigo-500 transition-colors"
+              >
+                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
             {tempPassword && (
                 <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-medium italic">
                     Senha Gerada: <span className="font-bold underline">{tempPassword}</span>. Salve para aplicar.
@@ -1360,7 +1810,7 @@ export default function AdminView({
                </p>
                <input 
                  readOnly 
-                 value={generatedLink} 
+                 value={generatedLink || ''} 
                  className="w-full bg-white dark:bg-gray-800 border border-emerald-100 dark:border-emerald-500/20 px-3 py-2 rounded-lg text-[10px] font-mono text-emerald-700 dark:text-emerald-300 focus:outline-none"
                />
             </div>
@@ -1389,14 +1839,23 @@ export default function AdminView({
           </div>
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Senha Provisória</label>
-            <input 
-              type="text" 
-              required
-              value={inviteData.password || ''}
-              onChange={e => setInviteData({...inviteData, password: e.target.value})}
-              className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600"
-              placeholder="Ex: design123"
-            />
+            <div className="relative group">
+              <input 
+                type={showInvitePassword ? "text" : "password"} 
+                required
+                value={inviteData.password || ''}
+                onChange={e => setInviteData({...inviteData, password: e.target.value})}
+                className="w-full pl-4 pr-10 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600"
+                placeholder="Ex: design123"
+              />
+              <button
+                type="button"
+                onClick={() => setShowInvitePassword(!showInvitePassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-indigo-500 transition-colors"
+              >
+                {showInvitePassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Cargo / Permissão</label>

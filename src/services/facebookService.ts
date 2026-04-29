@@ -37,7 +37,7 @@ export const facebookService = {
     const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&redirect_uri=${redirectUri}&client_secret=${appSecret}&code=${code}`;
     
     const tokenRes = await fetch(tokenUrl);
-    const tokenData = await tokenRes.json();
+    const tokenData = await tokenRes.json() as any;
     
     if (tokenData.error) {
       throw new Error(tokenData.error.message);
@@ -56,7 +56,7 @@ export const facebookService = {
     // 3. Get User's Pages and their tokens
     const pagesUrl = `https://graph.facebook.com/v19.0/me/accounts?access_token=${userAccessToken}`;
     const pagesRes = await fetch(pagesUrl);
-    const pagesData = await pagesRes.json();
+    const pagesData = await pagesRes.json() as any;
     
     const pages = pagesData.data || [];
     const instagramAccounts = [];
@@ -65,7 +65,7 @@ export const facebookService = {
     for (const page of pages) {
       const igUrl = `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`;
       const igRes = await fetch(igUrl);
-      const igData = await igRes.json();
+      const igData = await igRes.json() as any;
       
       if (igData.instagram_business_account) {
         instagramAccounts.push({
@@ -156,7 +156,7 @@ export const facebookService = {
             access_token: igAcc.accessToken
           })
         });
-        const creationData = await creationRes.json();
+        const creationData = await creationRes.json() as any;
         
         if (creationData.id) {
           const publishUrl = `https://graph.facebook.com/v19.0/${igAcc.igAccountId}/media_publish`;

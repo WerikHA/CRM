@@ -228,6 +228,16 @@ export interface FinanceConfig {
   reminderTemplate: string;
 }
 
+export interface FormIntegration {
+  id: string;
+  name: string;
+  fields: string[];
+  successMessage: string;
+  redirectUrl?: string;
+  ownerId: string;
+  createdAt: string;
+}
+
 export interface Notification {
   id: string;
   userId: string;

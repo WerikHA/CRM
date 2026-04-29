@@ -529,7 +529,7 @@ export default function ClientsView({ clients, setClients, users, partners, curr
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Responsável Padrão</label>
                       <select 
-                        value={formData.demandConfig.defaultEditorId || ''}
+                        value={formData.demandConfig?.defaultEditorId || ''}
                         onChange={e => setFormData({
                           ...formData, 
                           demandConfig: { ...formData.demandConfig!, defaultEditorId: e.target.value }
