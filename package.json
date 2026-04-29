@@ -1,12 +1,12 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "2.8.92",
+  "version": "2.8.93",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "node server.ts",
-    "build": "vite build --outDir dist",
+    "start": "node dist/server.js",
+    "build": "vite build --outDir dist && npx esbuild server.ts --bundle --platform=node --outfile=dist/server.js --format=esm",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
