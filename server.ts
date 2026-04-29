@@ -191,9 +191,12 @@ async function startServer() {
               END IF;
 
               -- Add accepted_terms to users
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'accepted_terms') THEN
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'accepted_terms') THEN
                   RAISE NOTICE 'Adicionando accepted_terms em users...';
                   ALTER TABLE public.users ADD COLUMN accepted_terms BOOLEAN DEFAULT FALSE;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'accepted_terms') THEN
+                    RAISE EXCEPTION 'Falha ao adicionar coluna accepted_terms';
+                  END IF;
               END IF;
 
               -- 2. Check/Add rejection_audio_url to video_orders

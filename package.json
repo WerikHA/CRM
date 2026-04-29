@@ -1,11 +1,11 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "2.8.89",
+  "version": "2.8.90",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "node server.ts",
+    "start": "tsx server.ts",
     "build": "vite build --outDir dist",
     "preview": "vite preview",
     "clean": "rm -rf dist",
