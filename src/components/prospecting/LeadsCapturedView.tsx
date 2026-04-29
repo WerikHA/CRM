@@ -3,7 +3,7 @@ import { Search, Loader2, Plus, Instagram, MapPin, Globe } from 'lucide-react';
 import { ProspectLead } from '../../types';
 
 export default function LeadsCapturedView() {
-  const [source, setSource] = useState<'google' | 'instagram'>('google');
+  const [source, setSource] = useState<'google' | 'instagram' | 'google-maps-playwright'>('google');
   const [query, setQuery] = useState('');
   const [location, setLocation] = useState('');
   const [loading, setLoading] = useState(false);
@@ -13,10 +13,12 @@ export default function LeadsCapturedView() {
     if (!query) return;
     setLoading(true);
     try {
-      const response = await fetch('/api/prospecting/scrape', {
+      const endpoint = source === 'google-maps-playwright' ? '/api/prospecting/maps-playwright' : '/api/prospecting/scrape';
+      const body = source === 'google-maps-playwright' ? { query, location } : { source, query, location };
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, query, location }),
+        body: JSON.stringify(body),
       });
       
       const data = await response.json();
@@ -26,9 +28,10 @@ export default function LeadsCapturedView() {
       } else {
         throw new Error(data.error || 'Erro desconhecido');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro na extração técnica:', error);
-      alert('Erro ao extrair leads. Tente outro nicho ou localidade.');
+      const errorMessage = error instanceof Error ? error.message : typeof error === 'string' ? error : 'Erro ao extrair leads. Tente outro nicho ou localidade.';
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -44,7 +47,8 @@ export default function LeadsCapturedView() {
             onChange={(e) => setSource(e.target.value as any)}
             className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
           >
-            <option value="google" className="dark:bg-gray-900">Google Maps</option>
+            <option value="google" className="dark:bg-gray-900">Google Maps (Standard)</option>
+            <option value="google-maps-playwright" className="dark:bg-gray-900">Google Maps (Playwright)</option>
             <option value="instagram" className="dark:bg-gray-900">Instagram</option>
           </select>
         </div>

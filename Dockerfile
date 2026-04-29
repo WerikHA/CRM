@@ -38,6 +38,7 @@ RUN npm ci --omit=dev
 
 # Copy built frontend and server code
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/server.ts ./server.ts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/db ./db

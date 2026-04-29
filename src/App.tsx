@@ -67,7 +67,7 @@ import LandingPage from './components/LandingPage';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfUse from './components/TermsOfUse';
 
-type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'recordings' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'drive' | 'personalization';
+type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'recordings' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'drive' | 'personalization' | 'social_posts';
 
 import { api } from './services/api';
 import { VideoOrder, SupportTicket, DemandTask } from './types';
@@ -76,7 +76,7 @@ import ErrorNotifier from './components/ErrorNotifier';
 import { ToastContainer } from './components/ui/Toast';
 import toast from 'react-hot-toast';
 import CookieConsent from './components/CookieConsent';
-import MeetingView from './components/MeetingView';
+import JitsiMeeting from './components/JitsiMeeting';
 
 import { storageService } from './lib/storage';
 
@@ -230,40 +230,44 @@ export default function App() {
     const preferences = effectiveUser?.uiPreferences;
     const root = window.document.documentElement;
     
+    const container = document.getElementById('crm-app-container');
+    
     // Default to Agency values if no user preference
     const primaryColor = preferences?.primaryColor || agencyConfig.primaryColor;
     const borderRadius = preferences?.borderRadius || 'medium';
     const theme = preferences?.theme || 'system';
 
-    if (primaryColor) {
-      root.style.setProperty('--primary-color', primaryColor);
-    }
+    if (container) {
+      if (primaryColor) {
+        container.style.setProperty('--primary-color', primaryColor);
+      }
 
-    const radiusMap = {
-      none: '0px',
-      small: '4px',
-      medium: '12px',
-      large: '24px',
-      full: '9999px'
-    };
-    root.style.setProperty('--border-radius', radiusMap[borderRadius as keyof typeof radiusMap] || '12px');
+      const radiusMap = {
+        none: '0px',
+        small: '4px',
+        medium: '12px',
+        large: '24px',
+        full: '9999px'
+      };
+      container.style.setProperty('--border-radius', radiusMap[borderRadius as keyof typeof radiusMap] || '12px');
+
+      // Density handling
+      if (preferences?.density === 'compact') {
+        container.style.setProperty('--density-factor', '0.8');
+        container.classList.add('density-compact');
+        container.classList.remove('density-relaxed');
+      } else if (preferences?.density === 'relaxed') {
+        container.style.setProperty('--density-factor', '1.2');
+        container.classList.add('density-relaxed');
+        container.classList.remove('density-compact');
+      } else {
+        container.style.setProperty('--density-factor', '1');
+        container.classList.remove('density-compact', 'density-relaxed');
+      }
+    }
 
     if (theme !== 'system') {
       setIsDarkMode(theme === 'dark');
-    }
-
-    // Density handling
-    if (preferences?.density === 'compact') {
-      root.style.setProperty('--density-factor', '0.8');
-      root.classList.add('density-compact');
-      root.classList.remove('density-relaxed');
-    } else if (preferences?.density === 'relaxed') {
-      root.style.setProperty('--density-factor', '1.2');
-      root.classList.add('density-relaxed');
-      root.classList.remove('density-compact');
-    } else {
-      root.style.setProperty('--density-factor', '1');
-      root.classList.remove('density-compact', 'density-relaxed');
     }
   }, [effectiveUser?.uiPreferences, agencyConfig.primaryColor]);
 
@@ -399,10 +403,10 @@ export default function App() {
 
     fetchData();
 
-    // Auto-refresh data every 90 seconds to reduce load and stay within rate limits
+    // Auto-refresh data every 3 minutes to reduce load and stay within rate limits        
     const interval = setInterval(() => {
       fetchData(false);
-    }, 90000);
+    }, 180000);
 
     return () => clearInterval(interval);
   }, [isAuthenticated]);
@@ -533,7 +537,7 @@ export default function App() {
           users={users}
         />;
       case 'drive':
-        return <GoogleDriveManager currentUser={effectiveUser} />;
+        return <GoogleDriveManager />;
       case 'recordings':
         return <RecordingWorkflowView 
           tasks={demandTasks}
@@ -577,7 +581,7 @@ export default function App() {
 
   if (activeRoomId && !currentUser) {
     return (
-      <MeetingView 
+      <JitsiMeeting 
         roomId={activeRoomId} 
         currentUser={null} 
         onExit={() => {
@@ -645,7 +649,7 @@ export default function App() {
               window.history.pushState({}, '', '/terms');
             }}
             agencyName={agencyConfig.name}
-            primaryColor={agencyConfig.primaryColor}
+            primaryColor="#4f46e5"
           />
           <CookieConsent />
         </>
@@ -670,7 +674,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-300 overflow-hidden relative">
+    <div id="crm-app-container" className="flex h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-300 overflow-hidden relative">
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
@@ -948,7 +952,7 @@ export default function App() {
       )}
 
       {activeRoomId && (
-        <MeetingView 
+        <JitsiMeeting 
           roomId={activeRoomId} 
           currentUser={currentUser} 
           onExit={() => {

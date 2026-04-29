@@ -36,7 +36,8 @@ async function request(endpoint: string, method: string, data?: any) {
   const token = storageService.getItem('agency_token');
   
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
   };
   
   if (token) {

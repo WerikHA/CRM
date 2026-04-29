@@ -13,8 +13,10 @@ import { rateLimit } from "express-rate-limit";
 import cors from "cors";
 import xss from "xss";
 import { Pool } from "pg";
+import { ocrService } from "./src/services/ocrService.ts";
 import { whatsappService } from "./src/services/whatsappService.ts";
 import { scraperService } from "./src/services/prospecting/scraper.service.ts";
+import { playwrightMapsScraper } from "./src/services/prospecting/playwrightMapsScraper.service.ts";
 import { startBackupScheduler } from "./src/services/backupService.ts";
 import { startPaymentReminderScheduler, getFinanceConfig, updateFinanceConfig } from "./src/services/paymentReminderService.ts";
 import { supabase, isUsingServiceRole } from "./src/lib/supabaseClient.ts";
@@ -474,6 +476,20 @@ async function startServer() {
     res.json({ success: true, filename: req.file.filename, originalName: req.file.originalname, url: `/api/files/${req.file.filename}` });
   });
 
+  app.post("/api/ocr/process-receipt", upload.single('file'), async (req, res) => {
+      if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+      try {
+          const text = await ocrService.processReceipt(req.file.path);
+          const context = getContext(req as AuthRequest);
+          if (!context) return res.status(401).json({ error: "Contexto de usuário não encontrado" });
+
+          const result = await ocrService.identifyClientAndMarkAsPaid(text, context);
+          res.json({ success: true, text, ...result });
+      } catch (err: any) {
+          res.status(500).json({ error: err.message });
+      }
+  });
+
   app.get("/api/files/:filename", (req, res) => {
     const filename = req.params.filename;
     if (!/^[a-zA-Z0-9.\-_]+$/.test(filename)) return res.status(400).json({ error: "Nome inválido" });
@@ -504,6 +520,7 @@ async function startServer() {
   
   const supabaseCrud = (pathName: string, tableName: string) => {
     app.get(`/api/${pathName}`, async (req, res) => {
+      console.log(`[DEBUG] Received request for /api/${pathName}`);
       const context = getContext(req);
       const cacheKey = `${tableName}-${context?.userId || 'GUEST'}-${JSON.stringify(req.query)}`;
       const cached = getCache.get(cacheKey);
@@ -514,10 +531,14 @@ async function startServer() {
 
       try { 
         const result = await dbService.list(tableName, context);
+        console.log(`[DEBUG] Result of dbService.list for ${tableName}:`, result);
         getCache.set(cacheKey, { data: result, timestamp: Date.now() });
         res.json(result); 
       }
-      catch (error: any) { res.status(500).json({ error: error.message }); }
+      catch (error: any) { 
+        console.error(`[ERROR] dbService.list for ${tableName} failed:`, error);
+        res.status(500).json({ error: error.message }); 
+      }
     });
     app.get(`/api/${pathName}/:id`, async (req, res) => {
       const context = getContext(req);
@@ -599,21 +620,30 @@ async function startServer() {
         }
       };
 
+      const [
+        leads, clients, receivables, artOrders, partners, 
+        usersRaw, partnerRequests, tickets, videoOrders, demandTasks, notifications
+      ] = await Promise.all([
+        safeList('leads'),
+        safeList('clients'),
+        safeList('receivables'),
+        safeList('art_orders'),
+        safeList('partners'),
+        safeList('users'),
+        safeList('partner_requests'),
+        safeList('support_tickets'),
+        safeList('video_orders'),
+        safeList('demand_tasks'),
+        safeList('notifications')
+      ]);
+
       const results = {
-        leads: await safeList('leads'),
-        clients: await safeList('clients'),
-        receivables: await safeList('receivables'),
-        artOrders: await safeList('art_orders'),
-        partners: await safeList('partners'),
-        users: (await safeList('users'))?.map((u: any) => {
+        leads, clients, receivables, artOrders, partners,
+        users: usersRaw?.map((u: any) => {
           const { password, ...safeUser } = u;
           return safeUser;
         }),
-        partnerRequests: await safeList('partner_requests'),
-        tickets: await safeList('support_tickets'),
-        videoOrders: await safeList('video_orders'),
-        demandTasks: await safeList('demand_tasks'),
-        notifications: await safeList('notifications')
+        partnerRequests, tickets, videoOrders, demandTasks, notifications
       };
 
       res.json(results);
@@ -818,6 +848,14 @@ async function startServer() {
     const { source, query, location } = req.body;
     try { 
       let leads = source === 'google' ? await scraperService.scrapeGoogleMaps(query, location) : await scraperService.scrapeInstagram(query);
+      res.json({ success: true, leads });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/prospecting/maps-playwright", async (req, res) => {
+    const { query, location } = req.body;
+    try { 
+      let leads = await playwrightMapsScraper.scrapeGoogleMaps(query, location);
       res.json({ success: true, leads });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1062,7 +1100,7 @@ async function startServer() {
   const crudPaths = [
     ["users", "users"], ["leads", "leads"], ["clients", "clients"], 
     ["receivables", "receivables"], ["video-orders", "video_orders"], 
-    ["demand-tasks", "demand_tasks"], ["user-notifications", "notifications"], 
+    ["demand-tasks", "demand_tasks"], 
     ["partners", "partners"], ["partner-requests", "partner_requests"], 
     ["support-tickets", "support_tickets"], ["art-orders", "art_orders"],
     ["prospecting/lists", "prospecting_lists"], ["prospecting/leads", "prospecting_leads"], 
@@ -1122,6 +1160,8 @@ async function startServer() {
     }
     supabaseCrud(p, t);
   });
+
+  supabaseCrud("user-notifications", "notifications");
 
   app.post("/api/admin/sql", async (req, res) => {
     try {

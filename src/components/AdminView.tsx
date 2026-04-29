@@ -710,7 +710,7 @@ SELECT * FROM users LIMIT 5;"
 }
 
 function WhatsAppConfig({ ownerId, isAdmin, currentUserId }: { ownerId: string, isAdmin: boolean, currentUserId: string }) {
-  const [status, setStatus] = useState<'disconnected' | 'qr' | 'connected'>('disconnected');
+  const [status, setStatus] = useState<'disconnected' | 'qr' | 'connected' | 'connecting'>('disconnected');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [errorInfo, setErrorInfo] = useState<{ message: string, action: string } | null>(null);
   const [loading, setLoading] = useState(true);

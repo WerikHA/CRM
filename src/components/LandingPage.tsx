@@ -28,6 +28,10 @@ interface LandingPageProps {
 
 export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, agencyName, primaryColor }: LandingPageProps) {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  
+  React.useEffect(() => {
+    console.log("LandingPage primaryColor:", primaryColor);
+  }, [primaryColor]);
 
   const features = [
     {
@@ -111,7 +115,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             <button 
               onClick={onSignup}
               className="px-8 py-3 rounded-full text-xs font-bold uppercase tracking-widest text-white shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all"
-              style={{ backgroundColor: primaryColor }}
+              style={{ backgroundColor: primaryColor || '#4f46e5' }}
             >
               Começar Agora
             </button>
@@ -163,7 +167,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
               <button 
                 onClick={onSignup}
                 className="w-full sm:w-auto px-10 py-5 rounded-full text-sm font-bold text-white shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-3 uppercase tracking-widest"
-                style={{ backgroundColor: primaryColor }}
+                style={{ backgroundColor: primaryColor || '#4f46e5' }}
               >
                 Ativar Minha Agência
                 <ArrowRight size={18} />
@@ -435,7 +439,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
       <section className="py-32 px-4 sm:px-6">
         <div 
           className="max-w-7xl mx-auto rounded-[4rem] p-12 sm:p-24 text-center text-white relative overflow-hidden shadow-[0_50px_100px_rgba(79,70,229,0.2)]"
-          style={{ backgroundColor: primaryColor }}
+          style={{ backgroundColor: primaryColor || '#4f46e5' }}
         >
           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-indigo-500 to-blue-600 -z-10 opacity-50" />
           <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/20 blur-[100px] rounded-full" />

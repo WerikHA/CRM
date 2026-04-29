@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarClock, Plus, Calendar as CalendarIcon, Clock, Image as ImageIcon, Send, Instagram, Facebook, Check, AlertCircle, Trash2, Edit2, Info, Link as LinkIcon, Unlink } from 'lucide-react';
+import { CalendarClock, Plus, Calendar as CalendarIcon, Clock, Image as ImageIcon, Send, Instagram, Facebook, Check, AlertCircle, Trash2, Edit2, Info, Link as LinkIcon, List, Calendar as CalendarViewIcon } from 'lucide-react';
 import { Client } from '../types';
 import { api } from '../services/api';
+import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
+import { format, parse, startOfWeek, getDay } from 'date-fns';
+import { enUS } from 'date-fns/locale';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  locales: { 'en-US': enUS },
+});
 
 interface SocialPost {
   id: string;
@@ -27,6 +39,7 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showAccountsModal, setShowAccountsModal] = useState(false);
+  const [view, setView] = useState<'list' | 'calendar'>('list');
   const [formData, setFormData] = useState<Partial<SocialPost>>({
     networks: [],
     status: 'scheduled'
@@ -229,6 +242,20 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
               Conectar Redes
             </button>
           )}
+          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 mr-3">
+            <button
+              onClick={() => setView('list')}
+              className={`p-2 rounded ${view === 'list' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-indigo-400' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+            >
+              <List className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setView('calendar')}
+              className={`p-2 rounded ${view === 'calendar' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-indigo-400' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+            >
+              <CalendarViewIcon className="w-5 h-5" />
+            </button>
+          </div>
           <button
             onClick={() => {
               setFormData({ networks: [], status: 'scheduled' });
@@ -259,7 +286,7 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Nenhum post agendado</h3>
               <p className="text-gray-500 dark:text-gray-400">Comece criando sua primeira publicação.</p>
             </div>
-          ) : (
+          ) : view === 'list' ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -328,6 +355,20 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
                   ))}
                 </tbody>
               </table>
+            </div>
+          ) : (
+            <div className="h-[600px] bg-white dark:bg-gray-800 p-4 rounded-xl">
+              <Calendar
+                localizer={localizer}
+                events={posts.map(p => ({
+                  id: p.id,
+                  title: p.content,
+                  start: new Date(`${p.scheduledDate}T${p.scheduledTime}`),
+                  end: new Date(`${p.scheduledDate}T${p.scheduledTime}`),
+                }))}
+                startAccessor="start"
+                endAccessor="end"
+              />
             </div>
           )}
         </div>
