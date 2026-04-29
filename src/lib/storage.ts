@@ -23,5 +23,10 @@ export const storageService = {
   removeItem: (key: string) => {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(key);
+  },
+
+  clear: () => {
+    if (typeof window === 'undefined') return;
+    localStorage.clear();
   }
 };

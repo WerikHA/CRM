@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 SELECT add_column_if_not_exists('users', 'avatar', 'TEXT');
 SELECT add_column_if_not_exists('users', 'owner_id', 'UUID');
+SELECT add_column_if_not_exists('users', 'ui_preferences', 'JSONB DEFAULT ''{}''::jsonb');
 
 -- PARTNERS
 CREATE TABLE IF NOT EXISTS public.partners (
@@ -75,9 +76,25 @@ SELECT add_column_if_not_exists('art_orders', 'owner_id', 'UUID');
 
 CREATE TABLE IF NOT EXISTS public.video_orders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title TEXT NOT NULL, client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE, editor_id UUID REFERENCES public.users(id), status TEXT DEFAULT 'queue', owner_id UUID REFERENCES public.users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
 SELECT add_column_if_not_exists('video_orders', 'owner_id', 'UUID');
+SELECT add_column_if_not_exists('video_orders', 'demand_id', 'UUID');
+SELECT add_column_if_not_exists('video_orders', 'observations', 'TEXT');
+SELECT add_column_if_not_exists('video_orders', 'post_date', 'TEXT');
+SELECT add_column_if_not_exists('video_orders', 'materials_link', 'TEXT');
+SELECT add_column_if_not_exists('video_orders', 'deadline', 'TEXT');
+SELECT add_column_if_not_exists('video_orders', 'priority', 'TEXT DEFAULT ''medium''');
+SELECT add_column_if_not_exists('video_orders', 'progress', 'INTEGER DEFAULT 0');
 
 CREATE TABLE IF NOT EXISTS public.demand_tasks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE, type TEXT DEFAULT 'art', title TEXT, status TEXT DEFAULT 'todo', owner_id UUID REFERENCES public.users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
 SELECT add_column_if_not_exists('demand_tasks', 'owner_id', 'UUID');
+SELECT add_column_if_not_exists('demand_tasks', 'observations', 'TEXT');
+SELECT add_column_if_not_exists('demand_tasks', 'materials_link', 'TEXT');
+SELECT add_column_if_not_exists('demand_tasks', 'post_date', 'TEXT');
+SELECT add_column_if_not_exists('demand_tasks', 'post_time', 'TEXT');
+SELECT add_column_if_not_exists('demand_tasks', 'quantity', 'INTEGER DEFAULT 1');
+SELECT add_column_if_not_exists('demand_tasks', 'editor_id', 'UUID REFERENCES public.users(id)');
+SELECT add_column_if_not_exists('demand_tasks', 'period_start', 'TEXT');
+SELECT add_column_if_not_exists('demand_tasks', 'period_end', 'TEXT');
+SELECT add_column_if_not_exists('demand_tasks', 'attachments', 'JSONB DEFAULT ''[]''::jsonb');
 
 CREATE TABLE IF NOT EXISTS public.notifications (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES public.users(id), title TEXT, message TEXT, read BOOLEAN DEFAULT false, owner_id UUID REFERENCES public.users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
 SELECT add_column_if_not_exists('notifications', 'owner_id', 'UUID');
@@ -86,6 +103,8 @@ CREATE TABLE IF NOT EXISTS public.partner_requests (id UUID PRIMARY KEY DEFAULT 
 SELECT add_column_if_not_exists('partner_requests', 'owner_id', 'UUID');
 
 CREATE TABLE IF NOT EXISTS public.support_tickets (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), client_id UUID REFERENCES public.clients(id), subject TEXT, priority TEXT DEFAULT 'normal', status TEXT DEFAULT 'open', owner_id UUID REFERENCES public.users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
+SELECT add_column_if_not_exists('support_tickets', 'partner_id', 'UUID REFERENCES public.partners(id)');
+SELECT add_column_if_not_exists('support_tickets', 'response', 'TEXT');
 SELECT add_column_if_not_exists('support_tickets', 'owner_id', 'UUID');
 SELECT add_column_if_not_exists('partner_requests', 'description', 'TEXT');
 SELECT add_column_if_not_exists('support_tickets', 'description', 'TEXT');

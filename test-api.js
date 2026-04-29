@@ -1,6 +1,14 @@
-const http = require('https');
-http.get('https://localhost:3000/api/health/supabase', (res) => {
-  let data = '';
-  res.on('data', chunk => data += chunk);
-  res.on('end', () => console.log(data));
-});
+
+const fetch = require('node-fetch');
+
+async function test() {
+  const res = await fetch('http://localhost:3000/api/health');
+  console.log('Health:', await res.json());
+  
+  // This will fail because no auth
+  const resSync = await fetch('http://localhost:3000/api/sync');
+  console.log('Sync content type:', resSync.headers.get('content-type'));
+  console.log('Sync status:', resSync.status);
+}
+
+test();

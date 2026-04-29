@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS public.users (
     role TEXT NOT NULL DEFAULT 'DESIGNER',
     avatar TEXT,
     owner_id UUID,
+    ui_preferences JSONB DEFAULT '{}'::jsonb,
+    accepted_terms BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -174,7 +176,18 @@ CREATE TABLE IF NOT EXISTS public.message_history (
     owner_id UUID REFERENCES public.users(id)
 );
 
--- 5.1 Tabela de Auditoria (Opção 5)
+CREATE TABLE IF NOT EXISTS public.support_tickets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID REFERENCES public.clients(id) ON DELETE CASCADE,
+    partner_id UUID REFERENCES public.partners(id) ON DELETE CASCADE,
+    subject TEXT,
+    description TEXT,
+    response TEXT,
+    priority TEXT DEFAULT 'normal',
+    status TEXT DEFAULT 'open',
+    owner_id UUID REFERENCES public.users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS public.activity_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES public.users(id),

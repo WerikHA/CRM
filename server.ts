@@ -7,6 +7,11 @@ import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import cron from "node-cron";
+import bcrypt from "bcrypt";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
+import cors from "cors";
+import xss from "xss";
 import { Pool } from "pg";
 import { whatsappService } from "./src/services/whatsappService.ts";
 import { scraperService } from "./src/services/prospecting/scraper.service.ts";
@@ -47,12 +52,76 @@ async function startServer() {
   const PORT = process.env.PORT || 3000;
 
   console.log("[STARTUP] Iniciando servidor Express...");
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      // Silence noisy source file requests in dev mode if they are successful
+      const isSourceFile = req.url.startsWith('/src/') || req.url.includes('.tsx') || req.url.includes('.ts') || req.url.includes('.css');
+      if (isSourceFile && res.statusCode < 400 && process.env.NODE_ENV !== "production") {
+        return;
+      }
+
+      const duration = Date.now() - start;
+      const referer = req.headers.referer ? ` [Ref: ${req.headers.referer}]` : '';
+      console.log(`[REQUEST] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)${referer}`);
+    });
+    next();
+  });
   console.log("[DEBUG] SUPABASE_URL exists:", !!process.env.SUPABASE_URL);
   console.log("[DEBUG] SUPABASE_SERVICE_ROLE_KEY exists:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   app.use(compression());
-  app.set('trust proxy', true);
+  app.set('trust proxy', 1);
   
+  // CORS configurado para ser mais restrito
+  app.use(cors({
+    origin: process.env.APP_URL || "*", // Em produção, mude para o domínio real
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  }));
+
+  // Helmet para cabeçalhos de segurança robustos
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }));
+
+  // Sanitização XSS básica para o body das requisições
+  app.use((req, res, next) => {
+    if (req.body && typeof req.body === 'object') {
+      const sensitiveFields = ['password', 'accessToken', 'tokens', 'config_value', 'videoUrl', 'mediaBase64'];
+      const sanitize = (obj: any) => {
+        Object.keys(obj).forEach(key => {
+          if (sensitiveFields.includes(key)) return;
+          if (typeof obj[key] === 'string') obj[key] = xss(obj[key]);
+          else if (typeof obj[key] === 'object' && obj[key] !== null) sanitize(obj[key]);
+        });
+      };
+      sanitize(req.body);
+    }
+    next();
+  });
+
+  // Rate Limiting global
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, 
+    limit: 2000, 
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: "Muitas requisições, por favor tente novamente mais tarde." }
+  });
+  app.use("/api", limiter);
+
+  // Rate Limiting específico para rotas sensíveis
+  const authLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 30,
+    message: { error: "Muitas tentativas de login. Tente novamente em uma hora." }
+  });
+  app.use("/api/login", authLimiter);
+  app.use("/api/signup", authLimiter);
+  app.use("/api/forgot-password", authLimiter);
+
   // Redirecionar para HTTPS em produção
   if (process.env.NODE_ENV === "production" || process.env.FORCE_HTTPS === "true") {
     app.use((req, res, next) => {
@@ -75,8 +144,8 @@ async function startServer() {
     });
   }
 
-  app.use(express.json({ limit: "5000mb" }));
-  app.use(express.urlencoded({ limit: "5000mb", extended: true }));
+  app.use(express.json({ limit: "100mb" }));
+  app.use(express.urlencoded({ limit: "100mb", extended: true }));
   
   // Debug middleware for API
   app.use("/api", (req, res, next) => {
@@ -86,7 +155,13 @@ async function startServer() {
 
   // Global Process Error Handlers
   process.on('unhandledRejection', (reason, promise) => {
-    console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('[CRITICAL] Unhandled Rejection at:', promise);
+    if (reason instanceof Error) {
+      console.error('[CRITICAL] Reason:', reason.message);
+      console.error('[CRITICAL] Stack:', reason.stack);
+    } else {
+      console.error('[CRITICAL] Reason:', reason);
+    }
   });
   process.on('uncaughtException', (err) => {
     console.error('[CRITICAL] Uncaught Exception:', err);
@@ -100,6 +175,137 @@ async function startServer() {
   const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL }) : null;
   if (pool) {
     console.log("[STARTUP] Conexão SQL Direta (PG Pool) configurada.");
+    
+    // Auto-migration for missing columns (Run in background to avoid blocking server boot)
+    (async () => {
+      try {
+        console.log("[STARTUP] Verificando schema do banco de dados...");
+        
+        const migrationPromise = pool.query(`
+          DO $$ 
+          BEGIN
+              -- 1. Check/Add ui_preferences to users
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'ui_preferences') THEN
+                  RAISE NOTICE 'Adicionando ui_preferences em users...';
+                  ALTER TABLE public.users ADD COLUMN ui_preferences JSONB DEFAULT '{}'::jsonb;
+              END IF;
+
+              -- Add accepted_terms to users
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'accepted_terms') THEN
+                  RAISE NOTICE 'Adicionando accepted_terms em users...';
+                  ALTER TABLE public.users ADD COLUMN accepted_terms BOOLEAN DEFAULT FALSE;
+              END IF;
+
+              -- 2. Check/Add rejection_audio_url to video_orders
+              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'video_orders') THEN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'video_orders' AND column_name = 'rejection_audio_url') THEN
+                      RAISE NOTICE 'Adicionando rejection_audio_url em video_orders...';
+                      ALTER TABLE public.video_orders ADD COLUMN rejection_audio_url TEXT;
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'video_orders' AND column_name = 'demand_id') THEN
+                      RAISE NOTICE 'Adicionando demand_id em video_orders...';
+                      ALTER TABLE public.video_orders ADD COLUMN demand_id UUID;
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'video_orders' AND column_name = 'rejection_notes') THEN
+                      RAISE NOTICE 'Adicionando rejection_notes em video_orders...';
+                      ALTER TABLE public.video_orders ADD COLUMN rejection_notes TEXT;
+                  END IF;
+              END IF;
+
+              -- 3. Check/Create support_tickets
+              IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'support_tickets') THEN
+                  RAISE NOTICE 'Criando tabela support_tickets...';
+                  CREATE TABLE public.support_tickets (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    client_id UUID REFERENCES public.clients(id) ON DELETE CASCADE,
+                    partner_id UUID REFERENCES public.partners(id) ON DELETE CASCADE,
+                    subject TEXT,
+                    description TEXT,
+                    response TEXT,
+                    priority TEXT DEFAULT 'normal',
+                    status TEXT DEFAULT 'open',
+                    owner_id UUID REFERENCES public.users(id),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                  );
+              ELSE
+                  -- Ensure columns exist in support_tickets
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'support_tickets' AND column_name = 'partner_id') THEN
+                      ALTER TABLE public.support_tickets ADD COLUMN partner_id UUID REFERENCES public.partners(id) ON DELETE CASCADE;
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'support_tickets' AND column_name = 'description') THEN
+                      ALTER TABLE public.support_tickets ADD COLUMN description TEXT;
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'support_tickets' AND column_name = 'response') THEN
+                      ALTER TABLE public.support_tickets ADD COLUMN response TEXT;
+                  END IF;
+              END IF;
+
+              -- 3. Check/Add is_read to notifications and fix column name
+              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notifications') THEN
+                  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'read') THEN
+                      RAISE NOTICE 'Renomeando read para is_read em notifications...';
+                      ALTER TABLE public.notifications RENAME COLUMN read TO is_read;
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'is_read') THEN
+                      ALTER TABLE public.notifications ADD COLUMN is_read BOOLEAN DEFAULT false;
+                  END IF;
+              END IF;
+
+              -- 4. Check/Create system_configs
+              IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'system_configs') THEN
+                  RAISE NOTICE 'Criando tabela system_configs...';
+                  CREATE TABLE public.system_configs (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    owner_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+                    config_key TEXT NOT NULL,
+                    config_value JSONB,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(owner_id, config_key)
+                  );
+              END IF;
+
+              -- 5. Reload PostgREST schema cache (Try multiple common notify signals)
+              NOTIFY pgrst, 'reload schema';
+              NOTIFY pgrst, 'reload config';
+              NOTIFY db_events, 'reload_schema';
+          END $$;
+        `);
+
+        await Promise.race([
+          migrationPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Database migration timeout")), 15000))
+        ]).catch(err => console.warn("[STARTUP] Alerta Mãos-à-obra: Migração demorando mais que o esperado ou falhou:", err.message));
+        
+        console.log("[STARTUP] Hotpatch de schema concluída.");
+
+        // Migration: Hash existing plain-text passwords
+        try {
+          console.log("[STARTUP] Verificando usuários com senhas em texto plano...");
+          const { data: users, error } = await supabase.from('users').select('id, password');
+          if (error) throw error;
+
+          if (users && users.length > 0) {
+            let updatedCount = 0;
+            for (const user of users) {
+              const pwd = user.password;
+              const isHashed = typeof pwd === 'string' && /^\$2[aby]\$\d+\$/.test(pwd.substring(0, 10));
+
+              if (!isHashed && pwd) {
+                const saltRounds = 10;
+                const hashedPassword = await bcrypt.hash(pwd, saltRounds);
+                await supabase.from('users').update({ password: hashedPassword }).eq('id', user.id);
+                updatedCount++;
+              }
+            }
+            if (updatedCount > 0) console.log(`[MIGRATION] ${updatedCount} senhas foram criptografadas.`);
+          }
+        } catch (migrationErr: any) {
+          console.error("[STARTUP] Erro na migração de senhas:", migrationErr.message);
+        }
+      } catch (err) {
+        console.error("[STARTUP] Falha não fatal no hotpatch:", err);
+      }
+    })();
   } else {
     console.warn("[STARTUP] DATABASE_URL não encontrada. SQL Editor não funcionará.");
   }
@@ -333,7 +539,13 @@ async function startServer() {
         for (const key of getCache.keys()) {
           if (key.startsWith(tableName)) getCache.delete(key);
         }
-        res.json(await dbService.insert(tableName, req.body, context)); 
+        
+        const data = { ...req.body };
+        if (tableName === 'users' && data.password) {
+          data.password = await bcrypt.hash(data.password, 10);
+        }
+        
+        res.json(await dbService.insert(tableName, data, context)); 
       }
       catch (error: any) { res.status(500).json({ error: error.message }); }
     });
@@ -343,7 +555,13 @@ async function startServer() {
         for (const key of getCache.keys()) {
           if (key.startsWith(tableName)) getCache.delete(key);
         }
-        res.json(await dbService.update(tableName, req.params.id, req.body, getContext(req))); 
+        
+        const data = { ...req.body };
+        if (tableName === 'users' && data.password) {
+          data.password = await bcrypt.hash(data.password, 10);
+        }
+        
+        res.json(await dbService.update(tableName, req.params.id, data, getContext(req))); 
       }
       catch (error: any) { res.status(500).json({ error: error.message }); }
     });
@@ -361,9 +579,13 @@ async function startServer() {
 
   // --- Combined Sync Endpoint ---
   app.get("/api/sync", async (req: AuthRequest, res) => {
+    console.log(`[SYNC] Request received from user: ${req.user?.id || 'GUEST'}`);
     try {
       const context = getContext(req);
-      if (!context) return res.status(401).json({ error: "Não autorizado" });
+      if (!context) {
+        console.warn("[SYNC] No context found for request");
+        return res.status(401).json({ error: "Não autorizado" });
+      }
 
       const safeList = async (table: string) => {
         try {
@@ -394,7 +616,10 @@ async function startServer() {
         receivables: results[2],
         artOrders: results[3],
         partners: results[4],
-        users: results[5],
+        users: results[5]?.map((u: any) => {
+          const { password, ...safeUser } = u;
+          return safeUser;
+        }),
         partnerRequests: results[6],
         tickets: results[7],
         videoOrders: results[8],
@@ -494,19 +719,55 @@ async function startServer() {
     try {
       const { data: userRaw, error } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
       if (error) throw error;
-      if (!userRaw || keysToCamel(userRaw).password !== password) return res.status(401).json({ error: "Credenciais inválidas" });
-      const data = keysToCamel(userRaw);
-      const token = jwt.sign({ id: data.id, role: data.role, ownerId: data.ownerId || data.id }, JWT_SECRET, { expiresIn: '7d' });
-      const { password: _, ...userSafe } = data;
+      if (!userRaw) return res.status(401).json({ error: "Credenciais inválidas" });
+      
+      const user = keysToCamel(userRaw);
+      let isMatch = false;
+      
+      // Verifica se a senha armazenada parece um hash bcrypt ($2a$..., $2b$..., $2y$...)
+      const isStoredHashed = typeof user.password === 'string' && /^\$2[aby]\$\d+\$/.test(user.password.substring(0, 10));
+
+      if (isStoredHashed) {
+        // Se já é hash, usamos obrigatoriamente o bcrypt
+        try {
+          isMatch = await bcrypt.compare(password, user.password);
+        } catch (e) {
+          isMatch = false;
+        }
+      } else {
+        // Se ainda for texto puro (usuário antigo), comparamos e migramos na hora
+        if (password === user.password) {
+          isMatch = true;
+          console.info(`[AUTH] Migrando senha em texto puro para hash: ${user.email}`);
+          const saltRounds = 10;
+          const hashedPassword = await bcrypt.hash(password, saltRounds);
+          await supabase.from('users').update({ password: hashedPassword }).eq('id', user.id);
+        }
+      }
+      
+      if (!isMatch) return res.status(401).json({ error: "Credenciais inválidas" });
+      
+      const token = jwt.sign({ id: user.id, role: user.role, ownerId: user.ownerId || user.id }, JWT_SECRET, { expiresIn: '7d' });
+      const { password: _, ...userSafe } = user;
       res.json({ success: true, user: userSafe, token });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   app.post("/api/signup", async (req, res) => {
-    let { name, email, password } = req.body;
+    let { name, email, password, acceptedTerms } = req.body;
     email = email.trim().toLowerCase();
     try {
-      const { data: userRaw, error: insertError } = await supabase.from('users').insert(keysToSnake({ name, email, password, role: 'OWNER' })).select().single();
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+      
+      const { data: userRaw, error: insertError } = await supabase.from('users').insert(keysToSnake({ 
+        name, 
+        email, 
+        password: hashedPassword, 
+        role: 'OWNER',
+        acceptedTerms
+      })).select().single();
+      
       if (insertError) throw insertError;
       const user = keysToCamel(userRaw);
       await supabase.from('users').update({ owner_id: user.id }).eq('id', user.id);
@@ -521,8 +782,12 @@ async function startServer() {
     try {
       const { data: userFound, error } = await supabase.from('users').select('*').eq('email', email.trim().toLowerCase()).single();
       if (error || !userFound) return res.status(404).json({ error: "E-mail não encontrado" });
+      
       const tempPassword = Math.random().toString(36).substr(2, 8);
-      await dbService.update('users', userFound.id, { password: tempPassword });
+      const saltRounds = 10;
+      const hashedTempPassword = await bcrypt.hash(tempPassword, saltRounds);
+      
+      await dbService.update('users', userFound.id, { password: hashedTempPassword });
       await sendEmail(userFound.owner_id || userFound.id, email, "Nova senha", `Sua nova senha: ${tempPassword}`);
       res.json({ success: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -739,6 +1004,27 @@ async function startServer() {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  app.post("/api/facebook/disconnect-all", async (req: AuthRequest, res) => {
+    const ownerId = req.user?.ownerId || req.user?.id;
+    if (!ownerId) return res.status(401).json({ error: "Não autorizado" });
+    try {
+      await facebookService.disconnectAll(ownerId);
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.delete("/api/auth/account", async (req: AuthRequest, res) => {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Não autorizado" });
+    try {
+      // Se for OWNER, deletamos a agência toda? O usuário pediu deletar a conta.
+      // Vou focar em deletar o usuário. O ON DELETE CASCADE deve fazer o resto se o schema estiver correto.
+      const { error } = await supabase.from('users').delete().eq('id', userId);
+      if (error) throw error;
+      res.json({ success: true, message: "Conta excluída com sucesso." });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   app.get("/api/google/files", async (req: AuthRequest, res) => {
     try {
       const folderId = (req.query.folderId as string) || 'root';
@@ -785,7 +1071,7 @@ async function startServer() {
   const crudPaths = [
     ["users", "users"], ["leads", "leads"], ["clients", "clients"], 
     ["receivables", "receivables"], ["video-orders", "video_orders"], 
-    ["demand-tasks", "demand_tasks"], ["notifications", "notifications"], 
+    ["demand-tasks", "demand_tasks"], ["user-notifications", "notifications"], 
     ["partners", "partners"], ["partner-requests", "partner_requests"], 
     ["support-tickets", "support_tickets"], ["art-orders", "art_orders"],
     ["prospecting/lists", "prospecting_lists"], ["prospecting/leads", "prospecting_leads"], 
@@ -960,28 +1246,62 @@ async function startServer() {
   );
 
   setInterval(() => {
-    console.log("[CHAT] Limpeza programada...");
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    console.log("[CHAT] Limpeza programada (24h)...");
+    const oneDayAgo = new Date();
+    oneDayAgo.setHours(oneDayAgo.getHours() - 24);
     const chats = readChats();
-    const filtered = chats.filter((c: any) => c.chatType !== 'team' || new Date(c.createdAt) > thirtyDaysAgo);
+    const filtered = chats.filter((c: any) => c.chatType !== 'team' || new Date(c.createdAt) > oneDayAgo);
     writeChats(filtered);
-  }, 1000 * 60 * 60 * 24);
+  }, 1000 * 60 * 60); // Limpeza a cada hora
 
   // --- VITE / STATIC ---
   if (process.env.NODE_ENV !== "production") {
+    console.log("[STARTUP] Modo Desenvolvimento: Ativando Vite Middleware...");
     const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+    const vite = await createViteServer({ 
+      server: { middlewareMode: true }, 
+      appType: "spa" 
+    });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+    console.log(`[STARTUP] Modo Produção: Servindo arquivos de ${distPath}`);
     if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
-      app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+      app.use(express.static(distPath, {
+        maxAge: '1d',
+        index: false // We'll handle index with the catch-all to avoid confusion
+      }));
+      
+      app.get("*", (req, res, next) => {
+        // Se for uma rota de API, deixa passar para o handler de 404 de API
+        if (req.path.startsWith('/api')) return next();
+        
+        // Se for um pedido de arquivo (com extensão) que não foi encontrado pelo express.static
+        // não devemos servir o index.html, mas sim um 404 real.
+        if (req.path.includes('.') && !req.path.endsWith('.html')) {
+          return res.status(404).end();
+        }
+
+        const indexPath = path.join(distPath, "index.html");
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).send("Aplicação não encontrada (Build faltando).");
+        }
+      });
+    } else {
+      console.error("[CRITICAL] Diretório 'dist' não encontrado em modo produção!");
+      app.get("*", (req, res) => {
+        if (req.path.startsWith('/api')) return res.status(404).json({ error: "API não encontrada" });
+        res.status(500).send("Erro de Configuração: Build de produção não encontrado.");
+      });
     }
   }
 
   httpServer.listen(Number(PORT), "0.0.0.0", () => console.log(`🚀 Server on ${PORT}`));
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("[FATAL ERROR] Server failed to start:", err);
+  process.exit(1);
+});

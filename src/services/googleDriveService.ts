@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import fs from 'fs';
 import { supabase } from '../lib/supabaseClient.ts';
+import { encryptObject, decryptObject } from '../lib/encryption.ts';
 
 // These should be set in environment variables
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -48,7 +49,7 @@ export const googleDriveService = {
     await supabase.from('system_configs').upsert({
       owner_id: ownerId,
       config_key: 'google_tokens',
-      config_value: tokens,
+      config_value: encryptObject(tokens),
       updated_at: new Date().toISOString()
     }, { onConflict: 'owner_id,config_key' });
 
@@ -66,7 +67,14 @@ export const googleDriveService = {
       .eq('config_key', 'google_tokens')
       .single();
 
-    return data?.config_value;
+    if (!data?.config_value) return null;
+    
+    // If it's already an object (legacy), encryptObject will handle it or we return as is
+    // But decryptObject expects a string from AES
+    if (typeof data.config_value === 'string') {
+      return decryptObject(data.config_value);
+    }
+    return data.config_value;
   },
 
   async getClient(userId: string) {
@@ -83,16 +91,20 @@ export const googleDriveService = {
 
     // Refresh token if needed
     oauth2Client.on('tokens', async (newTokens) => {
-      const { data: userData } = await supabase.from('users').select('owner_id').eq('id', userId).single();
-      const ownerId = userData?.owner_id || userId;
-      
-      const currentTokens = await this.getTokens(userId);
-      await supabase.from('system_configs').upsert({
-        owner_id: ownerId,
-        config_key: 'google_tokens',
-        config_value: { ...currentTokens, ...newTokens },
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'owner_id,config_key' });
+      try {
+        const { data: userData } = await supabase.from('users').select('owner_id').eq('id', userId).single();
+        const ownerId = userData?.owner_id || userId;
+        
+        const currentTokens = await this.getTokens(userId);
+        await supabase.from('system_configs').upsert({
+          owner_id: ownerId,
+          config_key: 'google_tokens',
+          config_value: encryptObject({ ...currentTokens, ...newTokens }),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'owner_id,config_key' });
+      } catch (err) {
+        console.error('[GOOGLE DRIVE] Erro ao atualizar tokens no evento:', err);
+      }
     });
 
     return oauth2Client;

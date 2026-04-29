@@ -116,7 +116,7 @@ export default function CampaignsView({ lists }: { lists: ProspectList[] }) {
                     "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
                     camp.status === 'draft' ? "bg-gray-100 text-gray-500 dark:bg-gray-800" : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10"
                   )}>
-                    {camp.status === 'draft' ? 'Rascunho' : camp.status}
+                    {camp.status === 'draft' ? 'Rascunho' : camp.status === 'active' ? 'Ativa' : camp.status}
                   </span>
                 </td>
                 <td className="px-8 py-6 uppercase text-[10px] font-black text-indigo-500 dark:text-indigo-400 tracking-widest">{camp.channel}</td>

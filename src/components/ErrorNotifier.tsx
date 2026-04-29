@@ -83,7 +83,7 @@ export default function ErrorNotifier() {
             <AlertCircle size={20} />
           </div>
           <div>
-            <p className="text-sm font-bold text-rose-900 mb-1 font-mono">Dethalhes do Erro:</p>
+            <p className="text-sm font-bold text-rose-900 mb-1 font-mono">Detalhes do Erro:</p>
             <p className="text-sm text-rose-700 leading-relaxed font-mono break-all">{error.message}</p>
             {error.context && (
               <p className="text-xs text-rose-500 mt-2 italic">Contexto: {error.context}</p>

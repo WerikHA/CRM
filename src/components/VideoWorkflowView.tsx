@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Film, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, Filter, Check, X as XIcon, RefreshCcw, Eye, Copy, ChevronLeft, ChevronRight, Video, Play, Pause, Square, MessageSquare, Upload } from 'lucide-react';
+import { Film, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, Filter, Check, X as XIcon, RefreshCcw, Eye, Copy, ChevronLeft, ChevronRight, Video, Play, Pause, Square, MessageSquare, Upload, Calendar, Link as LinkIcon, Mic } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { VideoOrder, Client, WorkStatus, ApprovalStatus, User, Receivable } from '../types';
 import Modal from './Modal';
@@ -34,6 +34,14 @@ export default function VideoWorkflowView({
   const [chatOrder, setChatOrder] = useState<VideoOrder | null>(null);
   const [rejectingOrder, setRejectingOrder] = useState<VideoOrder | null>(null);
   const [rejectionNotes, setRejectionNotes] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
+  
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const chunksRef = React.useRef<Blob[]>([]);
+  const timerRef = React.useRef<NodeJS.Timeout | null>(null);
   
   const initialFormData: Partial<VideoOrder> = {
     title: '',
@@ -43,7 +51,10 @@ export default function VideoWorkflowView({
     deadline: '',
     priority: 'medium',
     progress: 0,
-    status: 'queue'
+    status: 'queue',
+    observations: '',
+    postDate: '',
+    materialsLink: ''
   };
 
   const [formData, setFormData] = useState<Partial<VideoOrder>>(initialFormData);
@@ -56,6 +67,13 @@ export default function VideoWorkflowView({
   const isOwner = currentUser.role === 'OWNER';
   const isAdminOrOwner = isAdmin || isOwner;
   const isPartner = currentUser.role === 'PARTNER';
+
+  // Auto-switch to revision tab if there are videos to review for admin/owner
+  React.useEffect(() => {
+    if (isAdminOrOwner && videoOrders.some(o => o.status === 'review') && activeTab === 'all') {
+      setActiveTab('revision');
+    }
+  }, [isAdminOrOwner, videoOrders.length]);
 
   const editors = users.filter(u => u.role === 'EDITOR');
 
@@ -105,7 +123,7 @@ export default function VideoWorkflowView({
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'queue': return 'No Roteiro';
+      case 'queue': return 'Fila';
       case 'production': return 'Editando';
       case 'review': return 'Aprovação';
       case 'done': return 'Entregue';
@@ -179,7 +197,14 @@ export default function VideoWorkflowView({
 
     // Para ir para revisão, deve ter vídeo (bloqueio apenas para editores)
     if (status === 'review' && !order.videoUrl && !isAdminOrOwner) {
-      notifyError("Atenção", "Você deve fazer o upload do vídeo antes de enviar para revisão.");
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'video/*';
+      input.onchange = (ev: any) => {
+        const file = ev.target.files[0];
+        if (file) handleVideoUpload(order.id, file);
+      };
+      input.click();
       return;
     }
 
@@ -258,31 +283,89 @@ export default function VideoWorkflowView({
   };
 
   const handleRejectVideo = async () => {
-    if (!rejectingOrder || !rejectionNotes.trim()) return;
+    if (!rejectingOrder) return;
     
     const id = rejectingOrder.id;
     try {
+      let finalAudioUrl = undefined;
+      
+      if (recordedAudioBlob) {
+        const audioFile = new File([recordedAudioBlob], `rejection_${id}.webm`, { type: 'audio/webm' });
+        const uploadRes = await api.uploadFile(audioFile);
+        if (uploadRes.success) {
+          finalAudioUrl = uploadRes.url;
+        }
+      }
+
       setVideoOrders(prev => prev.map(o => o.id === id ? { 
         ...o, 
         status: 'production', 
         progress: 50,
         videoUrl: undefined,
-        rejectionNotes: rejectionNotes 
+        rejectionNotes: rejectionNotes || 'Reprovado via áudio/modal',
+        rejectionAudioUrl: finalAudioUrl
       } : o));
       
       await api.updateVideoOrder(id, { 
         status: 'production', 
         progress: 50,
         videoUrl: null, // Clear URL in DB
-        rejectionNotes: rejectionNotes 
+        rejectionNotes: rejectionNotes || 'Reprovado via áudio/modal',
+        rejectionAudioUrl: finalAudioUrl
       });
       
       notifySuccess("Vídeo reprovado e arquivos deletados. Voltando para edição.");
       setRejectingOrder(null);
       setRejectionNotes('');
+      setRecordedAudioBlob(null);
+      setAudioPreviewUrl(null);
     } catch (err: any) {
       notifyError("Erro ao reprovar", err.message);
     }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        setRecordedAudioBlob(audioBlob);
+        setAudioPreviewUrl(URL.createObjectURL(audioBlob));
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+      timerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch (err: any) {
+      console.error("Erro ao acessar microfone:", err);
+      notifyError("Erro de Microfone", "Não foi possível acessar o microfone. Verifique as permissões.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleDeleteOrder = async (e: React.MouseEvent, id: string) => {
@@ -434,9 +517,9 @@ export default function VideoWorkflowView({
                           "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20"
                       )}
                     >
-                      <option value="queue" className="dark:bg-gray-900">Roteiro</option>
+                      <option value="queue" className="dark:bg-gray-900">Fila</option>
                       <option value="production" className="dark:bg-gray-900" disabled={order.status === 'review' && !isAdminOrOwner}>Edição</option>
-                      <option value="review" className="dark:bg-gray-900" disabled={!order.videoUrl && !isAdminOrOwner}>Revisão</option>
+                      <option value="review" className="dark:bg-gray-900">Revisão</option>
                       <option value="done" className="dark:bg-gray-900" disabled={!isAdminOrOwner}>Finalizado</option>
                     </select>
                     <button 
@@ -457,16 +540,45 @@ export default function VideoWorkflowView({
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4 py-4 border-y border-gray-50 dark:border-gray-800 mb-4 transition-colors">
-                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-300">
-                    <Video size={14} className="text-gray-400" />
-                    <span className="text-xs font-semibold">{order.editorName || 'Sem Responsável'}</span>
+                  <div className="flex flex-wrap items-center gap-4 py-4 border-y border-gray-50 dark:border-gray-800 mb-4 transition-colors">
+                    <div className="flex items-center gap-2 text-gray-500 dark:text-gray-300">
+                      <UserIcon size={14} className="text-gray-400" />
+                      <span className="text-xs font-semibold">{order.editorName || 'Sem Responsável'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-400 dark:text-gray-400">
+                      <Clock size={14} />
+                      <span className="text-xs font-medium">{order.deadline}</span>
+                    </div>
+                    {order.postDate && (
+                      <div className="flex items-center gap-2 text-indigo-500 font-bold">
+                        <Calendar size={14} />
+                        <span className="text-xs uppercase">Postagem: {order.postDate}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 text-gray-400 dark:text-gray-400">
-                    <Clock size={14} />
-                    <span className="text-xs font-medium">{order.deadline}</span>
-                  </div>
-                </div>
+
+                  {order.observations && (
+                    <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                        <MessageSquare size={12} /> Roteiro / Observações
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-3">{order.observations}</p>
+                    </div>
+                  )}
+
+                  {order.materialsLink && (
+                    <div className="mb-4">
+                      <a 
+                        href={order.materialsLink} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1.5 text-sky-500 hover:text-sky-600 text-[10px] font-bold uppercase tracking-wider bg-sky-50 dark:bg-sky-500/10 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        <LinkIcon size={12} /> Acessar Materiais
+                      </a>
+                    </div>
+                  )}
 
                   <div className="space-y-4">
                     {order.videoUrl && (
@@ -499,11 +611,20 @@ export default function VideoWorkflowView({
                     )}
 
                     {order.rejectionNotes && order.status !== 'done' && (
-                      <div className="p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-xl">
+                      <div className="p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-xl space-y-2">
                         <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-1 flex items-center gap-1">
                           <AlertCircle size={12} /> Motivo da Reprovação
                         </p>
-                        <p className="text-xs text-rose-700 dark:text-rose-300 font-medium italic">{order.rejectionNotes}</p>
+                        {order.rejectionNotes && (
+                          <p className="text-xs text-rose-700 dark:text-rose-300 font-medium italic">{order.rejectionNotes}</p>
+                        )}
+                        {order.rejectionAudioUrl && (
+                          <div className="mt-2">
+                            <audio controls className="w-full h-8 opacity-75">
+                              <source src={order.rejectionAudioUrl} type="audio/webm" />
+                            </audio>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -657,34 +778,76 @@ export default function VideoWorkflowView({
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Prazo Final</label>
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Data de Postagem</label>
               <input 
                 type="text" 
-                value={formData.deadline || ''}
-                onChange={e => setFormData({...formData, deadline: e.target.value})}
+                value={formData.postDate || ''}
+                onChange={e => setFormData({...formData, postDate: e.target.value})}
                 className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
                 placeholder="dd/mm/aaaa"
               />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Link de Materiais</label>
+            <input 
+              type="url" 
+              value={formData.materialsLink || ''}
+              onChange={e => setFormData({...formData, materialsLink: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
+              placeholder="https://link-dos-materiais.com"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Roteiro / Observações</label>
+            <textarea 
+              value={formData.observations || ''}
+              onChange={e => setFormData({...formData, observations: e.target.value})}
+              className="w-full h-32 px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100 outline-none resize-none"
+              placeholder="Descreva o roteiro ou observações importantes..."
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Prazo Final da Entrega</label>
+            <input 
+              type="text" 
+              value={formData.deadline || ''}
+              onChange={e => setFormData({...formData, deadline: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
+              placeholder="dd/mm/aaaa"
+            />
           </div>
         </form>
       </Modal>
 
       <Modal
         isOpen={!!rejectingOrder}
-        onClose={() => setRejectingOrder(null)}
+        onClose={() => {
+          setRejectingOrder(null);
+          setRecordedAudioBlob(null);
+          setAudioPreviewUrl(null);
+          setIsRecording(false);
+          if (timerRef.current) clearInterval(timerRef.current);
+        }}
         title="Reprovar Vídeo e Solicitar Ajustes"
         footer={
-          <div className="flex justify-end gap-3 w-full">
+          <div className="flex justify-end gap-3 w-full px-6 pb-6">
             <button 
-              onClick={() => setRejectingOrder(null)}
+              onClick={() => {
+                setRejectingOrder(null);
+                setRecordedAudioBlob(null);
+                setAudioPreviewUrl(null);
+              }}
               className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
             >
               Cancelar
             </button>
             <button 
               onClick={handleRejectVideo}
-              disabled={!rejectionNotes.trim()}
+              disabled={!rejectionNotes.trim() && !recordedAudioBlob}
               className="px-6 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-500/20 disabled:opacity-50"
             >
               Confirmar Reprovação
@@ -692,18 +855,74 @@ export default function VideoWorkflowView({
           </div>
         }
       >
-        <div className="space-y-4 py-2 text-gray-900 dark:text-gray-100">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Forneça detalhes sobre o que precisa ser ajustado no vídeo <strong>{rejectingOrder?.title}</strong>.
+        <div className="space-y-4 p-6 text-gray-900 dark:text-gray-100">
+          <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+            Forneça detalhes sobre o que precisa ser ajustado no vídeo <strong className="text-gray-900 dark:text-white">{rejectingOrder?.title}</strong>.
           </p>
-          <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">Observações para o Editor</label>
-            <textarea 
-              value={rejectionNotes}
-              onChange={(e) => setRejectionNotes(e.target.value)}
-              placeholder="Ex: O áudio está baixo nos primeiros 10 segundos, por favor adicione legenda na cena X..."
-              className="w-full h-32 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 transition-all outline-none resize-none"
-            />
+          
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">Feedback por Texto</label>
+              <textarea 
+                value={rejectionNotes}
+                onChange={(e) => setRejectionNotes(e.target.value)}
+                placeholder="Ex: O áudio está baixo nos primeiros 10 segundos, por favor adicione legenda na cena X..."
+                className="w-full h-24 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 transition-all outline-none resize-none"
+              />
+            </div>
+
+            <div className="relative pt-2">
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">Ou Feedback por Áudio</label>
+              
+              {!isRecording ? (
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={startRecording}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all border border-indigo-100 dark:border-indigo-500/20 shadow-sm"
+                  >
+                    <Mic size={16} />
+                    {recordedAudioBlob ? 'Gravar Novamente' : 'Gravar Áudio'}
+                  </button>
+                  
+                  {audioPreviewUrl && (
+                    <div className="flex-1 flex items-center gap-2 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-2 rounded-xl border border-emerald-100 dark:border-emerald-500/20">
+                      <audio src={audioPreviewUrl} controls className="h-8 w-full" />
+                      <button 
+                        onClick={() => {
+                          setRecordedAudioBlob(null);
+                          setAudioPreviewUrl(null);
+                        }}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between bg-rose-50 dark:bg-rose-900/20 px-4 py-3 rounded-xl border border-rose-100 dark:border-rose-900/30">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse" />
+                    <span className="text-sm font-bold text-rose-600 dark:text-rose-400 tabular-nums uppercase tracking-widest">
+                      Gravando: {formatDuration(recordingDuration)}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={stopRecording}
+                    className="flex items-center gap-2 px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all shadow-md"
+                  >
+                    <Square size={14} fill="currentColor" /> PARAR
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-900/30 flex items-start gap-3">
+            <AlertCircle size={16} className="text-amber-600 mt-0.5" />
+            <p className="text-[10px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed uppercase tracking-tighter">
+              Ao confirmar, o vídeo atual será deletado e a tarefa voltará para "Edição" para que o editor possa realizar os ajustes solicitados.
+            </p>
           </div>
         </div>
       </Modal>

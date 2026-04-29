@@ -19,7 +19,7 @@ import pino from "pino";
 import crypto from "crypto";
 import NodeCache from "node-cache";
 
-const logger = pino({ level: "warn" });
+const logger = pino({ level: "error" });
 const msgRetryCounterCache = new NodeCache();
 
 interface SentPollData {
@@ -143,28 +143,33 @@ export class WhatsAppService extends EventEmitter {
         version = latestVersion;
         this.debugLog(ownerId, `Versão Baileys: ${version.join(".")} (Latest: ${isLatest})`);
       } catch (err: any) {
-        this.debugLog(ownerId, `Erro ao buscar versão: ${err.message}`);
+        this.debugLog(ownerId, `Erro ao buscar versão: ${err.message}. Usando fallback 2.3000.x`);
       }
 
       this.debugLog(ownerId, "Criando socket (makeWASocket)...");
       const socket = makeWASocket({
+        logger,
         version,
         auth: {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
-        browser: Browsers.ubuntu("Chrome"),
+        browser: ["Ubuntu", "Chrome", "20.0.04"],
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: true,
-        connectTimeoutMs: 120000, // Increased to 2 minutes
-        defaultQueryTimeoutMs: 120000,
-        keepAliveIntervalMs: 20000, // 20s for better heartbeat
+        connectTimeoutMs: 60000, 
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 30000, 
         generateHighQualityLinkPreview: false,
         emitOwnEvents: false,
         retryRequestDelayMs: 5000,
-        maxMsgRetryCount: 5,
+        maxMsgRetryCount: 15,
+        msgRetryCounterCache,
+        qrTimeout: 600000, 
+        shouldIgnoreJid: jid => jid.includes('broadcast'),
+        transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 3000 },
         getMessage: async (key) => {
           return { conversation: 'Mensagem antiga ou não disponível' };
         }
@@ -211,9 +216,30 @@ export class WhatsAppService extends EventEmitter {
             
             const isLogout = statusCode === DisconnectReason.loggedOut || 
                              statusCode === 401 || 
-                             statusCode === 403;
+                             statusCode === 403 ||
+                             message.toLowerCase().includes("logged out");
             
-            const shouldReconnect = !isLogout;
+            const isBadSession = statusCode === DisconnectReason.badSession || 
+                                 message.toLowerCase().includes("bad session");
+
+            const isConflict = statusCode === DisconnectReason.connectionReplaced ||
+                               message.toLowerCase().includes("conflict") ||
+                               message.toLowerCase().includes("replaced");
+            
+            const qrAttemptsEnded = message.includes("QR refs attempts ended");
+            const isConnectionTerminated = message.toLowerCase().includes("terminated by server") || 
+                                           message.toLowerCase().includes("connection terminated") ||
+                                           message.toLowerCase().includes("stream error") ||
+                                           statusCode === 440 || // Session expired
+                                           statusCode === 515 || // Request failed
+                                           statusCode === 503;   // Unavailable
+
+            const shouldReconnect = !isLogout || qrAttemptsEnded || isConnectionTerminated;
+
+            if (qrAttemptsEnded || isBadSession || (isConnectionTerminated && this.reconnectionAttempts[ownerId] > 3)) {
+              this.debugLog(ownerId, `Sessão inválida, QR expirado ou múltiplas terminações (${this.reconnectionAttempts[ownerId]}). Reiniciando sessão limpa...`);
+              this.clearAuth(ownerId);
+            }
 
             // Increment reconnection attempts
             this.reconnectionAttempts[ownerId] = (this.reconnectionAttempts[ownerId] || 0) + 1;
@@ -224,10 +250,10 @@ export class WhatsAppService extends EventEmitter {
                 message: "Você foi desconectado pelo próprio WhatsApp.",
                 action: "Por favor, escaneie o QR Code novamente para reconectar."
               };
-            } else if (statusCode === 401 || message.includes("conflict")) {
+            } else if (isConflict) {
               this.sessionError[ownerId] = {
                 message: "Conflito de Sessão: Esta conta foi conectada em outro dispositivo ou a sessão expirou.",
-                action: "Clique em 'Sair / Desconectar' e escaneie o código novamente."
+                action: "Clique em 'Sair / Desconectar' e escaneie o código novamente se persistir."
               };
             } else if (this.reconnectionAttempts[ownerId] > this.maxReconnectionAttempts) {
               this.sessionError[ownerId] = {
@@ -235,8 +261,9 @@ export class WhatsAppService extends EventEmitter {
                 action: "Por favor, aguarde alguns minutos e tente reconectar manualmente."
               };
             } else {
+              const msgShort = message.length > 50 ? message.substring(0, 50) + "..." : message;
               this.sessionError[ownerId] = {
-                message: `Erro de Conexão (${statusCode || 'Desconhecido'}): ${message.substring(0, 50)}...`,
+                message: `Erro de Conexão (${statusCode || 'Desconhecido'}): ${msgShort}`,
                 action: "O sistema está tentando reconectar automaticamente..."
               };
             }
@@ -248,11 +275,31 @@ export class WhatsAppService extends EventEmitter {
 
             if (shouldReconnect && this.reconnectionAttempts[ownerId] <= this.maxReconnectionAttempts) {
               // Exponential backoff or progressive delay
-              const baseDelay = (statusCode === 515 || statusCode === 428) ? 10000 : 5000;
-              const delay = Math.min(baseDelay * this.reconnectionAttempts[ownerId], 60000); // Max 60s
+              let baseDelay = 5000;
+              if (statusCode === 515 || statusCode === 428 || isConnectionTerminated) {
+                baseDelay = 20000; // Even more delay for suspected blocks/terminations
+              }
+              const delay = Math.min(baseDelay * this.reconnectionAttempts[ownerId], 300000); // Max 5m
               
-              this.debugLog(ownerId, `Agendando reconexão (#${this.reconnectionAttempts[ownerId]}) em ${delay/1000}s.`);
-              setTimeout(() => this.initSession(ownerId), delay);
+              this.debugLog(ownerId, `Agendando reconexão (#${this.reconnectionAttempts[ownerId]}) em ${delay/1000}s. Causa: ${statusCode || 'term'}${isConnectionTerminated ? ' (Servidor Terminou)' : ''}`);
+              
+              if (isConnectionTerminated) {
+                const termCountKey = `term_count_${ownerId}`;
+                (this as any)[termCountKey] = ((this as any)[termCountKey] || 0) + 1;
+                
+                if ((this as any)[termCountKey] >= 3) {
+                  this.debugLog(ownerId, "Múltiplas terminações detectadas. Limpando auth e caches para forçar novo login.");
+                  (this as any)[termCountKey] = 0;
+                  this.clearAuth(ownerId);
+                  msgRetryCounterCache.flushAll();
+                }
+              }
+
+              setTimeout(() => {
+                if (this.sessionStatus[ownerId] === "disconnected") {
+                  this.initSession(ownerId);
+                }
+              }, delay);
             } else if (isLogout) {
               this.debugLog(ownerId, "Limpando auth por logout.");
               this.clearAuth(ownerId);
@@ -265,11 +312,13 @@ export class WhatsAppService extends EventEmitter {
               }
             }
           } else if (connection === "open") {
+            this.reconnectionAttempts[ownerId] = 0;
+            const termCountKey = `term_count_${ownerId}`;
+            (this as any)[termCountKey] = 0;
             this.debugLog(ownerId, "Conexão ABERTA!");
             this.sessionStatus[ownerId] = "connected";
             this.sessionError[ownerId] = null;
             this.qrDataUrls[ownerId] = null;
-            this.reconnectionAttempts[ownerId] = 0; // Reset attempts on success
             this.initializingSessions.delete(ownerId);
             this.emit("update", { ownerId, status: this.sessionStatus[ownerId] });
           }
@@ -277,119 +326,123 @@ export class WhatsAppService extends EventEmitter {
       );
 
       socket.ev.on("messages.upsert", async (m: any) => {
-        if (m.type !== "notify") return;
-        for (const msg of m.messages) {
-          if (msg.key.fromMe) continue;
-          
-          const getRealContent = (m: any): any => {
-            if (!m) return null;
-            if (m.viewOnceMessage?.message) return getRealContent(m.viewOnceMessage.message);
-            if (m.viewOnceMessageV2?.message) return getRealContent(m.viewOnceMessageV2.message);
-            if (m.ephemeralMessage?.message) return getRealContent(m.ephemeralMessage.message);
-            if (m.deviceSentMessage?.message) return getRealContent(m.deviceSentMessage.message);
-            return m;
-          };
-
-          const realContent = getRealContent(msg.message);
-          if (!realContent) continue;
-
-          const keys = Object.keys(realContent || {});
-          
-          // Debugging keys to logs
-          if (keys.length > 0 && !realContent.pollUpdateMessage) {
-             this.logInteraction(ownerId, `Msg de ${msg.key.remoteJid}: Chaves=[${keys.join(",")}]`);
-          }
-
-          if (realContent.pollUpdateMessage || realContent.pollUpdateMessageV2) {
-            const update = realContent.pollUpdateMessage || realContent.pollUpdateMessageV2;
-            const pollMsgId = update.pollCreationMessageKey?.id;
-            this.logInteraction(ownerId, `PollUpdate Detectada! ID=${pollMsgId}`);
+        try {
+          if (m.type !== "notify") return;
+          for (const msg of m.messages) {
+            if (msg.key.fromMe) continue;
             
-            if (pollMsgId && this.pollStore[pollMsgId]) {
-              const context = this.pollStore[pollMsgId];
-              this.logInteraction(ownerId, `Contexto encontrado para arte: ${context.orderId}`);
-              try {
-                const meId = jidNormalizedUser(socket.user?.id || '');
-                const meLid = (socket.user as any)?.lid ? jidNormalizedUser((socket.user as any)?.lid) : undefined;
-                const pollEncKey = context.messageSecretHex ? Buffer.from(context.messageSecretHex, "hex") : null;
+            const getRealContent = (m: any): any => {
+              if (!m) return null;
+              if (m.viewOnceMessage?.message) return getRealContent(m.viewOnceMessage.message);
+              if (m.viewOnceMessageV2?.message) return getRealContent(m.viewOnceMessageV2.message);
+              if (m.ephemeralMessage?.message) return getRealContent(m.ephemeralMessage.message);
+              if (m.deviceSentMessage?.message) return getRealContent(m.deviceSentMessage.message);
+              return m;
+            };
 
-                if (!pollEncKey) {
-                  this.logInteraction(ownerId, `ERRO: Secret faltando para ${pollMsgId}`);
-                  continue;
-                }
+            const realContent = getRealContent(msg.message);
+            if (!realContent) continue;
 
-                const voterJid = jidNormalizedUser(msg.key.participant || msg.key.remoteJid || '');
-                const creators = [jidNormalizedUser(context.creatorJid), meId];
-                if (meLid) creators.push(meLid);
-                
-                const voters = [voterJid];
-                if (msg.key.participant) voters.push(jidNormalizedUser(msg.key.participant));
+            const keys = Object.keys(realContent || {});
+            
+            // Debugging keys to logs
+            if (keys.length > 0 && !realContent.pollUpdateMessage) {
+               this.logInteraction(ownerId, `Msg de ${msg.key.remoteJid}: Chaves=[${keys.join(",")}]`);
+            }
 
-                const uniqueCreators = [...new Set(creators.filter(Boolean))];
-                const uniqueVoters = [...new Set(voters.filter(Boolean))];
+            if (realContent.pollUpdateMessage || realContent.pollUpdateMessageV2) {
+              const update = realContent.pollUpdateMessage || realContent.pollUpdateMessageV2;
+              const pollMsgId = update.pollCreationMessageKey?.id;
+              this.logInteraction(ownerId, `PollUpdate Detectada! ID=${pollMsgId}`);
+              
+              if (pollMsgId && this.pollStore[pollMsgId]) {
+                const context = this.pollStore[pollMsgId];
+                this.logInteraction(ownerId, `Contexto encontrado para arte: ${context.orderId}`);
+                try {
+                  const meId = jidNormalizedUser(socket.user?.id || '');
+                  const meLid = (socket.user as any)?.lid ? jidNormalizedUser((socket.user as any)?.lid) : undefined;
+                  const pollEncKey = context.messageSecretHex ? Buffer.from(context.messageSecretHex, "hex") : null;
 
-                let voteMsg: any = null;
-                for (const creator of uniqueCreators as string[]) {
-                  for (const voter of uniqueVoters as string[]) {
-                    try {
-                      voteMsg = decryptPollVote(update.vote, {
-                        pollCreatorJid: creator,
-                        pollMsgId: pollMsgId,
-                        pollEncKey,
-                        voterJid: voter,
-                      });
-                      if (voteMsg) break;
-                    } catch (err) {}
+                  if (!pollEncKey) {
+                    this.logInteraction(ownerId, `ERRO: Secret faltando para ${pollMsgId}`);
+                    continue;
                   }
-                  if (voteMsg) break;
-                }
 
-                if (!voteMsg) {
-                  this.logInteraction(ownerId, `ERRO: Falha ao descriptografar voto da enquete ${pollMsgId}.`);
-                  continue;
-                }
-
-                if (voteMsg.selectedOptions && voteMsg.selectedOptions.length > 0) {
-                  const selectedHash = Buffer.from(voteMsg.selectedOptions[0]).toString("hex");
-                  let selectedOption = null;
+                  const voterJid = jidNormalizedUser(msg.key.participant || msg.key.remoteJid || '');
+                  const creators = [jidNormalizedUser(context.creatorJid), meId];
+                  if (meLid) creators.push(meLid);
                   
-                  for (const opt of context.options) {
-                    const optHash = crypto.createHash("sha256").update(Buffer.from(opt)).digest("hex");
-                    if (optHash === selectedHash) {
-                      selectedOption = opt;
-                      break;
+                  const voters = [voterJid];
+                  if (msg.key.participant) voters.push(jidNormalizedUser(msg.key.participant));
+
+                  const uniqueCreators = [...new Set(creators.filter(Boolean))];
+                  const uniqueVoters = [...new Set(voters.filter(Boolean))];
+
+                  let voteMsg: any = null;
+                  for (const creator of uniqueCreators as string[]) {
+                    for (const voter of uniqueVoters as string[]) {
+                      try {
+                        voteMsg = decryptPollVote(update.vote, {
+                          pollCreatorJid: creator,
+                          pollMsgId: pollMsgId,
+                          pollEncKey,
+                          voterJid: voter,
+                        });
+                        if (voteMsg) break;
+                      } catch (err) {}
+                    }
+                    if (voteMsg) break;
+                  }
+
+                  if (!voteMsg) {
+                    this.logInteraction(ownerId, `ERRO: Falha ao descriptografar voto da enquete ${pollMsgId}.`);
+                    continue;
+                  }
+
+                  if (voteMsg.selectedOptions && voteMsg.selectedOptions.length > 0) {
+                    const selectedHash = Buffer.from(voteMsg.selectedOptions[0]).toString("hex");
+                    let selectedOption = null;
+                    
+                    for (const opt of context.options) {
+                      const optHash = crypto.createHash("sha256").update(Buffer.from(opt)).digest("hex");
+                      if (optHash === selectedHash) {
+                        selectedOption = opt;
+                        break;
+                      }
+                    }
+
+                    if (selectedOption) {
+                      this.logInteraction(ownerId, `VOTO RECONHECIDO: ${selectedOption}`);
+                      this.emit("pollVote", {
+                        ownerId,
+                        orderId: context.orderId,
+                        option: selectedOption,
+                        phone: msg.key.remoteJid?.split("@")[0],
+                      });
+                    } else {
+                      this.logInteraction(ownerId, `Hash de voto não mapeado: ${selectedHash}`);
                     }
                   }
 
-                  if (selectedOption) {
-                    this.logInteraction(ownerId, `VOTO RECONHECIDO: ${selectedOption}`);
-                    this.emit("pollVote", {
-                      ownerId,
-                      orderId: context.orderId,
-                      option: selectedOption,
-                      phone: msg.key.remoteJid?.split("@")[0],
+                  // Persistir voto no context para histórico
+                  if (context.fullMessage) {
+                    updateMessageWithPollUpdate(context.fullMessage, {
+                      pollUpdateMessageKey: msg.key,
+                      vote: voteMsg,
+                      senderTimestampMs: Number(update.senderTimestampMs || Date.now()),
                     });
-                  } else {
-                    this.logInteraction(ownerId, `Hash de voto não mapeado: ${selectedHash}`);
+                    this.savePollStore();
                   }
+                } catch (e: any) {
+                  this.logInteraction(ownerId, `Erro ao processar voto: ${e.message}`);
                 }
-
-                // Persistir voto no context para histórico
-                if (context.fullMessage) {
-                  updateMessageWithPollUpdate(context.fullMessage, {
-                    pollUpdateMessageKey: msg.key,
-                    vote: voteMsg,
-                    senderTimestampMs: Number(update.senderTimestampMs || Date.now()),
-                  });
-                  this.savePollStore();
-                }
-              } catch (e: any) {
-                this.logInteraction(ownerId, `Erro ao processar voto: ${e.message}`);
+              } else {
+                 this.logInteraction(ownerId, `Enquete ID ${pollMsgId} não está no cache local.`);
               }
-            } else {
-               this.logInteraction(ownerId, `Enquete ID ${pollMsgId} não está no cache local.`);
             }
           }
+        } catch (err) {
+          console.error('[WHATSAPP] Erro no handler de mensagens:', err);
         }
       });
     } catch (err) {
@@ -412,7 +465,11 @@ export class WhatsAppService extends EventEmitter {
     const socket = this.sessions[ownerId];
     if (socket) {
       try {
-        await socket.logout();
+        await socket.logout().catch(e => {
+          if (e?.message !== 'Intentional Logout') {
+            console.error(`[WHATSAPP] Erro no logout de ${ownerId}:`, e.message);
+          }
+        });
       } catch (e) {}
       try {
         socket.end();

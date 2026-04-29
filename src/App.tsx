@@ -52,7 +52,10 @@ import LoginView from './components/LoginView';
 import SupportView from './components/SupportView';
 import ProspectingView from './components/prospecting/ProspectingView';
 import VideoWorkflowView from './components/VideoWorkflowView';
+import RecordingWorkflowView from './components/RecordingWorkflowView';
 import DemandsView from './components/DemandsView';
+import PersonalizationView from './components/PersonalizationView';
+import TermsAcceptanceModal from './components/TermsAcceptanceModal';
 import DesignModificationForm from './components/DesignModificationForm';
 import NotificationBell from './components/NotificationBell';
 import GoogleDriveManager from './components/GoogleDriveManager';
@@ -61,14 +64,17 @@ import { LogOut, Film, ClipboardList, MessageSquare, HardDrive, CalendarClock } 
 import { ChatWindow } from './components/ChatWindow';
 
 import LandingPage from './components/LandingPage';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import TermsOfUse from './components/TermsOfUse';
 
-type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'drive';
+type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'recordings' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'drive' | 'personalization';
 
 import { api } from './services/api';
 import { VideoOrder, SupportTicket, DemandTask } from './types';
 import ProductivityView from './components/ProductivityView';
 import ErrorNotifier from './components/ErrorNotifier';
 import { ToastContainer } from './components/ui/Toast';
+import toast from 'react-hot-toast';
 import CookieConsent from './components/CookieConsent';
 import MeetingView from './components/MeetingView';
 
@@ -81,12 +87,14 @@ const VIEW_LABELS: Record<ViewType, string> = {
   finance: 'Financeiro',
   design: 'Design',
   videos: 'Edição de Vídeo',
+  recordings: 'Gravação de Vídeo',
   demands: 'Demandas',
   partners: 'Parceiros',
   tickets: 'Suporte',
   prospecting: 'Prospecção',
   productivity: 'Produtividade',
   drive: 'Arquivos Drive',
+  personalization: 'Aparência',
   admin: 'Configurações'
 };
 
@@ -157,7 +165,7 @@ export default function App() {
     return DEFAULT_AGENCY_CONFIG;
   });
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
-  const [authView, setAuthView] = useState<'landing' | 'login' | 'signup'>('landing');
+  const [authView, setAuthView] = useState<'landing' | 'login' | 'signup' | 'privacy' | 'terms'>('landing');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -189,6 +197,13 @@ export default function App() {
       setActiveRoomId(rid);
     }
 
+    const path = window.location.pathname;
+    if (path === '/privacy') {
+      setAuthView('privacy');
+    } else if (path === '/terms') {
+      setAuthView('terms');
+    }
+
     (window as any).onJoinMeeting = (id: string) => setActiveRoomId(id);
     return () => { delete (window as any).onJoinMeeting; };
   }, []);
@@ -203,6 +218,54 @@ export default function App() {
       storageService.setItem('theme', 'light');
     }
   }, [isDarkMode]);
+
+  const effectiveUser = useMemo(() => {
+    if (!currentUser) return null;
+    if (currentUser.role !== 'ADMIN' || !perspective) return currentUser;
+    return { ...currentUser, role: perspective };
+  }, [currentUser, perspective]);
+
+  // Apply Personalization Preferences
+  useEffect(() => {
+    const preferences = effectiveUser?.uiPreferences;
+    const root = window.document.documentElement;
+    
+    // Default to Agency values if no user preference
+    const primaryColor = preferences?.primaryColor || agencyConfig.primaryColor;
+    const borderRadius = preferences?.borderRadius || 'medium';
+    const theme = preferences?.theme || 'system';
+
+    if (primaryColor) {
+      root.style.setProperty('--primary-color', primaryColor);
+    }
+
+    const radiusMap = {
+      none: '0px',
+      small: '4px',
+      medium: '12px',
+      large: '24px',
+      full: '9999px'
+    };
+    root.style.setProperty('--border-radius', radiusMap[borderRadius as keyof typeof radiusMap] || '12px');
+
+    if (theme !== 'system') {
+      setIsDarkMode(theme === 'dark');
+    }
+
+    // Density handling
+    if (preferences?.density === 'compact') {
+      root.style.setProperty('--density-factor', '0.8');
+      root.classList.add('density-compact');
+      root.classList.remove('density-relaxed');
+    } else if (preferences?.density === 'relaxed') {
+      root.style.setProperty('--density-factor', '1.2');
+      root.classList.add('density-relaxed');
+      root.classList.remove('density-compact');
+    } else {
+      root.style.setProperty('--density-factor', '1');
+      root.classList.remove('density-compact', 'density-relaxed');
+    }
+  }, [effectiveUser?.uiPreferences, agencyConfig.primaryColor]);
 
   const toggleTheme = () => {
     setIsDarkMode(prev => !prev);
@@ -237,12 +300,6 @@ export default function App() {
     return () => { delete (window as any).onNavigate; };
   }, []);
 
-  const effectiveUser = useMemo(() => {
-    if (!currentUser) return null;
-    if (currentUser.role !== 'ADMIN' || !perspective) return currentUser;
-    return { ...currentUser, role: perspective };
-  }, [currentUser, perspective]);
-
   const handleLogin = async (email: string, password: string) => {
     try {
       setIsAuthLoading(true);
@@ -259,10 +316,10 @@ export default function App() {
     }
   };
 
-  const handleSignup = async (name: string, email: string, password: string) => {
+  const handleSignup = async (name: string, email: string, password: string, acceptedTerms: boolean = true) => {
     try {
       setIsAuthLoading(true);
-      const res = await api.signup(name, email, password);
+      const res = await api.signup(name, email, password, acceptedTerms);
       // Set storage BEFORE state to avoid race conditions
       storageService.setItem('agency_user', JSON.stringify(res.user), true);
       storageService.setItem('agency_token', res.token, true);
@@ -363,13 +420,14 @@ export default function App() {
       { id: 'social_posts', label: 'Agendamento de Posts', icon: CalendarClock, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
       { id: 'design', label: 'Design', icon: Palette, roles: ['ADMIN', 'DESIGNER', 'PARTNER', 'OWNER'] },
       { id: 'videos', label: 'Edição de Vídeo', icon: Briefcase, roles: ['ADMIN', 'EDITOR', 'PARTNER', 'OWNER'] },
-      { id: 'demands', label: 'Demandas', icon: ClipboardList, roles: ['ADMIN', 'DESIGNER', 'PARTNER', 'EDITOR', 'OWNER'] },
+      { id: 'recordings', label: 'Gravação', icon: Film, roles: ['ADMIN', 'OWNER'] },
+      { id: 'demands', label: 'Demandas', icon: ClipboardList, roles: ['ADMIN', 'OWNER'] },
       { id: 'prospecting', label: 'Prospecção', icon: Target, roles: ['ADMIN'] },
       { id: 'productivity', label: 'Produtividade', icon: Activity, roles: ['ADMIN', 'DESIGNER', 'EDITOR', 'OWNER'] },
       { id: 'drive', label: 'Arquivos Drive', icon: HardDrive, roles: ['ADMIN', 'OWNER'] },
       { id: 'partners', label: isPartner ? 'Solicitações' : 'Parceiros', icon: Handshake, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
-      { id: 'tickets', label: 'Suporte', icon: MessageSquare, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
-      { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN', 'OWNER'] },
+      { id: 'tickets', label: 'Suporte', icon: MessageSquare, roles: ['ADMIN', 'PARTNER', 'OWNER', 'DESIGNER', 'EDITOR'] },
+      { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN', 'OWNER', 'PARTNER', 'DESIGNER', 'EDITOR'] },
     ].filter(item => {
       if (effectiveUser.role === 'OWNER' && item.id === 'partners') {
         return partners.some(p => p.email === effectiveUser.email);
@@ -475,7 +533,14 @@ export default function App() {
           users={users}
         />;
       case 'drive':
-        return <GoogleDriveManager />;
+        return <GoogleDriveManager currentUser={effectiveUser} />;
+      case 'recordings':
+        return <RecordingWorkflowView 
+          tasks={demandTasks}
+          setTasks={setDemandTasks}
+          clients={clients}
+          users={users}
+        />;
       case 'demands':
         return <DemandsView 
           tasks={demandTasks}
@@ -496,6 +561,7 @@ export default function App() {
           agencyConfig={agencyConfig}
           setAgencyConfig={setAgencyConfig}
           currentUser={effectiveUser}
+          setCurrentUser={setCurrentUser}
         />;
       default: return <DashboardView 
         leads={leads} 
@@ -540,12 +606,44 @@ export default function App() {
   }
 
   if (!isAuthenticated || !currentUser || !effectiveUser) {
+    if (authView === 'privacy') {
+      return (
+        <PrivacyPolicy 
+          onBack={() => {
+            setAuthView('landing');
+            window.history.replaceState({}, '', '/');
+          }} 
+          agencyName={agencyConfig.name}
+          primaryColor={agencyConfig.primaryColor}
+        />
+      );
+    }
+    if (authView === 'terms') {
+      return (
+        <TermsOfUse 
+          onBack={() => {
+            setAuthView('landing');
+            window.history.replaceState({}, '', '/');
+          }} 
+          agencyName={agencyConfig.name}
+          primaryColor={agencyConfig.primaryColor}
+        />
+      );
+    }
     if (authView === 'landing') {
       return (
         <>
           <LandingPage 
             onLogin={() => setAuthView('login')} 
             onSignup={() => setAuthView('signup')} 
+            onPrivacy={() => {
+              setAuthView('privacy');
+              window.history.pushState({}, '', '/privacy');
+            }}
+            onTerms={() => {
+              setAuthView('terms');
+              window.history.pushState({}, '', '/terms');
+            }}
             agencyName={agencyConfig.name}
             primaryColor={agencyConfig.primaryColor}
           />
@@ -561,6 +659,10 @@ export default function App() {
           isLoading={isAuthLoading} 
           initialMode={authView === 'login' ? 'login' : 'signup'}
           onBack={() => setAuthView('landing')}
+          onViewTerms={() => {
+            setAuthView('terms');
+            window.history.pushState({}, '', '/terms');
+          }}
         />
         <CookieConsent />
       </>
@@ -580,7 +682,10 @@ export default function App() {
       {/* Sidebar */}
       <aside 
         className={cn(
-          "transition-all duration-300 flex flex-col z-50 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 absolute md:relative h-full top-0 left-0",
+          "transition-all duration-300 flex flex-col z-50 border-r border-gray-100 dark:border-gray-800 absolute md:relative h-full top-0 left-0",
+          effectiveUser.uiPreferences?.sidebarStyle === 'glass' 
+            ? "bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl" 
+            : "bg-white dark:bg-gray-900",
           isSidebarOpen ? "w-64 translate-x-0" : "w-64 md:w-16 -translate-x-full md:translate-x-0"
         )}
       >
@@ -824,6 +929,23 @@ export default function App() {
       <ErrorNotifier />
       <ToastContainer />
       <CookieConsent />
+
+      {/* Terms Acceptance Modal for Existing Users */}
+      {isAuthenticated && currentUser && !currentUser.acceptedTerms && (
+        <TermsAcceptanceModal 
+          currentUser={currentUser}
+          onAccept={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            storageService.setItem('agency_user', JSON.stringify(updatedUser), true);
+          }}
+          onReject={() => {
+            handleLogout();
+            toast.error('É necessário aceitar os termos para utilizar o sistema.');
+          }}
+          agencyName={agencyConfig.name}
+          primaryColor={agencyConfig.primaryColor}
+        />
+      )}
 
       {activeRoomId && (
         <MeetingView 

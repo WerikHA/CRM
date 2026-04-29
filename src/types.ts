@@ -1,5 +1,13 @@
 export type UserRole = 'OWNER' | 'ADMIN' | 'DESIGNER' | 'PARTNER' | 'EDITOR';
 
+export interface UserPreferences {
+  theme?: 'light' | 'dark' | 'system';
+  primaryColor?: string;
+  borderRadius?: 'none' | 'small' | 'medium' | 'large' | 'full';
+  density?: 'compact' | 'normal' | 'relaxed';
+  sidebarStyle?: 'full' | 'mini' | 'glass';
+}
+
 export interface User {
   id: string;
   name: string;
@@ -7,6 +15,8 @@ export interface User {
   role: UserRole;
   avatar?: string;
   ownerId?: string; // Admin or Partner who created this user
+  uiPreferences?: UserPreferences;
+  acceptedTerms?: boolean;
 }
 
 export type LeadStatus = 'prospect' | 'negotiation' | 'converted' | 'lost';
@@ -127,7 +137,12 @@ export interface VideoOrder {
   videoUrl?: string;
   approvedAt?: string;
   rejectionNotes?: string;
+  rejectionAudioUrl?: string;
   ownerId?: string;
+  demandId?: string;
+  observations?: string;
+  postDate?: string;
+  materialsLink?: string;
 }
 
 export interface ArtOrder {

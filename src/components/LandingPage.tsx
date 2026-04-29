@@ -20,11 +20,13 @@ import { cn } from '../lib/utils';
 interface LandingPageProps {
   onLogin: () => void;
   onSignup: () => void;
+  onPrivacy: () => void;
+  onTerms: () => void;
   agencyName: string;
   primaryColor: string;
 }
 
-export default function LandingPage({ onLogin, onSignup, agencyName, primaryColor }: LandingPageProps) {
+export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, agencyName, primaryColor }: LandingPageProps) {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
 
   const features = [
@@ -487,9 +489,11 @@ export default function LandingPage({ onLogin, onSignup, agencyName, primaryColo
             <div>
               <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-8">Suporte</h4>
               <ul className="space-y-4">
-                {['Ajuda', 'Contato', 'Privacidade', 'Status'].map(item => (
-                  <li key={item}><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">{item}</a></li>
-                ))}
+                <li><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Ajuda</a></li>
+                <li><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Contato</a></li>
+                <li><button onClick={onPrivacy} className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Privacidade</button></li>
+                <li><button onClick={onTerms} className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Termos de Uso</button></li>
+                <li><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Status</a></li>
               </ul>
             </div>
           </div>

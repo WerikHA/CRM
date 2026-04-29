@@ -68,6 +68,8 @@ export const dbService = {
         }
       } else if (tableName === 'users') {
         query = query.eq('id', userId);
+      } else if (tableName === 'support_tickets') {
+        query = query.eq('partner_id', userId);
       } else if (tableName === 'art_orders' || tableName === 'video_orders' || tableName === 'demand_tasks') {
         const designerField = tableName === 'video_orders' ? 'editor_id' : (tableName === 'demand_tasks' ? 'editor_id' : 'designer_id');
         query = query.eq(designerField, userId);

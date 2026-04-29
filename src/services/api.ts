@@ -52,10 +52,10 @@ async function request(endpoint: string, method: string, data?: any) {
     
     const contentType = res.headers.get('content-type');
     if (contentType && contentType.includes('text/html')) {
-      console.error(`[API] Erro: O endpoint ${url} retornou HTML em vez de JSON. Possível erro de rota ou 404.`);
       const text = await res.text();
-      console.error(`[API] Conteúdo retornado (truncado): ${text.substring(0, 200)}...`);
-      throw new Error(`Endpoint ${endpoint} retornou HTML. Verifique se a rota existe no servidor.`);
+      console.error(`[API] Erro: O endpoint ${url} retornou HTML. Isso geralmente significa que o servidor está iniciando ou a rota não existe.`);
+      console.error(`[API] Preview do conteúdo: ${text.substring(0, 100).replace(/\n/g, ' ')}...`);
+      throw new Error(`Endpoint ${endpoint} retornou HTML (Servidor iniciando ou Erro 404).`);
     }
 
     if (!res.ok) {
@@ -245,7 +245,18 @@ export const api = {
     return request('/users', 'POST', user);
   },
   async updateUser(id: string, user: Partial<User>): Promise<User> {
-    return request(`/users/${id}`, 'PUT', user);
+    const maxRetries = 3;
+    let attempt = 0;
+    while (attempt <= maxRetries) {
+      try {
+        return await request(`/users/${id}`, 'PUT', user);
+      } catch (error: any) {
+        if (attempt === maxRetries || !error.message?.includes('HTML')) throw error;
+        attempt++;
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      }
+    }
+    throw new Error('Falha ao atualizar usuário após várias tentativas.');
   },
   async deleteUser(id: string): Promise<void> {
     return request(`/users/${id}`, 'DELETE');
@@ -331,8 +342,8 @@ export const api = {
     return res.json();
   },
 
-  async signup(name: string, email: string, password: string): Promise<{ success: boolean; user: User; token: string }> {
-    return request('/signup', 'POST', { name, email, password });
+  async signup(name: string, email: string, password: string, acceptedTerms: boolean = true): Promise<{ success: boolean; user: User; token: string }> {
+    return request('/signup', 'POST', { name, email, password, acceptedTerms });
   },
 
   async triggerIntegration(integrationId: string, payload: any): Promise<void> {
@@ -354,18 +365,39 @@ export const api = {
 
   // SYNC
   async syncData(): Promise<any> {
-    return request('/sync', 'GET');
+    const maxRetries = 2;
+    let attempt = 0;
+    while (attempt <= maxRetries) {
+      try {
+        return await request('/sync', 'GET');
+      } catch (error: any) {
+        if (attempt === maxRetries || !error.message?.includes('HTML')) throw error;
+        attempt++;
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      }
+    }
   },
 
   // NOTIFICATIONS
   async getNotifications(): Promise<any[]> {
-    return request('/notifications', 'GET');
+    const maxRetries = 2;
+    let attempt = 0;
+    while (attempt <= maxRetries) {
+      try {
+        return await request('/user-notifications', 'GET');
+      } catch (error: any) {
+        if (attempt === maxRetries || !error.message?.includes('HTML')) throw error;
+        attempt++;
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      }
+    }
+    return [];
   },
   async markNotificationRead(id: string): Promise<any> {
-    return request(`/notifications/${id}`, 'PUT', { isRead: true });
+    return request(`/user-notifications/${id}`, 'PUT', { isRead: true });
   },
   async deleteNotification(id: string): Promise<void> {
-    return request(`/notifications/${id}`, 'DELETE');
+    return request(`/user-notifications/${id}`, 'DELETE');
   },
 
   // GENERIC METHODS

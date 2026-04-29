@@ -19,14 +19,15 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
   };
 
   const [formData, setFormData] = useState<Partial<SupportTicket>>(initialFormData);
+  const [responseTexts, setResponseTexts] = useState<Record<string, string>>({});
 
-  const isPartner = currentUser.role === 'PARTNER';
   const isAdmin = currentUser.role === 'ADMIN';
   const isOwner = currentUser.role === 'OWNER';
+  const isManagement = isAdmin || isOwner;
 
-  const filteredTickets = isPartner 
-    ? tickets.filter(t => t.partnerId === currentUser.id)
-    : tickets;
+  const filteredTickets = isManagement
+    ? tickets
+    : tickets.filter(t => t.partnerId === currentUser.id);
 
   const handleOpenTicket = () => {
     setFormData(initialFormData);
@@ -51,19 +52,23 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
     }
   };
 
-  const handleRespondTicket = async (id: string, response: string) => {
+  const handleRespondTicket = async (id: string) => {
+    const responseText = responseTexts[id];
+    if (!responseText || !responseText.trim()) return;
+
     try {
       const ticket = tickets.find(t => t.id === id);
       if (!ticket) return;
 
       const updated = {
         ...ticket,
-        response,
+        response: responseText,
         status: 'replied' as 'replied'
       };
 
       await api.updateSupportTicket(id, updated);
       setTickets(tickets.map(t => t.id === id ? updated : t));
+      setResponseTexts(prev => ({ ...prev, [id]: '' }));
     } catch (err: any) {
       alert('Erro ao responder ticket: ' + err.message);
     }
@@ -120,10 +125,10 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight transition-colors">Central de Suporte</h1>
           <p className="text-sm text-gray-500">
-            {isPartner ? 'Abra chamados para suporte técnico ou financeiro.' : 'Gerencie as solicitações de suporte dos parceiros.'}
+            {isManagement ? 'Gerencie as solicitações de suporte da equipe e parceiros.' : 'Abra chamados para suporte técnico ou financeiro.'}
           </p>
         </div>
-        {isPartner && (
+        {!isManagement && (
           <button 
             onClick={handleOpenTicket}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-semibold hover:bg-indigo-600 transition-all shadow-sm"
@@ -142,11 +147,11 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
             </div>
             <h3 className="text-lg font-bold text-gray-900 mb-1">Nenhum ticket encontrado</h3>
             <p className="text-sm text-gray-500 max-w-xs">
-              {isPartner ? 'Você ainda não abriu nenhum chamado de suporte.' : 'Não há chamados de parceiros no momento.'}
+              {isManagement ? 'Não há chamados no momento.' : 'Você ainda não abriu nenhum chamado de suporte.'}
             </p>
           </div>
         ) : (
-          filteredTickets.map((ticket) => (
+          filteredTickets.sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map((ticket) => (
             <div key={ticket.id} className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-md transition-all group relative overflow-hidden">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex gap-4">
@@ -154,7 +159,7 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
                     <MessageSquare size={18} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{ticket.subject}</h3>
+                    <h3 className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{ticket.subject}</h3>
                     <div className="flex items-center gap-3 mt-1">
                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest flex items-center gap-1">
                         <Clock size={10} /> {ticket.createdAt}
@@ -165,7 +170,7 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
                     </div>
                   </div>
                 </div>
-                {isAdmin && (
+                {isManagement && (
                   <button 
                     onClick={() => handleDeleteTicket(ticket.id)}
                     className="p-2 text-gray-300 hover:text-rose-500 transition-colors"
@@ -179,28 +184,36 @@ export default function SupportView({ tickets, setTickets, currentUser }: Suppor
               </p>
               
               {ticket.response && (
-                <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mb-4">
-                  <p className="text-xs font-bold text-indigo-600 uppercase mb-1">Resposta do Suporte:</p>
+                <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mb-4 animate-in slide-in-from-left duration-300">
+                  <p className="text-xs font-bold text-indigo-600 uppercase mb-1 flex items-center gap-2">
+                    <CheckCircle2 size={12} /> Resposta do Suporte:
+                  </p>
                   <p className="text-sm text-indigo-900">{ticket.response}</p>
                 </div>
               )}
 
-              {isAdmin && ticket.status !== 'closed' && (
+              {isManagement && ticket.status !== 'closed' && (
                 <div className="space-y-3 mt-4 pt-4 border-t border-gray-100">
-                   <textarea 
-                     className="w-full p-3 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                     placeholder="Digite sua resposta..."
-                     onBlur={(e) => {
-                       if (e.target.value.trim()) {
-                         handleRespondTicket(ticket.id, e.target.value);
-                         e.target.value = '';
-                       }
-                     }}
-                   />
+                   <div className="relative group">
+                    <textarea 
+                      className="w-full p-4 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all min-h-[80px]"
+                      placeholder="Digite sua resposta e aperte o botão ao lado..."
+                      value={responseTexts[ticket.id] || ''}
+                      onChange={(e) => setResponseTexts(prev => ({ ...prev, [ticket.id]: e.target.value }))}
+                    />
+                    <button 
+                       onClick={() => handleRespondTicket(ticket.id)}
+                       disabled={!responseTexts[ticket.id]?.trim()}
+                       className="absolute bottom-3 right-3 p-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 disabled:opacity-30 transition-all shadow-sm"
+                       title="Enviar Resposta"
+                    >
+                      <Send size={14} />
+                    </button>
+                   </div>
                    <div className="flex gap-2">
                      <button 
                        onClick={() => handleCloseTicket(ticket.id)}
-                       className="px-4 py-2 text-xs font-bold text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100"
+                       className="px-4 py-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 uppercase tracking-widest border border-emerald-100"
                      >
                        Marcar como Concluído
                      </button>

@@ -5,17 +5,19 @@ import { cn } from '../lib/utils';
 
 interface LoginViewProps {
   onLogin: (email: string, password: string) => Promise<void>;
-  onSignup: (name: string, email: string, password: string) => Promise<void>;
+  onSignup: (name: string, email: string, password: string, acceptedTerms: boolean) => Promise<void>;
   isLoading: boolean;
   initialMode?: 'login' | 'signup';
   onBack?: () => void;
+  onViewTerms?: () => void;
 }
 
-export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 'login', onBack }: LoginViewProps) {
+export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 'login', onBack, onViewTerms }: LoginViewProps) {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(initialMode as any);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +42,11 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
       if (mode === 'login') {
         await onLogin(email, password);
       } else {
-        await onSignup(name, email, password);
+        if (!acceptedTerms) {
+          setError('Você precisa aceitar os Termos de Uso para criar sua conta.');
+          return;
+        }
+        await onSignup(name, email, password, acceptedTerms);
       }
     } catch (err: any) {
       if (err.code === 'SYSTEM_EMPTY') {
@@ -154,6 +160,32 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
                     className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-indigo-600 transition-colors"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {mode === 'signup' && (
+              <div className="flex items-start gap-3 ml-1 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center h-5 mt-0.5">
+                  <input
+                    id="terms"
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
+                  />
+                </div>
+                <div className="text-xs">
+                  <label htmlFor="terms" className="font-medium text-gray-700 cursor-pointer">
+                    Li e concordo com os
+                  </label>
+                  <button
+                    type="button"
+                    onClick={onViewTerms}
+                    className="ml-1 text-indigo-600 font-bold hover:text-indigo-700 transition-colors underline decoration-indigo-200 underline-offset-4"
+                  >
+                    Termos de Uso e Condições
                   </button>
                 </div>
               </div>

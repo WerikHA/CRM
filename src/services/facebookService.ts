@@ -1,12 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import fetch from "node-fetch";
-
-// In-memory store for tokens (Em produção, salvar no banco de dados Supabase)
-const facebookTokens = new Map<string, {
-  accessToken: string;
-  pages: any[];
-  instagramAccounts: any[];
-}>();
+import { supabase } from "../lib/supabaseClient.ts";
+import { encryptObject, decryptObject } from "../lib/encryption.ts";
 
 export const facebookService = {
   getAuthUrl(clientId: string) {
@@ -45,14 +40,6 @@ export const facebookService = {
     
     const userAccessToken = tokenData.access_token;
     
-    // 2. Exchange for Long-lived token (Optional but good practice)
-    /*
-    const llTokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${userAccessToken}`;
-    const llTokenRes = await fetch(llTokenUrl);
-    const llTokenData = await llTokenRes.json();
-    const longLivedToken = llTokenData.access_token || userAccessToken;
-    */
-
     // 3. Get User's Pages and their tokens
     const pagesUrl = `https://graph.facebook.com/v19.0/me/accounts?access_token=${userAccessToken}`;
     const pagesRes = await fetch(pagesUrl);
@@ -77,29 +64,58 @@ export const facebookService = {
       }
     }
 
-    facebookTokens.set(clientId, {
+    const tokens = {
       accessToken: userAccessToken,
       pages,
       instagramAccounts
-    });
+    };
+
+    // Store in Supabase securely
+    const { data: clientData } = await supabase.from('clients').select('owner_id').eq('id', clientId).single();
+    const ownerId = clientData?.owner_id || clientId;
+
+    await supabase.from('system_configs').upsert({
+      owner_id: ownerId,
+      config_key: `facebook_tokens_${clientId}`,
+      config_value: encryptObject(tokens),
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'owner_id,config_key' });
     
     return { pages, instagramAccounts };
   },
 
-  isConnected(clientId: string) {
-    return facebookTokens.has(clientId);
+  async getStoredData(clientId: string) {
+    const { data: clientData } = await supabase.from('clients').select('owner_id').eq('id', clientId).single();
+    if (!clientData) return null;
+
+    const { data } = await supabase
+      .from('system_configs')
+      .select('config_value')
+      .eq('owner_id', clientData.owner_id)
+      .eq('config_key', `facebook_tokens_${clientId}`)
+      .single();
+
+    if (!data?.config_value) return null;
+    return typeof data.config_value === 'string' ? decryptObject(data.config_value) : data.config_value;
   },
 
-  getPages(clientId: string) {
-    return facebookTokens.get(clientId)?.pages || [];
+  async isConnected(clientId: string) {
+    const data = await this.getStoredData(clientId);
+    return !!data;
   },
 
-  getInstagramAccounts(clientId: string) {
-    return facebookTokens.get(clientId)?.instagramAccounts || [];
+  async getPages(clientId: string) {
+    const data = await this.getStoredData(clientId);
+    return data?.pages || [];
+  },
+
+  async getInstagramAccounts(clientId: string) {
+    const data = await this.getStoredData(clientId);
+    return data?.instagramAccounts || [];
   },
 
   async publishPost(clientId: string, networks: string[], content: string, mediaUrl?: string, scheduledTimeUnix?: number, selectedPageId?: string, selectedIgAccountId?: string) {
-    const data = facebookTokens.get(clientId);
+    const data = await this.getStoredData(clientId);
     if (!data) throw new Error("Cliente não possui contas conectadas");
     
     if (!data.pages.length && networks.includes("facebook")) throw new Error("Nenhuma página do Facebook encontrada conectada ao cliente.");
@@ -108,7 +124,7 @@ export const facebookService = {
     const results = [];
     
     if (networks.includes("facebook")) {
-      const page = selectedPageId ? data.pages.find(p => p.id === selectedPageId) || data.pages[0] : data.pages[0];
+      const page = selectedPageId ? data.pages.find((p: any) => p.id === selectedPageId) || data.pages[0] : data.pages[0];
       let postUrl = `https://graph.facebook.com/v19.0/${page.id}/feed`;
       const body: any = {
         message: content,
@@ -137,15 +153,10 @@ export const facebookService = {
     }
     
     if (networks.includes("instagram")) {
-      const igAcc = selectedIgAccountId ? data.instagramAccounts.find(ig => ig.igAccountId === selectedIgAccountId) || data.instagramAccounts[0] : data.instagramAccounts[0];
-      // Instagram API requires Image URL or Video URL. We assume mediaUrl is provided.
-      // If no media is provided, Instagram does not allow text-only posts
+      const igAcc = selectedIgAccountId ? data.instagramAccounts.find((ig: any) => ig.igAccountId === selectedIgAccountId) || data.instagramAccounts[0] : data.instagramAccounts[0];
       if (!mediaUrl) {
          results.push({ network: "instagram", result: { error: { message: "Instagram exige uma imagem ou vídeo para publicar." } } });
       } else {
-        // Unfortunately Instagram scheduling might require different privileges or endpoints, but for MVP let's assume we use regular or just fail if scheduling since IG scheduling is restrictive via plain Graph API.
-        // Actually, Instagram can schedule via standard API using standard `published` ? No, Instagram Graph API doesn't fully support arbitrary scheduling for third parties easily without specialized permissions. But let's try or return a note.
-        // Or if there is a scheduledTimeUnix, we can handle it via a background queue! Let's for now just publish it immediately or fail with an error if it's IG.
         const creationUrl = `https://graph.facebook.com/v19.0/${igAcc.igAccountId}/media`;
         const creationRes = await fetch(creationUrl, {
           method: "POST",
@@ -177,5 +188,28 @@ export const facebookService = {
     }
 
     return results;
+  },
+
+  async disconnect(clientId: string) {
+    const { data: clientData } = await supabase.from('clients').select('owner_id').eq('id', clientId).single();
+    if (!clientData) return { success: false };
+
+    await supabase.from('system_configs')
+      .delete()
+      .eq('owner_id', clientData.owner_id)
+      .eq('config_key', `facebook_tokens_${clientId}`);
+    
+    return { success: true };
+  },
+
+  async disconnectAll(ownerId: string) {
+    // Deleta todas as chaves que começam com facebook_tokens_ para este owner
+    const { error } = await supabase.from('system_configs')
+      .delete()
+      .eq('owner_id', ownerId)
+      .like('config_key', 'facebook_tokens_%');
+    
+    if (error) throw error;
+    return { success: true };
   }
 };

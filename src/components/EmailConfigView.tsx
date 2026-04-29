@@ -148,7 +148,7 @@ export function EmailConfigView() {
               />
             </div>
             <div className="md:col-span-2">
-              <label className="text-xs font-bold text-gray-400 uppercase">Remetente (Opicional)</label>
+              <label className="text-xs font-bold text-gray-400 uppercase">Remetente (Opcional)</label>
               <input
                 type="text"
                 value={config.fromAddress || ''}

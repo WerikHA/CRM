@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare, Terminal, ShieldCheck, Layout, Eye, EyeOff } from 'lucide-react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare, Terminal, ShieldCheck, Layout, Eye, EyeOff, FileText } from 'lucide-react';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import { storageService } from '../lib/storage';
@@ -12,6 +12,7 @@ import { EmailConfigView } from './EmailConfigView';
 import { ToastContainer, toast } from './ui/Toast';
 
 import { meetLogService } from '../services/meetLogService';
+import PersonalizationView from './PersonalizationView';
 
 // Helper para fetch com autenticação automática
 const fetchWithAuth = async (url: string, options: any = {}) => {
@@ -884,6 +885,7 @@ interface AdminViewProps {
   agencyConfig?: { name: string, primaryColor: string, currency: string, locale: string, logoUrl?: string, logoBgColor?: string };
   setAgencyConfig?: React.Dispatch<React.SetStateAction<any>>;
   currentUser: User;
+  setCurrentUser: (user: User) => void;
 }
 
 export default function AdminView({ 
@@ -897,13 +899,17 @@ export default function AdminView({
   setUsers,
   agencyConfig,
   setAgencyConfig,
-  currentUser
+  currentUser,
+  setCurrentUser
 }: AdminViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'sql' | 'personalizacao' | 'whatsapp' | 'video' | 'forms' | 'logs' | 'privacidade' | 'network' | 'email'>('integrations');
-  const [isTeamChatOpen, setIsTeamChatOpen] = useState(false);
   const isOwner = currentUser.role === 'OWNER';
   const isAdmin = currentUser.role === 'ADMIN';
   const canManageSystem = isOwner || isAdmin;
+
+  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'sql' | 'personalizacao' | 'whatsapp' | 'video' | 'forms' | 'logs' | 'privacidade' | 'network' | 'email' | 'revoke'>(
+    canManageSystem ? 'integrations' : 'personalizacao'
+  );
+  const [isTeamChatOpen, setIsTeamChatOpen] = useState(false);
 
   const [copied, setCopied] = useState<string | null>(null);
   const [isAuditing, setIsAuditing] = useState(false);
@@ -911,6 +917,8 @@ export default function AdminView({
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
   const [isUserLogsModalOpen, setIsUserLogsModalOpen] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [viewingUserLogs, setViewingUserLogs] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
@@ -1028,6 +1036,40 @@ export default function AdminView({
     } catch (err: any) {
       console.error(`[DEBUG] Erro ao remover usuário:`, err);
       alert('Erro ao remover usuário: ' + err.message);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    if (!confirm('Deseja realmente desconectar o Google Drive? Todos os tokens de acesso serão revogados e excluídos permanentemente.')) return;
+    try {
+      await api.post('/google/disconnect', { userId: currentUser.id });
+      toast.success('Google Drive desconectado e dados revogados');
+    } catch (err) {
+      toast.error('Erro ao desconectar Google Drive');
+    }
+  };
+
+  const handleDisconnectMeta = async () => {
+    if (!confirm('Deseja realmente desconectar TODAS as contas Meta (Facebook/Instagram)? Todos os tokens e dados sincronizados serão excluídos permanentemente.')) return;
+    try {
+      await api.post('/facebook/disconnect-all', { ownerId: currentUser.ownerId || currentUser.id });
+      toast.success('Contas Meta desconectadas e dados revogados');
+    } catch (err) {
+      toast.error('Erro ao desconectar contas Meta');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      setIsDeletingAccount(true);
+      await api.delete('/auth/account');
+      toast.success('Sua conta e todos os dados foram excluídos do sistema.');
+      storageService.clear();
+      window.location.href = '/';
+    } catch (err) {
+      toast.error('Erro ao excluir conta. Contate o suporte.');
+      setIsDeletingAccount(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -1157,15 +1199,17 @@ export default function AdminView({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Sidebar Mini-nav */}
         <div className="space-y-2">
-          <button 
-            onClick={() => setActiveSubTab('integrations')}
-            className={cn(
-              "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
-              activeSubTab === 'integrations' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            )}
-          >
-            <Link size={18} /> Integrações
-          </button>
+          {canManageSystem && (
+            <button 
+              onClick={() => setActiveSubTab('integrations')}
+              className={cn(
+                "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+                activeSubTab === 'integrations' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              )}
+            >
+              <Link size={18} /> Integrações
+            </button>
+          )}
           <button 
             onClick={() => setActiveSubTab('users')}
             className={cn(
@@ -1173,7 +1217,7 @@ export default function AdminView({
               activeSubTab === 'users' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             )}
           >
-            <Shield size={18} /> {isAdmin ? 'Gestão de Usuários' : 'Membros da Equipe'}
+            <Shield size={18} /> {canManageSystem ? 'Gestão de Usuários' : 'Membros da Equipe'}
           </button>
           {isAdmin && (
             <button 
@@ -1204,7 +1248,7 @@ export default function AdminView({
               activeSubTab === 'personalizacao' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             )}
           >
-            <Globe size={18} /> Personalização
+            <Palette size={18} /> Personalização
           </button>
           {(isAdmin || isOwner) && (
             <>
@@ -1242,6 +1286,15 @@ export default function AdminView({
               <ShieldCheck size={18} /> Privacidade & Cookies
             </button>
           )}
+          <button 
+            onClick={() => setActiveSubTab('revoke')}
+            className={cn(
+              "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+              activeSubTab === 'revoke' ? "bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            )}
+          >
+            <Shield size={18} /> Revogar ou Excluir
+          </button>
           {isAdmin && (
             <button 
               onClick={() => setActiveSubTab('network')}
@@ -1490,147 +1543,278 @@ export default function AdminView({
             </div>
           )}
 
-          {activeSubTab === 'privacidade' && (
-            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 space-y-6">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                  <ShieldCheck size={24} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg dark:text-gray-100 uppercase tracking-tight">Privacidade & Cookies</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Gerencie as configurações de conformidade com a LGPD.</p>
-                </div>
+          {activeSubTab === 'revoke' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="bg-white dark:bg-gray-900 p-8 rounded-[2rem] border border-gray-100 dark:border-gray-800 shadow-sm mb-8">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 uppercase tracking-tight">Revogar e Excluir</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-medium">Controle seus dados, tokens e a existência da sua conta.</p>
               </div>
 
-              <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
-                <h4 className="font-bold text-sm mb-2 uppercase tracking-tight">Reiniciar Consentimento</h4>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                  Clique no botão abaixo para remover sua decisão de cookies. O banner aparecerá novamente na próxima recarga da página.
-                </p>
-                <button
-                  onClick={() => {
-                    localStorage.removeItem('cookie_consent');
-                    toast.success('Consentimento removido! O banner reaparecerá em breve.');
-                  }}
-                  className="px-6 py-2 bg-rose-500 text-white rounded-xl text-xs font-bold hover:bg-rose-600 transition-all shadow-sm shadow-rose-500/20"
+              {/* Sessão: Segurança e Privacidade (Conexões) */}
+              <section className="bg-white dark:bg-gray-900 p-8 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                <h2 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-6 flex items-center gap-2">
+                  <Shield size={14} /> Revogar Acessos Externos
+                </h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl">
+                    <div className="flex items-start justify-between mb-6">
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">Google Drive</h4>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-widest font-black">Integração OAUTH</p>
+                      </div>
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                        <FileText size={20} />
+                      </div>
+                    </div>
+                    <button 
+                      onClick={handleDisconnectGoogle}
+                      className="w-full py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-rose-500 rounded-xl text-xs font-black font-display uppercase tracking-widest hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors shadow-sm"
+                    >
+                      Revogar Acesso
+                    </button>
+                  </div>
+
+                  <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl">
+                    <div className="flex items-start justify-between mb-6">
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">Contas Meta</h4>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-widest font-black">FB & IG Business</p>
+                      </div>
+                      <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                        <Globe size={20} />
+                      </div>
+                    </div>
+                    <button 
+                      onClick={handleDisconnectMeta}
+                      className="w-full py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-rose-500 rounded-xl text-xs font-black font-display uppercase tracking-widest hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors shadow-sm"
+                    >
+                      Revogar Todas Chaves
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-8 mt-8 border-t border-gray-100 dark:border-gray-800">
+                  <h4 className="text-xs font-black text-rose-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                     <AlertTriangle size={14} /> Zona de Perigo
+                  </h4>
+                  
+                  {showDeleteConfirm ? (
+                    <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 p-8 rounded-[2rem] animate-in zoom-in-95 duration-200 shadow-xl shadow-rose-500/5">
+                      <div className="flex items-center gap-4 mb-4">
+                         <div className="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center shadow-lg shadow-rose-500/40">
+                           <AlertTriangle size={24} />
+                         </div>
+                         <div>
+                           <h5 className="font-bold text-rose-900 dark:text-rose-100 tracking-tight text-lg">Exclusão Permanente</h5>
+                           <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">Esta ação não pode ser revertida.</p>
+                         </div>
+                      </div>
+                      <p className="text-sm text-rose-700 dark:text-rose-400 font-medium mb-6 leading-relaxed">
+                        Ao excluir sua conta, removeremos permanentemente todos os seus leads, campanhas, automações e arquivos vinculados ao CRM.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <button 
+                          onClick={handleDeleteAccount}
+                          disabled={isDeletingAccount}
+                          className="px-8 py-3 bg-rose-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-rose-700 transition-all disabled:opacity-50 shadow-lg shadow-rose-600/30"
+                        >
+                          {isDeletingAccount ? 'Processando...' : 'Confirmar Exclusão'}
+                        </button>
+                        <button 
+                          onClick={() => setShowDeleteConfirm(false)}
+                          className="px-8 py-3 bg-white dark:bg-gray-800 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-gray-700 border border-slate-200 dark:border-gray-700 transition-all"
+                        >
+                          Cancelar e Voltar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="flex items-center gap-4 px-8 py-4 bg-white dark:bg-gray-900 border-2 border-rose-100 dark:border-rose-900/30 text-rose-600 rounded-[1.5rem] text-xs font-black uppercase tracking-widest hover:bg-rose-50 dark:hover:bg-rose-900/10 transition-all group shadow-sm hover:shadow-md"
+                    >
+                      <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 group-hover:bg-rose-100 dark:group-hover:bg-rose-900/40 transition-colors">
+                        <Trash2 size={18} />
+                      </div>
+                      Excluir permanentemente minha conta do CRM
+                    </button>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {activeSubTab === 'privacidade' && (
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 space-y-8 max-w-4xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                    <ShieldCheck size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg dark:text-gray-100 uppercase tracking-tight">Privacidade & Cookies</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Gerencie as configurações de conformidade e revise as políticas.</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => window.open('/privacy', '_blank')}
+                  className="flex items-center gap-2 text-xs font-bold text-indigo-500 hover:underline px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl"
                 >
-                  Limpar Cache de Cookies
+                  <ExternalLink size={14} /> Link Público
                 </button>
               </div>
 
-              <div className="p-6 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-2xl border border-indigo-100/50 dark:border-indigo-500/10">
-                <h4 className="font-bold text-sm mb-2 uppercase tracking-tight text-indigo-600">Por que isso é necessário?</h4>
-                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed font-medium">
-                  De acordo com a Lei Geral de Proteção de Dados (LGPD), você deve informar aos usuários sobre o uso de cookies e obter seu consentimento antes de coletar dados não essenciais. O CRM Amplifica utiliza essa funcionalidade para garantir que sua agência esteja em conformidade por padrão.
-                </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+                  <h4 className="font-bold text-sm mb-2 uppercase tracking-tight">Reiniciar Consentimento</h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                    Clique no botão abaixo para remover sua decisão de cookies. O banner aparecerá novamente na próxima recarga.
+                  </p>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('cookie_consent');
+                      toast.success('Consentimento removido! O banner reaparecerá em breve.');
+                    }}
+                    className="px-6 py-2 bg-rose-500 text-white rounded-xl text-xs font-bold hover:bg-rose-600 transition-all shadow-sm"
+                  >
+                    Limpar Cookies
+                  </button>
+                </div>
+
+                <div className="p-6 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-2xl border border-indigo-100/50 dark:border-indigo-500/10">
+                  <h4 className="font-bold text-sm mb-2 uppercase tracking-tight text-indigo-600">Conformidade LGPD</h4>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                    O Amplifica CRM utiliza essa funcionalidade para garantir que sua agência esteja em conformidade por padrão, solicitando consentimento antes de coletar dados não essenciais.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <h4 className="text-sm font-bold uppercase tracking-widest text-indigo-600 mb-4">Cláusulas de Integração (Google OAuth)</h4>
+                  
+                  <div className="space-y-4 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+                    <section>
+                      <h5 className="font-bold text-gray-900 dark:text-gray-200">1. INTEGRAÇÃO COM SERVIÇOS DO GOOGLE</h5>
+                      <p>A plataforma acessará arquivos do seu Google Drive estritamente para visualização e agendamento de mídias. Não comercializamos dados nem os utilizamos para fins publicitários.</p>
+                    </section>
+
+                    <section>
+                      <h5 className="font-bold text-gray-900 dark:text-gray-200">2. POLÍTICA DE USO LIMITADO</h5>
+                      <p>O uso de informações recebidas das APIs do Google segue a Política de Dados do Usuário dos Serviços de API do Google, cumprindo integralmente os requisitos de Uso Limitado.</p>
+                    </section>
+
+                    <section>
+                      <h5 className="font-bold text-gray-900 dark:text-gray-200">3. REVOGAÇÃO DE ACESSO</h5>
+                      <p>Usuários podem desconectar sua conta a qualquer momento via Configurações ou através do Google Permissions Hub.</p>
+                    </section>
+                  </div>
+                </div>
               </div>
             </div>
           )}
 
-          {activeSubTab === 'network' && isAdmin && (
-            <NetworkStatus />
-          )}
-
-          {activeSubTab === 'email' && isAdmin && (
-            <EmailConfigView />
-          )}
-
-          {activeSubTab === 'personalizacao' && agencyConfig && setAgencyConfig && (
-            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-all duration-300">
-               <div className="p-6 border-b border-gray-50 dark:border-gray-800 transition-colors">
-                  <h3 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2 uppercase tracking-tight text-center w-full justify-center"><Palette size={20} className="text-indigo-500" /> Personalização do Painel</h3>
-                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 transition-colors text-center">Altere o nome e as cores para adequar o CRM à sua marca.</p>
-               </div>
-               <div className="p-8 space-y-6">
-                  <div className="space-y-2">
-                     <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors text-center block">Nome da Empresa</label>
-                     <input 
-                       type="text" 
-                       value={agencyConfig.name || ''}
-                       onChange={e => {
-                         const next = { ...agencyConfig, name: e.target.value };
-                         setAgencyConfig(next);
-                         storageService.setItem('agency_config', JSON.stringify(next));
-                       }}
-                       className="w-full max-w-sm mx-auto block px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all duration-300 shadow-inner"
-                       placeholder="Sua Agência Ltda"
-                     />
+          {activeSubTab === 'personalizacao' && (
+            <div className="space-y-6">
+              <PersonalizationView currentUser={currentUser} setCurrentUser={setCurrentUser} />
+              
+              {canManageSystem && agencyConfig && setAgencyConfig && (
+                <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-all duration-300">
+                  <div className="p-6 border-b border-gray-50 dark:border-gray-800 transition-colors">
+                      <h3 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2 uppercase tracking-tight text-center w-full justify-center"><Palette size={20} className="text-indigo-500" /> Identidade Visual da Agência</h3>
+                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 transition-colors text-center">Configurações globais que afetam todos os usuários e clientes.</p>
                   </div>
-                  <div className="space-y-2">
-                     <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors text-center block">Logo da Agência (Upload PNG/SVG)</label>
-                     <input 
-                       type="file" 
-                       accept="image/png, image/jpeg, image/svg+xml"
-                       onChange={e => {
-                         const file = e.target.files?.[0];
-                         if (!file) return;
-                         const reader = new FileReader();
-                         reader.onloadend = () => {
-                           const next = { ...agencyConfig, logoUrl: reader.result as string };
-                           setAgencyConfig(next);
+                  <div className="p-8 space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors text-center block">Nome da Empresa</label>
+                        <input 
+                          type="text" 
+                          value={agencyConfig.name || ''}
+                          onChange={e => {
+                            const next = { ...agencyConfig, name: e.target.value };
+                            setAgencyConfig(next);
                             storageService.setItem('agency_config', JSON.stringify(next));
-                         };
-                         reader.readAsDataURL(file);
-                       }}
-                       className="w-full max-w-sm mx-auto block px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 dark:file:bg-indigo-500/10 file:text-indigo-700 dark:file:text-indigo-400 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-500/20 transition-all cursor-pointer text-gray-500 dark:text-gray-400"
-                     />
-                     {agencyConfig.logoUrl && agencyConfig.logoUrl.startsWith('data:image') && (
-                       <div className="mt-2 flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 max-w-sm mx-auto transition-colors">
-                          <div className="p-2 rounded flex items-center justify-center bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 transition-colors" style={{ backgroundColor: agencyConfig.logoBgColor || agencyConfig.primaryColor }}>
-                             <img src={agencyConfig.logoUrl} alt="Preview" className="w-8 h-8 object-contain" />
+                          }}
+                          className="w-full max-w-sm mx-auto block px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all duration-300 shadow-inner"
+                          placeholder="Sua Agência Ltda"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors text-center block">Logo da Agência (Upload PNG/SVG)</label>
+                        <input 
+                          type="file" 
+                          accept="image/png, image/jpeg, image/svg+xml"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              const next = { ...agencyConfig, logoUrl: reader.result as string };
+                              setAgencyConfig(next);
+                              storageService.setItem('agency_config', JSON.stringify(next));
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                          className="w-full max-w-sm mx-auto block px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 dark:file:bg-indigo-500/10 file:text-indigo-700 dark:file:text-indigo-400 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-500/20 transition-all cursor-pointer text-gray-500 dark:text-gray-400"
+                        />
+                        {agencyConfig.logoUrl && agencyConfig.logoUrl.startsWith('data:image') && (
+                          <div className="mt-2 flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 max-w-sm mx-auto transition-colors">
+                              <div className="p-2 rounded flex items-center justify-center bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 transition-colors" style={{ backgroundColor: agencyConfig.logoBgColor || agencyConfig.primaryColor }}>
+                                <img src={agencyConfig.logoUrl} alt="Preview" className="w-8 h-8 object-contain" />
+                              </div>
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  const next = { ...agencyConfig, logoUrl: '' };
+                                  setAgencyConfig(next);
+                                  storageService.setItem('agency_config', JSON.stringify(next));
+                                }} 
+                                className="text-xs font-bold text-rose-500 hover:text-rose-600 px-3 py-1 bg-rose-50 dark:bg-rose-500/10 rounded-lg transition-colors uppercase"
+                              >
+                                Remover Logo
+                              </button>
+                            </div>
+                        )}
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 transition-colors text-center">Recomendado: Imagens transparentes em formato quadrado (1:1)</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-sm mx-auto">
+                        <div className="space-y-2 text-center">
+                          <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors block">Cor Primária</label>
+                          <div className="flex items-center gap-4 justify-center">
+                              <input 
+                                type="color" 
+                                value={agencyConfig.primaryColor || '#6366f1'}
+                                onChange={e => {
+                                  const next = { ...agencyConfig, primaryColor: e.target.value };
+                                  setAgencyConfig(next);
+                                  storageService.setItem('agency_config', JSON.stringify(next));
+                                }}
+                                className="w-12 h-12 rounded-xl cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 transition-all"
+                              />
+                              <span className="text-xs font-mono text-gray-500 dark:text-gray-400 transition-colors">{agencyConfig.primaryColor}</span>
                           </div>
-                          <button 
-                            type="button" 
-                            onClick={() => {
-                              const next = { ...agencyConfig, logoUrl: '' };
-                              setAgencyConfig(next);
-                              storageService.setItem('agency_config', JSON.stringify(next));
-                            }} 
-                            className="text-xs font-bold text-rose-500 hover:text-rose-600 px-3 py-1 bg-rose-50 dark:bg-rose-500/10 rounded-lg transition-colors uppercase"
-                          >
-                            Remover Logo
-                          </button>
                         </div>
-                     )}
-                     <p className="text-[10px] text-gray-400 dark:text-gray-500 transition-colors text-center">Recomendado: Imagens transparentes em formato quadrado (1:1)</p>
+                        <div className="space-y-2 text-center">
+                          <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors block">Cor Fundo (Logo)</label>
+                          <div className="flex items-center gap-4 justify-center">
+                              <input 
+                                type="color" 
+                                value={agencyConfig.logoBgColor || agencyConfig.primaryColor || '#6366f1'}
+                                onChange={e => {
+                                  const next = { ...agencyConfig, logoBgColor: e.target.value };
+                                  setAgencyConfig(next);
+                                  storageService.setItem('agency_config', JSON.stringify(next));
+                                }}
+                                className="w-12 h-12 rounded-xl cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 transition-all"
+                              />
+                              <span className="text-xs font-mono text-gray-500 dark:text-gray-400 transition-colors">{agencyConfig.logoBgColor || agencyConfig.primaryColor}</span>
+                          </div>
+                        </div>
+                      </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-sm mx-auto">
-                    <div className="space-y-2 text-center">
-                       <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors block">Cor Primária</label>
-                       <div className="flex items-center gap-4 justify-center">
-                          <input 
-                            type="color" 
-                            value={agencyConfig.primaryColor || '#6366f1'}
-                            onChange={e => {
-                              const next = { ...agencyConfig, primaryColor: e.target.value };
-                              setAgencyConfig(next);
-                              storageService.setItem('agency_config', JSON.stringify(next));
-                            }}
-                            className="w-12 h-12 rounded-xl cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 transition-all"
-                          />
-                          <span className="text-xs font-mono text-gray-500 dark:text-gray-400 transition-colors">{agencyConfig.primaryColor}</span>
-                       </div>
-                    </div>
-                    <div className="space-y-2 text-center">
-                       <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors block">Cor Fundo (Logo)</label>
-                       <div className="flex items-center gap-4 justify-center">
-                          <input 
-                            type="color" 
-                            value={agencyConfig.logoBgColor || agencyConfig.primaryColor || '#6366f1'}
-                            onChange={e => {
-                              const next = { ...agencyConfig, logoBgColor: e.target.value };
-                              setAgencyConfig(next);
-                              storageService.setItem('agency_config', JSON.stringify(next));
-                            }}
-                            className="w-12 h-12 rounded-xl cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 transition-all"
-                          />
-                          <span className="text-xs font-mono text-gray-500 dark:text-gray-400 transition-colors">{agencyConfig.logoBgColor || agencyConfig.primaryColor}</span>
-                       </div>
-                    </div>
-                  </div>
-               </div>
-
-
+                </div>
+              )}
             </div>
           )}
         </div>

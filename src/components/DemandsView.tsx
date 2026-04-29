@@ -80,8 +80,47 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
       const { client, ...cleanTask } = task as any;
       const updated = await api.updateDemandTask(task.id, { ...cleanTask, status: newStatus });
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...updated } : t));
+      
+      // Auto-create video workflow if recording is done
+      if (task.type === 'recording' && newStatus === 'done') {
+        await syncToVideoWorkflow({ ...task, status: newStatus });
+      }
     } catch (err: any) {
       notifyError('Erro ao atualizar demanda', err.message);
+    }
+  };
+
+  const syncToVideoWorkflow = async (demand: DemandTask) => {
+    try {
+      // 1. Check if video workflow already exists for this demand
+      const allVideoOrders = await api.getVideoOrders();
+      const existingOrder = allVideoOrders.find(o => o.demandId === demand.id);
+
+      const client = clients.find(c => c.id === demand.clientId);
+
+      const videoOrderData = {
+        title: demand.title || `Edição: ${client?.name || 'Sem Nome'}`,
+        clientId: demand.clientId,
+        editorId: demand.editorId || client?.assignedVideoEditorId || '',
+        deadline: demand.postDate || demand.periodEnd,
+        priority: 'medium',
+        progress: 0,
+        status: 'queue',
+        demandId: demand.id,
+        observations: demand.observations,
+        postDate: demand.postDate,
+        materialsLink: demand.materialsLink
+      } as any;
+
+      if (existingOrder) {
+        // Update existing
+        await api.updateVideoOrder(existingOrder.id, videoOrderData);
+      } else {
+        // Create new
+        await api.createVideoOrder(videoOrderData);
+      }
+    } catch (err: any) {
+      console.error('Error syncing to video workflow:', err);
     }
   };
 
@@ -161,7 +200,13 @@ export default function DemandsView({ tasks, setTasks, clients, users }: Demands
         };
 
         const updated = await api.updateDemandTask(editingTask.id, payload);
-        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...updated } : t));
+        const fullUpdated = { ...editingTask, ...updated };
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? fullUpdated : t));
+
+        // Update video workflow if it's a done recording
+        if (fullUpdated.type === 'recording' && fullUpdated.status === 'done') {
+          await syncToVideoWorkflow(fullUpdated);
+        }
       }
       setIsEditModalOpen(false);
     } catch (err: any) {
