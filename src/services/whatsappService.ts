@@ -122,7 +122,7 @@ export class WhatsAppService extends EventEmitter {
       if (this.sessions[ownerId]) {
         try {
           this.sessions[ownerId].ev.removeAllListeners();
-          this.sessions[ownerId].end(undefined);
+          await this.sessions[ownerId].end(undefined);
         } catch (e) {}
         delete this.sessions[ownerId];
       }
@@ -277,9 +277,9 @@ export class WhatsAppService extends EventEmitter {
               // Exponential backoff or progressive delay
               let baseDelay = 5000;
               if (statusCode === 515 || statusCode === 428 || isConnectionTerminated) {
-                baseDelay = 20000; // Even more delay for suspected blocks/terminations
+                baseDelay = 60000; // Increased to 60s for suspected blocks/terminations
               }
-              const delay = Math.min(baseDelay * this.reconnectionAttempts[ownerId], 300000); // Max 5m
+              const delay = Math.min(baseDelay * (this.reconnectionAttempts[ownerId] || 1), 300000); // Ensure multiplier is at least 1
               
               this.debugLog(ownerId, `Agendando reconexão (#${this.reconnectionAttempts[ownerId]}) em ${delay/1000}s. Causa: ${statusCode || 'term'}${isConnectionTerminated ? ' (Servidor Terminou)' : ''}`);
               
@@ -459,6 +459,15 @@ export class WhatsAppService extends EventEmitter {
         fs.rmSync(sessionAuthDir, { recursive: true, force: true });
       }
     } catch (err) {}
+    
+    if (this.sessions[ownerId]) {
+      try {
+        this.sessions[ownerId].ev.removeAllListeners();
+        this.sessions[ownerId].end(undefined);
+      } catch (e) {}
+      delete this.sessions[ownerId];
+    }
+    this.reconnectionAttempts[ownerId] = 0;
   }
 
   public async logout(ownerId: string) {
