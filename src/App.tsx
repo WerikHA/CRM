@@ -66,8 +66,10 @@ import { ChatWindow } from './components/ChatWindow';
 import LandingPage from './components/LandingPage';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfUse from './components/TermsOfUse';
+import CheckoutSuccess from './components/CheckoutSuccess';
+import CheckoutError from './components/CheckoutError';
 
-type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'recordings' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'drive' | 'personalization' | 'social_posts';
+type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'recordings' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'drive' | 'personalization' | 'social_posts' | 'checkout_success' | 'checkout_error';
 
 import { api } from './services/api';
 import { VideoOrder, SupportTicket, DemandTask } from './types';
@@ -79,6 +81,7 @@ import CookieConsent from './components/CookieConsent';
 import JitsiMeeting from './components/JitsiMeeting';
 
 import { storageService } from './lib/storage';
+import { io } from 'socket.io-client';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   dashboard: 'Painel',
@@ -95,6 +98,9 @@ const VIEW_LABELS: Record<ViewType, string> = {
   productivity: 'Produtividade',
   drive: 'Arquivos Drive',
   personalization: 'Aparência',
+  social_posts: 'Agendamento de Posts',
+  checkout_success: 'Pagamento Confirmado',
+  checkout_error: 'Erro no Pagamento',
   admin: 'Configurações'
 };
 
@@ -169,6 +175,28 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [totalUsers, setTotalUsers] = useState<number | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+
+  const handleStartPlan = (planId?: string) => {
+    if (planId) setSelectedPlanId(planId);
+    setAuthView('signup');
+  };
+
+  // Fetch public stats for landing page
+  useEffect(() => {
+    if (authView === 'landing' && !isAuthenticated) {
+      fetch('/api/public/stats')
+        .then(res => res.json())
+        .then(data => {
+          console.log("[STATS] Dados públicos carregados:", data);
+          if (data && typeof data.totalUsers === 'number') {
+            setTotalUsers(data.totalUsers);
+          }
+        })
+        .catch(err => console.error("Erro ao buscar estatísticas públicas:", err));
+    }
+  }, [authView, isAuthenticated]);
 
   // Debug auth state in production
   useEffect(() => {
@@ -198,6 +226,17 @@ export default function App() {
     }
 
     const path = window.location.pathname;
+    
+    if (path === '/success' || urlParams.get('session_id')) {
+      setActiveView('checkout_success');
+      const newUrl = window.location.pathname === '/success' ? '/' : window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    } else if (path === '/cancel' || urlParams.get('checkout_error')) {
+      setActiveView('checkout_error');
+      const newUrl = window.location.pathname === '/cancel' ? '/' : window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+
     if (path === '/privacy') {
       setAuthView('privacy');
     } else if (path === '/terms') {
@@ -304,6 +343,21 @@ export default function App() {
     return () => { delete (window as any).onNavigate; };
   }, []);
 
+  const processPostAuthRedirect = async (user: User) => {
+    if (selectedPlanId && user.role === 'OWNER') {
+      try {
+        const res = await api.post('/create-checkout-session', { planId: selectedPlanId });
+        if (res.url) {
+          window.location.href = res.url;
+          return;
+        }
+      } catch (err) {
+        console.error("Erro ao iniciar checkout automático:", err);
+      }
+    }
+    setAuthView('landing');
+  };
+
   const handleLogin = async (email: string, password: string) => {
     try {
       setIsAuthLoading(true);
@@ -313,6 +367,7 @@ export default function App() {
       storageService.setItem('agency_token', res.token, true);
       setCurrentUser(res.user);
       setIsAuthenticated(true);
+      await processPostAuthRedirect(res.user);
     } catch (err) {
       throw err;
     } finally {
@@ -329,6 +384,7 @@ export default function App() {
       storageService.setItem('agency_token', res.token, true);
       setCurrentUser(res.user);
       setIsAuthenticated(true);
+      await processPostAuthRedirect(res.user);
     } catch (err) {
       throw err;
     } finally {
@@ -364,6 +420,37 @@ export default function App() {
     }
   }, []);
 
+  // Fetch data function
+  const fetchData = async (showLoading = true) => {
+    try {
+      if (showLoading) setIsLoading(true);
+      const data = await api.syncData();
+
+      setLeads(data.leads || []);
+      setClients(data.clients || []);
+      setReceivables(data.receivables || []);
+      setArtOrders(data.artOrders || []);
+      setPartners(data.partners || []);
+      setPartnerRequests(data.partnerRequests || []);
+      setTickets(data.tickets || []);
+      setVideoOrders(data.videoOrders || []);
+      setDemandTasks(data.demandTasks || []);
+      setUsers(data.users || []);
+      
+      if (currentUser && data.users && data.users.length > 0) {
+        const freshSelf = data.users.find((u: any) => u.id === currentUser.id);
+        if (freshSelf) {
+          setCurrentUser(freshSelf);
+          storageService.setItem('agency_user', JSON.stringify(freshSelf));
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+    } finally {
+      if (showLoading) setIsLoading(false);
+    }
+  };
+
   // Fetch data on mount & auth change
   useEffect(() => {
     if (!isAuthenticated) {
@@ -371,36 +458,6 @@ export default function App() {
       return;
     }
     
-    const fetchData = async (showLoading = true) => {
-      try {
-        if (showLoading) setIsLoading(true);
-        const data = await api.syncData();
-
-        setLeads(data.leads || []);
-        setClients(data.clients || []);
-        setReceivables(data.receivables || []);
-        setArtOrders(data.artOrders || []);
-        setPartners(data.partners || []);
-        setPartnerRequests(data.partnerRequests || []);
-        setTickets(data.tickets || []);
-        setVideoOrders(data.videoOrders || []);
-        setDemandTasks(data.demandTasks || []);
-        setUsers(data.users || []);
-        
-        if (currentUser && data.users && data.users.length > 0) {
-          const freshSelf = data.users.find((u: any) => u.id === currentUser.id);
-          if (freshSelf) {
-            setCurrentUser(freshSelf);
-            storageService.setItem('agency_user', JSON.stringify(freshSelf));
-          }
-        }
-      } catch (error) {
-        console.error("Erro ao carregar dados:", error);
-      } finally {
-        if (showLoading) setIsLoading(false);
-      }
-    };
-
     fetchData();
 
     // Auto-refresh data every 3 minutes to reduce load and stay within rate limits        
@@ -410,6 +467,28 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [isAuthenticated]);
+
+  // Real-time synchronization
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+
+    const socket = io();
+    const ownerId = currentUser.ownerId || currentUser.id;
+    
+    socket.emit("join-owner-room", ownerId);
+
+    socket.on("data_changed", (event) => {
+      console.log("[REALTIME] Evento recebido:", event);
+      // For some tables, we might want to refresh immediately
+      if (['leads', 'clients', 'receivables', 'art_orders', 'video_orders', 'demand_tasks', 'support_tickets', 'notifications'].includes(event.table)) {
+        fetchData(false);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [isAuthenticated, currentUser?.id]);
 
   // Filtro de Menu baseado no cargo
   const menuItems = useMemo(() => {
@@ -433,10 +512,20 @@ export default function App() {
       { id: 'tickets', label: 'Suporte', icon: MessageSquare, roles: ['ADMIN', 'PARTNER', 'OWNER', 'DESIGNER', 'EDITOR'] },
       { id: 'admin', label: 'Configurações', icon: Settings, roles: ['ADMIN', 'OWNER', 'PARTNER', 'DESIGNER', 'EDITOR'] },
     ].filter(item => {
+      // Role check
+      if (!item.roles.includes(effectiveUser.role)) return false;
+
+      // Plan check
+      const planId = effectiveUser.planId || 'plan1';
+      if (planId === 'plan1') {
+        // Plano 1 restricted features
+        if (item.id === 'social_posts' || item.id === 'drive') return false;
+      }
+
       if (effectiveUser.role === 'OWNER' && item.id === 'partners') {
         return partners.some(p => p.email === effectiveUser.email);
       }
-      return item.roles.includes(effectiveUser.role);
+      return true;
     });
   }, [effectiveUser, partners]);
 
@@ -454,6 +543,7 @@ export default function App() {
           partnerRequests={partnerRequests}
           onViewChange={setActiveView}
           currentUser={effectiveUser}
+          users={users}
         />;
       case 'leads': 
         return <LeadsView 
@@ -567,6 +657,10 @@ export default function App() {
           currentUser={effectiveUser}
           setCurrentUser={setCurrentUser}
         />;
+      case 'checkout_success':
+        return <CheckoutSuccess onGoToDashboard={() => setActiveView('dashboard')} />;
+      case 'checkout_error':
+        return <CheckoutError onRetry={() => setActiveView('admin')} onGoHome={() => setActiveView('dashboard')} />;
       default: return <DashboardView 
         leads={leads} 
         clients={clients} 
@@ -639,7 +733,7 @@ export default function App() {
         <>
           <LandingPage 
             onLogin={() => setAuthView('login')} 
-            onSignup={() => setAuthView('signup')} 
+            onSignup={handleStartPlan} 
             onPrivacy={() => {
               setAuthView('privacy');
               window.history.pushState({}, '', '/privacy');
@@ -649,7 +743,8 @@ export default function App() {
               window.history.pushState({}, '', '/terms');
             }}
             agencyName={agencyConfig.name}
-            primaryColor="#4f46e5"
+            primaryColor={agencyConfig.primaryColor}
+            totalUsers={totalUsers}
           />
           <CookieConsent />
         </>

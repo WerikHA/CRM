@@ -136,7 +136,7 @@ export class WhatsAppService extends EventEmitter {
       const { state, saveCreds } = await useMultiFileAuthState(sessionAuthDir);
       this.debugLog(ownerId, "useMultiFileAuthState concluído.");
       
-      let version: any = [2, 3000, 1015901307];
+      let version: any = [2, 3000, 1017531207];
       try {
         this.debugLog(ownerId, "Buscando versão mais recente do Baileys...");
         const { version: latestVersion, isLatest } = await fetchLatestBaileysVersion();
@@ -147,6 +147,9 @@ export class WhatsAppService extends EventEmitter {
       }
 
       this.debugLog(ownerId, "Criando socket (makeWASocket)...");
+      const browserVersions = ["120.0.0.0", "121.0.0.0", "122.0.0.0", "123.0.0.0"];
+      const randomBrowserVersion = browserVersions[Math.floor(Math.random() * browserVersions.length)];
+      
       const socket = makeWASocket({
         logger,
         version,
@@ -155,7 +158,7 @@ export class WhatsAppService extends EventEmitter {
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
-        browser: ["Ubuntu", "Chrome", "20.0.04"],
+        browser: Browsers.ubuntu("Chrome"),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: true,

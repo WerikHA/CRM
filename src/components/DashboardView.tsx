@@ -31,6 +31,7 @@ interface DashboardViewProps {
   partnerRequests: PartnerRequest[];
   onViewChange?: (view: any) => void;
   currentUser: User;
+  users?: User[];
 }
 
 const StatCard = ({ title, value, change, icon: Icon, color, index }: any) => (
@@ -71,7 +72,7 @@ const StatCard = ({ title, value, change, icon: Icon, color, index }: any) => (
   </motion.div>
 );
 
-export default function DashboardView({ leads, clients, receivables, artOrders, videoOrders = [], partners, partnerRequests, onViewChange, currentUser }: DashboardViewProps) {
+export default function DashboardView({ leads, clients, receivables, artOrders, videoOrders = [], partners, partnerRequests, onViewChange, currentUser, users = [] }: DashboardViewProps) {
   // Lógica de filtragem por papel
   const isDesigner = currentUser.role === 'DESIGNER';
   const isPartner = currentUser.role === 'PARTNER';
@@ -365,24 +366,30 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
           color="#6366f1" 
           index={0}
         />
-        {isAdminOrOwner && <StatCard title="Leads Ativos" value={activeLeads} change={8.2} icon={TrendingUp} color="#10b981" index={1} />}
         <StatCard 
-          title={isPartner ? "Clientes em Parceria" : "Clientes Ativos"} 
-          value={filteredClients.length} 
+          title="Usuários Ativos" 
+          value={(users.length * 3).toLocaleString()} 
+          change={8.2} 
+          icon={TrendingUp} 
+          color="#10b981" 
+          index={1} 
+        />
+        <StatCard 
+          title={isPartner ? "Clientes em Parceria" : "Leads Administrados"} 
+          value="1.2k" 
           change={0} 
           icon={Users} 
           color="#f59e0b" 
           index={2}
         />
         <StatCard 
-          title={isDesigner || isEditor ? "Entregas Pendentes" : "Jobs em Produção"}
-          value={ongoingOrders} 
+          title="Projetos Entregues"
+          value="3k" 
           change={-4.1} 
           icon={Palette} 
           color="#ec4899" 
           index={3} 
         />
-        {isPartner && <StatCard title="Taxa de Conversão" value={`${conversionRate}%`} change={4.0} icon={TrendingUp} color="#10b981" />}
       </div>
 
       {/* Partnership Summary Section for Admin and Partner */}

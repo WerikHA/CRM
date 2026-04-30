@@ -170,8 +170,8 @@ export default function PartnersView({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title?.trim()) {
-      alert('O título da solicitação é obrigatório.');
+    if (!formData.serviceType?.trim()) {
+      alert('O tipo de serviço é obrigatório.');
       return;
     }
     try {

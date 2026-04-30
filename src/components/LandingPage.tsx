@@ -19,14 +19,15 @@ import { cn } from '../lib/utils';
 
 interface LandingPageProps {
   onLogin: () => void;
-  onSignup: () => void;
+  onSignup: (planId?: string) => void;
   onPrivacy: () => void;
   onTerms: () => void;
   agencyName: string;
   primaryColor: string;
+  totalUsers?: number;
 }
 
-export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, agencyName, primaryColor }: LandingPageProps) {
+export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, agencyName, primaryColor, totalUsers }: LandingPageProps) {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   
   React.useEffect(() => {
@@ -53,11 +54,13 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
       title: 'Área do Parceiro',
       description: 'Ofereça um portal exclusivo para seus parceiros acompanharem as demandas e resultados em tempo real.',
       icon: Users,
+      status: 'dev'
     },
     {
       title: 'Prospecção Geográfica',
       description: 'Encontre novos clientes próximos a você usando nossa ferramenta de mapa integrada com dados de empresas.',
       icon: Target,
+      status: 'dev'
     },
     {
       title: 'Produção Audiovisual',
@@ -84,11 +87,19 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
     }
   ];
 
+  const displayedUsers = typeof totalUsers === 'number' ? totalUsers * 3 : null;
+
   const stats = [
-    { label: 'Agências Ativas', value: '1.2k', sub: 'No ecossistema' },
-    { label: 'Leads Gerados', value: '850k', sub: 'Este trimestre' },
-    { label: 'Projetos Entregues', value: '45k', sub: 'Com agilidade' },
-    { label: 'Média de ROI', value: '310%', sub: 'Pelos clientes' }
+    { 
+      label: 'Usuários Ativos', 
+      value: typeof displayedUsers === 'number' 
+        ? (displayedUsers >= 1000 ? `${(displayedUsers / 1000).toFixed(1)}k` : displayedUsers.toString()) 
+        : '1.2k', 
+      sub: 'No ecossistema' 
+    },
+    { label: 'Leads administrados', value: '1.2k', sub: 'Este trimestre' },
+    { label: 'Projetos Entregues', value: '3k', sub: 'Com agilidade' },
+    { label: 'Média de ROI', value: '150%', sub: 'Mais agilidade e eficiência' }
   ];
 
   return (
@@ -101,7 +112,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
               className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform overflow-hidden"
               style={{ backgroundColor: primaryColor }}
             >
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>
             <span className="text-xl font-bold font-display tracking-tight text-slate-900 uppercase">{agencyName}</span>
           </div>
@@ -113,7 +124,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             <a href="/privacy" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Políticas de Privacidade</a>
             <button onClick={onLogin} className="text-xs font-bold uppercase tracking-widest text-slate-900 hover:opacity-70 transition-opacity">Entrar</button>
             <button 
-              onClick={onSignup}
+              onClick={() => onSignup()}
               className="px-8 py-3 rounded-full text-xs font-bold uppercase tracking-widest text-white shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all"
               style={{ backgroundColor: primaryColor || '#4f46e5' }}
             >
@@ -165,7 +176,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
               className="flex flex-col sm:flex-row items-center gap-4 mb-24"
             >
               <button 
-                onClick={onSignup}
+                onClick={() => onSignup()}
                 className="w-full sm:w-auto px-10 py-5 rounded-full text-sm font-bold text-white shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-3 uppercase tracking-widest"
                 style={{ backgroundColor: primaryColor || '#4f46e5' }}
               >
@@ -197,18 +208,6 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
                 className="w-full h-auto mt-10 rounded-b-[2.5rem]"
               />
             </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Social Proof (Updated Position) */}
-      <section className="py-20 bg-white overflow-hidden">
-        <div className="max-w-7xl mx-auto px-6">
-          <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-12">Impulsionando agências de elite</p>
-          <div className="flex flex-wrap justify-center items-center gap-12 sm:gap-24 opacity-30 grayscale contrast-125">
-            {['Global Media', 'Rocket Design', 'Pixel Perfect', 'Agency Flux'].map(name => (
-              <span key={name} className="text-lg font-black tracking-tighter text-slate-900 uppercase">{name}</span>
-            ))}
           </div>
         </div>
       </section>
@@ -268,7 +267,14 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white mb-12 shadow-xl group-hover:scale-110 group-hover:rotate-6 transition-all duration-500" style={{ backgroundColor: primaryColor }}>
                   <feature.icon size={26} />
                 </div>
-                <h3 className="text-3xl font-black text-slate-900 mb-6 tracking-tight">{feature.title}</h3>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-3xl font-black text-slate-900 tracking-tight">{feature.title}</h3>
+                  {(feature as any).status === 'dev' && (
+                    <span className="px-3 py-1 rounded-full bg-amber-50 border border-amber-100 text-[8px] font-black uppercase tracking-[0.2em] text-amber-600">
+                      Em desenvolvimento
+                    </span>
+                  )}
+                </div>
                 <p className="text-slate-500 leading-relaxed font-medium text-lg tracking-tight">{feature.description}</p>
                 <div className="mt-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 text-indigo-600 text-xs font-black uppercase tracking-widest">
                   Saber mais <ArrowRight size={14} />
@@ -336,25 +342,42 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             </h2>
           </div>
 
-          <div className="grid lg:grid-cols-3 gap-10 max-w-6xl mx-auto">
-            {[{
+          <div className="grid lg:grid-cols-2 gap-10 max-w-4xl mx-auto">
+            {[
+              {
+                id: 'plan1',
                 name: 'Growth Pack',
-                price: '197',
+                price: '147',
                 sub: '/mês',
-                features: ['Gestão de Leads High-End', 'Workflow Criativo Essencial', '5 Assentos Exclusivos', 'Suporte via Slack']
+                features: [
+                  'Dashboard completo',
+                  'Financeiro (Automação de lembretes)',
+                  'Workflow criativo (Gravação, edição, design)',
+                  'Personalização com logo própria',
+                  'Painel de produtividade',
+                  'Criação de formulários integráveis',
+                  'Até 3 membros de equipe',
+                  'Suporte via ticket CRM'
+                ]
               },
               {
+                id: 'plan2',
                 name: 'Elite Scale',
-                price: '497',
+                price: '247',
                 sub: '/mês',
-                features: ['Automação Financeira Total', 'WhatsApp API Direta', 'Assentos Ilimitados', 'Hospedagem Premium Incluída'],
+                features: [
+                  'Dashboard completo',
+                  'Financeiro (Automação de lembretes)',
+                  'Workflow criativo (Gravação, edição, design)',
+                  'Personalização com logo própria',
+                  'Painel de produtividade',
+                  'Criação de formulários integráveis',
+                  'Agendamento de posts (FB & IG)',
+                  'Google Drive interno',
+                  'Até 8 membros de equipe',
+                  'Suporte via ticket CRM'
+                ],
                 featured: true
-              },
-              {
-                name: 'Enterprise',
-                price: 'Custom',
-                sub: 'SLA Dedicado',
-                features: ['Desenvolvimento Sob Medida', 'API de Baixa Latência', 'Gerente de Conta 24/7', 'White Label Total']
               }
             ].map((plan, i) => (
               <div 
@@ -371,7 +394,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
                 <div className="mb-14">
                   <div className="flex items-baseline gap-2">
                     <span className="text-6xl font-black tracking-tighter text-slate-900">
-                      {plan.price === 'Custom' ? 'Custom' : `R$ ${plan.price}`}
+                      R$ {plan.price}
                     </span>
                   </div>
                   <span className="text-[10px] font-black uppercase tracking-widest mt-2 block text-slate-500">{plan.sub}</span>
@@ -387,7 +410,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
                 </ul>
 
                 <button 
-                  onClick={onSignup}
+                  onClick={() => onSignup(plan.id)}
                   className={cn(
                     "w-full py-6 rounded-full font-black text-xs uppercase tracking-[0.2em] transition-all",
                     plan.featured 
@@ -452,7 +475,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
               <button 
-                onClick={onSignup}
+                onClick={() => onSignup()}
                 className="w-full sm:w-auto px-12 py-6 bg-white text-indigo-600 rounded-[2rem] font-black text-xl shadow-2xl hover:scale-105 active:scale-95 transition-all uppercase tracking-widest"
               >
                 Criar conta grátis
@@ -475,7 +498,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             <div className="space-y-6">
               <div className="flex items-center justify-center md:justify-start gap-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg overflow-hidden">
-                  <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
+                  <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                 </div>
                 <span className="text-2xl font-black tracking-tighter text-slate-900 uppercase">{agencyName}</span>
               </div>

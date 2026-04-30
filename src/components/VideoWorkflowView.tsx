@@ -89,7 +89,7 @@ export default function VideoWorkflowView({
   };
 
   const filteredOrders = useMemo(() => {
-    let orders = videoOrders;
+    let orders = [...videoOrders];
     
     if (isEditor) {
       orders = orders.filter(o => o.editorId === currentUser.id);
@@ -102,7 +102,20 @@ export default function VideoWorkflowView({
       orders = orders.filter(o => o.status === 'review');
     }
 
-    return orders.filter(o => editorFilter === 'all' ? true : o.editorId === editorFilter);
+    const filtered = orders.filter(o => editorFilter === 'all' ? true : o.editorId === editorFilter);
+
+    // Priorizar pela menor data de entrega (deadline)
+    return filtered.sort((a, b) => {
+      const parseDate = (d: string) => {
+        if (!d) return Infinity;
+        const parts = d.split('/');
+        if (parts.length === 3) {
+          return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime();
+        }
+        return Infinity;
+      };
+      return parseDate(a.deadline) - parseDate(b.deadline);
+    });
   }, [videoOrders, isEditor, isPartner, currentUser.id, clients, editorFilter, activeTab]);
 
   const partnerClients = useMemo(() => {

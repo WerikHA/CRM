@@ -17,6 +17,8 @@ export interface User {
   ownerId?: string; // Admin or Partner who created this user
   uiPreferences?: UserPreferences;
   acceptedTerms?: boolean;
+  planId?: string;
+  subscriptionStatus?: string;
 }
 
 export type LeadStatus = 'prospect' | 'negotiation' | 'converted' | 'lost';

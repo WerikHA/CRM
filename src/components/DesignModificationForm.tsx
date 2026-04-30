@@ -24,8 +24,7 @@ export default function DesignModificationForm({ orderId, onSuccess }: DesignMod
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const orders = await api.getArtOrders();
-        const foundOrder = orders.find(o => o.id === orderId);
+        const foundOrder = await api.getArtOrder(orderId);
         
         if (!foundOrder) {
           setError('Pedido não encontrado ou já processado.');
@@ -35,14 +34,22 @@ export default function DesignModificationForm({ orderId, onSuccess }: DesignMod
 
         setOrder(foundOrder);
         
-        const clients = await api.getClients();
-        const foundClient = clients.find(c => c.id === foundOrder.clientId);
-        setClient(foundClient || null);
+        try {
+          const foundClient = await api.getClient(foundOrder.clientId);
+          setClient(foundClient || null);
+        } catch (err) {
+          console.warn("Could not fetch client info for guest:", err);
+        }
         
         // Load owner info for the chat
-        const users = await api.getUsers();
-        const foundOwner = foundOrder.ownerId ? users.find(u => u.id === foundOrder.ownerId) : null;
-        setOwner(foundOwner || null);
+        if (foundOrder.ownerId) {
+          try {
+            const foundOwner = await api.getUser(foundOrder.ownerId);
+            setOwner(foundOwner || null);
+          } catch (err) {
+            console.warn("Could not fetch owner info for guest:", err);
+          }
+        }
         
         setLoading(false);
       } catch (err) {

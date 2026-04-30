@@ -5,6 +5,8 @@ export interface DbContext {
   userId: string;
   userRole: UserRole;
   ownerId?: string;
+  planId?: string;
+  subscriptionStatus?: string;
 }
 
 const toSnakeCase = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);

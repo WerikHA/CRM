@@ -25,11 +25,34 @@ import { googleDriveService } from "./src/services/googleDriveService.ts";
 import { facebookService } from "./src/services/facebookService.ts";
 import { Server } from "socket.io";
 import { createServer } from "http";
+import Stripe from 'stripe';
 
 import { dbService, DbContext, keysToCamel, keysToSnake } from "./src/services/dbService.ts";
 import { UserRole } from "./src/types.ts";
 
 dotenv.config();
+
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+// Plans definition matching user request
+const PLANS = {
+  plan1: {
+    id: 'plan1',
+    name: 'Plano 1',
+    price: 147,
+    maxMembers: 3,
+    features: ['dashboard', 'finance', 'workflow', 'personalization', 'productivity', 'forms', 'support'],
+    priceId: process.env.STRIPE_PLAN1_PRICE_ID || 'price_1QxX' // Placeholder
+  },
+  plan2: {
+    id: 'plan2',
+    name: 'Plano 2',
+    price: 247,
+    maxMembers: 8,
+    features: ['dashboard', 'finance', 'workflow', 'personalization', 'productivity', 'forms', 'support', 'scheduler', 'google_drive'],
+    priceId: process.env.STRIPE_PLAN2_PRICE_ID || 'price_1QxY' // Placeholder
+  }
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -155,6 +178,24 @@ async function startServer() {
     next();
   });
 
+  app.get("/api/public/stats", async (req, res) => {
+    try {
+      const { count, error } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true });
+      
+      if (error) {
+        console.error("[STATS API ERROR] Supabase error:", error);
+        throw error;
+      }
+      console.log(`[STATS API] Total usuários encontrados: ${count}`);
+      res.json({ totalUsers: count || 0 });
+    } catch (err: any) {
+      console.error("[STATS API ERROR] API caught error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Global Process Error Handlers
   process.on('unhandledRejection', (reason, promise) => {
     console.error('[CRITICAL] Unhandled Rejection at:', promise);
@@ -196,9 +237,20 @@ async function startServer() {
               IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'accepted_terms') THEN
                   RAISE NOTICE 'Adicionando accepted_terms em users...';
                   ALTER TABLE public.users ADD COLUMN accepted_terms BOOLEAN DEFAULT FALSE;
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'accepted_terms') THEN
-                    RAISE EXCEPTION 'Falha ao adicionar coluna accepted_terms';
-                  END IF;
+              END IF;
+
+              -- 6. Check/Add plan_id and stripe info to users
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'plan_id') THEN
+                  RAISE NOTICE 'Adicionando plan_id em users...';
+                  ALTER TABLE public.users ADD COLUMN plan_id TEXT DEFAULT 'plan1'; -- Default to plan1 for new owners
+              END IF;
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'stripe_customer_id') THEN
+                  RAISE NOTICE 'Adicionando stripe_customer_id em users...';
+                  ALTER TABLE public.users ADD COLUMN stripe_customer_id TEXT;
+              END IF;
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'subscription_status') THEN
+                  RAISE NOTICE 'Adicionando subscription_status em users...';
+                  ALTER TABLE public.users ADD COLUMN subscription_status TEXT DEFAULT 'active'; 
               END IF;
 
               -- 2. Check/Add rejection_audio_url to video_orders
@@ -269,10 +321,21 @@ async function startServer() {
                   );
               END IF;
 
-              -- 5. Reload PostgREST schema cache (Try multiple common notify signals)
-              NOTIFY pgrst, 'reload schema';
-              NOTIFY pgrst, 'reload config';
-              NOTIFY db_events, 'reload_schema';
+              -- 5. Check/Create form_integrations
+              IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'form_integrations') THEN
+                  RAISE NOTICE 'Criando tabela form_integrations...';
+                  CREATE TABLE public.form_integrations (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    owner_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    fields JSONB DEFAULT '[]'::jsonb,
+                    success_message TEXT,
+                    redirect_url TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                  );
+              END IF;
+
+              -- 6. Reload PostgREST schema cache
           END $$;
         `);
 
@@ -317,8 +380,23 @@ async function startServer() {
 
   // --- Socket.io Meeting Logic ---
   const meetingRequests = new Map<string, any[]>();
+  
+  const emitDataChange = (ownerId: string, table: string, type: 'insert' | 'update' | 'delete', data?: any) => {
+    if (!ownerId) return;
+    io.to(`owner:${ownerId}`).emit("data_changed", { table, type, data });
+  };
+
   io.on("connection", (socket) => {
     console.log(`[SOCKET] Cliente conectado: ${socket.id}`);
+    
+    socket.on("join-owner-room", (ownerId) => {
+      if (ownerId) {
+        const room = `owner:${ownerId}`;
+        socket.join(room);
+        console.log(`[SOCKET] Cliente ${socket.id} entrou na sala da agência: ${room}`);
+      }
+    });
+
     socket.on("join-room", ({ roomId, user, isGuest }) => {
       socket.join(roomId);
       (socket as any).userId = user.id; // Save user id on socket for disconnect
@@ -361,7 +439,13 @@ async function startServer() {
   const JWT_SECRET = process.env.JWT_SECRET || "amplifica-crm-secure-token-2026";
 
   interface AuthRequest extends express.Request {
-    user?: { id: string; role: UserRole; ownerId: string; };
+    user?: { 
+      id: string; 
+      role: UserRole; 
+      ownerId: string; 
+      planId?: string;
+      subscriptionStatus?: string;
+    };
   }
 
   // --- Auth Middleware ---
@@ -388,10 +472,10 @@ async function startServer() {
 
     // Allow GET access to specific orders for guests (DesignModificationForm)
     const isPublicGet = req.method === 'GET' && (
-      req.path.includes('art-orders/') || 
-      req.path.includes('video-orders/') ||
-      req.path.includes('users') ||
-      req.path.includes('clients/')
+      req.path.includes('/art-orders/') || 
+      req.path.includes('/video-orders/') ||
+      req.path.includes('/users/') ||
+      req.path.includes('/clients/')
     );
 
     if (isPublicGet) return next();
@@ -503,19 +587,15 @@ async function startServer() {
 
   // --- Supabase CRUD Helper ---
   const getContext = (req: AuthRequest): DbContext | undefined => {
-    if (req.user) return { userId: req.user.id, userRole: req.user.role, ownerId: req.user.ownerId };
+    if (!req.user) return undefined;
     
-    // Check if it's a public GET allowed by authMiddleware
-    const publicPaths = ["/art-orders/", "/video-orders/", "/users", "/clients/"];
-    const isPublicGet = req.method === 'GET' && publicPaths.some(p => req.path.includes(p));
-    
-    if (isPublicGet) {
-      // Return a bypass context - list() and getById() in dbService should be updated to handle this if needed
-      // or we just return a limited context.
-      return { userId: 'SYSTEM', userRole: 'GUEST' as any, ownerId: undefined };
-    }
-    
-    return undefined;
+    return {
+      userId: req.user.id,
+      userRole: req.user.role,
+      ownerId: req.user.ownerId,
+      planId: req.user.planId,
+      subscriptionStatus: req.user.subscriptionStatus
+    } as any;
   };
   
   const supabaseCrud = (pathName: string, tableName: string) => {
@@ -565,11 +645,27 @@ async function startServer() {
         }
         
         const data = { ...req.body };
+
+        // Plan limits check for team members
+        if (tableName === 'users' && context?.ownerId) {
+          const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('owner_id', context.ownerId);
+          const planId = (context as any).planId || 'plan1';
+          const plan = PLANS[planId as keyof typeof PLANS] || PLANS.plan1;
+          
+          if (count !== null && count >= plan.maxMembers) {
+            return res.status(403).json({ error: `Limite de membros atingido para seu plano (${plan.maxMembers} membros). Faça upgrade para adicionar mais.` });
+          }
+        }
+
         if (tableName === 'users' && data.password) {
           data.password = await bcrypt.hash(data.password, 10);
         }
         
-        res.json(await dbService.insert(tableName, data, context)); 
+        const response = await dbService.insert(tableName, data, context);
+        if (context?.ownerId) {
+          emitDataChange(context.ownerId, tableName, 'insert', response);
+        }
+        res.json(response); 
       }
       catch (error: any) { res.status(500).json({ error: error.message }); }
     });
@@ -585,7 +681,12 @@ async function startServer() {
           data.password = await bcrypt.hash(data.password, 10);
         }
         
-        res.json(await dbService.update(tableName, req.params.id, data, getContext(req))); 
+        const response = await dbService.update(tableName, req.params.id, data, getContext(req)); 
+        const context = getContext(req);
+        if (context?.ownerId) {
+          emitDataChange(context.ownerId, tableName, 'update', response);
+        }
+        res.json(response); 
       }
       catch (error: any) { res.status(500).json({ error: error.message }); }
     });
@@ -595,7 +696,12 @@ async function startServer() {
         for (const key of getCache.keys()) {
           if (key.startsWith(tableName)) getCache.delete(key);
         }
-        res.json(await dbService.delete(tableName, req.params.id, getContext(req))); 
+        const result = await dbService.delete(tableName, req.params.id, getContext(req)); 
+        const context = getContext(req);
+        if (context?.ownerId) {
+          emitDataChange(context.ownerId, tableName, 'delete', { id: req.params.id });
+        }
+        res.json(result); 
       }
       catch (error: any) { res.status(500).json({ error: error.message }); }
     });
@@ -667,6 +773,11 @@ async function startServer() {
     const newMessage = { id: Math.random().toString(36).substr(2, 9), ...req.body, ownerId: context.ownerId, createdAt: new Date().toISOString() };
     chats.push(newMessage);
     writeChats(chats);
+    
+    if (context.ownerId) {
+      emitDataChange(context.ownerId, 'chat_messages', 'insert', newMessage);
+    }
+    
     res.status(201).json(newMessage);
   });
 
@@ -681,6 +792,10 @@ async function startServer() {
       const updated = await dbService.update('art_orders', req.params.id, req.body, getContext(req));
       if (['done', 'finished'].includes(req.body.status)) {
         writeChats(readChats().filter((c: any) => c.referenceId !== req.params.id));
+      }
+      const context = getContext(req);
+      if (context?.ownerId) {
+        emitDataChange(context.ownerId, 'art_orders', 'update', updated);
       }
       res.json(updated);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -703,7 +818,11 @@ async function startServer() {
       if (['done', 'finished'].includes(updates.status)) {
         writeChats(readChats().filter((c: any) => c.referenceId !== id));
       }
-      res.json(await dbService.update('video_orders', id, updates, context));
+      const result = await dbService.update('video_orders', id, updates, context);
+      if (context?.ownerId) {
+        emitDataChange(context.ownerId, 'video_orders', 'update', result);
+      }
+      res.json(result);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
@@ -716,17 +835,23 @@ async function startServer() {
         const clients = await dbService.list('clients', getContext(req));
         const client = clients.find((c: any) => c.id === updatedTask.clientId);
         if (client) {
-          await dbService.insert('video_orders', {
+          const newOrder = await dbService.insert('video_orders', {
             title: `Edição: ${updatedTask.title || updatedTask.observations || 'Sem título'}`,
             clientId: updatedTask.clientId,
             editorId: updatedTask.editorId || client.demandConfig?.defaultEditorId || '',
             deadline: updatedTask.postDate || 'Imediato',
             priority: 'high', progress: 0, status: 'queue'
           }, getContext(req));
+          if (getContext(req)?.ownerId) {
+            emitDataChange(getContext(req)!.ownerId!, 'video_orders', 'insert', newOrder);
+          }
         }
       }
       if (['done', 'finished'].includes(updates.status)) {
         writeChats(readChats().filter(c => c.referenceId !== id));
+      }
+      if (getContext(req)?.ownerId) {
+        emitDataChange(getContext(req)!.ownerId!, 'demand_tasks', 'update', updatedTask);
       }
       res.json(updatedTask);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -768,7 +893,27 @@ async function startServer() {
       
       if (!isMatch) return res.status(401).json({ error: "Credenciais inválidas" });
       
-      const token = jwt.sign({ id: user.id, role: user.role, ownerId: user.ownerId || user.id }, JWT_SECRET, { expiresIn: '7d' });
+      let planId = user.planId;
+      let subscriptionStatus = user.subscriptionStatus;
+      
+      // If not OWNER, fetch owner's plan
+      if (user.role !== 'OWNER' && user.ownerId) {
+        const { data: owner } = await supabase.from('users').select('plan_id, subscription_status').eq('id', user.ownerId).maybeSingle();
+        if (owner) {
+          planId = owner.plan_id;
+          subscriptionStatus = owner.subscription_status;
+        }
+      }
+      
+      const tokenPayload = { 
+        id: user.id, 
+        role: user.role, 
+        ownerId: user.ownerId || user.id,
+        planId: planId || 'plan1',
+        subscriptionStatus: subscriptionStatus || 'active'
+      };
+      
+      const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
       const { password: _, ...userSafe } = user;
       res.json({ success: true, user: userSafe, token });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -919,22 +1064,32 @@ async function startServer() {
   app.get("/api/forms", async (req: AuthRequest, res) => {
     const ownerId = req.user?.ownerId || req.user?.id;
     if (!ownerId) return res.status(401).json({ error: "Não autorizado" });
-    res.json(await dbService.list('form_integrations', { userId: req.user!.id, userRole: req.user!.role, ownerId }));
+    try {
+      const result = await dbService.list('form_integrations', { userId: req.user!.id, userRole: req.user!.role, ownerId });
+      res.json(result);
+    } catch (err: any) {
+      console.error("[API] Erro ao listar formulários:", err);
+      res.status(500).json({ error: err.message, details: "Verifique se a tabela form_integrations existe no banco de dados." });
+    }
   });
 
   app.post("/api/forms", async (req: AuthRequest, res) => {
     const ownerId = req.user?.ownerId || req.user?.id;
     if (!ownerId) return res.status(401).json({ error: "Não autorizado" });
-    const form = { ...req.body, owner_id: ownerId };
+    const { id, ...data } = req.body;
+    const form = { ...data, owner_id: ownerId };
     try {
-      if (form.id) {
-        await dbService.update('form_integrations', form.id, form, { userId: req.user!.id, userRole: req.user!.role, ownerId });
-        res.json({ success: true, id: form.id });
+      if (id) {
+        await dbService.update('form_integrations', id, form, { userId: req.user!.id, userRole: req.user!.role, ownerId });
+        res.json({ success: true, id });
       } else {
         const newForm = await dbService.insert('form_integrations', form, { userId: req.user!.id, userRole: req.user!.role, ownerId });
         res.json({ success: true, id: newForm.id });
       }
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { 
+      console.error("[API] Erro ao salvar formulário:", err);
+      res.status(500).json({ error: err.message }); 
+    }
   });
 
   app.delete("/api/forms/:id", async (req: AuthRequest, res) => {
@@ -949,28 +1104,70 @@ async function startServer() {
   app.post("/api/forms/submit/:formId", async (req, res) => {
     const { formId } = req.params;
     const body = req.body;
+    console.log(`[FORM] Submissão recebida para form ${formId}:`, body);
 
     try {
       // 1. Fetch form config
       const { data: form, error } = await supabase.from('form_integrations').select('*').eq('id', formId).single();
-      if (error || !form) return res.status(404).json({ error: "Formulário não encontrado" });
+      if (error || !form) {
+        console.error(`[FORM] Erro ao buscar form ${formId}:`, error);
+        return res.status(404).json({ error: "Formulário não encontrado" });
+      }
 
-      // 2. Create lead
+      // 2. Create lead mapping
+      const standardFields = ['contact_name', 'name', 'full_name', 'email', 'phone', 'company', 'message', 'notes', 'source'];
+      const customData: string[] = [];
+      
+      Object.entries(body).forEach(([key, value]) => {
+        if (!standardFields.includes(key)) {
+          customData.push(`${key}: ${value}`);
+        }
+      });
+
       const lead = {
-        company: body.company || "Capturado via Formulário",
-        contact_name: body.contact_name || body.name || "N/A",
+        company: body.company || body.empresa || "Capturado via Formulário",
+        contact_name: body.contact_name || body.name || body.full_name || body.nome || "N/A",
         email: body.email || "N/A",
-        phone: body.phone || "N/A",
-        source: `Formulário: ${form.name}`,
-        notes: body.message || body.notes || `Submissão de formulário via integração: ${form.name}`,
-        status: 'new',
-        owner_id: form.owner_id
+        phone: body.phone || body.telefone || body.whatsapp || "N/A",
+        source: body.source || `Formulário: ${form.name}`,
+        notes: (body.message || body.mensagem || body.notes || "") + 
+               (customData.length > 0 ? "\n\nCampos Extras:\n" + customData.join("\n") : ""),
+        status: 'prospect',
+        owner_id: form.owner_id,
+        last_contact: new Date().toLocaleDateString('pt-BR'),
+        estimated_value: 0
       };
 
-      await dbService.insert('leads', lead, { userId: lead.owner_id, userRole: 'OWNER', ownerId: lead.owner_id });
+      console.log(`[FORM] Criando lead para form ${form.name}:`, lead);
+      const newLead = await dbService.insert('leads', lead, { userId: lead.owner_id, userRole: 'OWNER', ownerId: lead.owner_id });
+      if (form.owner_id) {
+        emitDataChange(form.owner_id, 'leads', 'insert', newLead);
+      }
 
-      res.json({ success: true, message: form.success_message, redirect: form.redirect_url });
+      const isJson = req.headers['content-type'] === 'application/json' || req.headers['accept']?.includes('application/json');
+
+      if (isJson) {
+        return res.json({ success: true, message: form.success_message, redirect: form.redirect_url });
+      }
+
+      if (form.redirect_url) {
+        return res.redirect(form.redirect_url);
+      }
+
+      res.send(`
+        <div style="font-family: sans-serif; text-align: center; padding: 50px; background: #f8fafc; min-height: 100vh; display: flex; align-items: center; justify-content: center;">
+          <div style="background: white; padding: 40px; border-radius: 24px; shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0; max-width: 400px; width: 100%;">
+            <div style="color: #4f46e5; margin-bottom: 20px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            </div>
+            <h2 style="margin: 0 0 10px 0; color: #0f172a;">${form.success_message || "Recebemos sua mensagem!"}</h2>
+            <p style="color: #64748b; margin: 0;">Obrigado pelo contato. Em breve nossa equipe falará com você.</p>
+            <button onclick="window.history.back()" style="margin-top: 30px; padding: 12px 24px; background: #4f46e5; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer;">Voltar</button>
+          </div>
+        </div>
+      `);
     } catch (err: any) {
+      console.error("[FORM] Erro crítico na submissão do formulário:", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -1087,8 +1284,103 @@ async function startServer() {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // --- Stripe Endpoints ---
+  app.post("/api/create-checkout-session", async (req: AuthRequest, res) => {
+    try {
+      const context = getContext(req);
+      if (!context) return res.status(401).json({ error: "Não autorizado" });
+      
+      const { planId } = req.body;
+      const plan = PLANS[planId as keyof typeof PLANS];
+      if (!plan) return res.status(400).json({ error: "Plano inválido" });
+
+      if (!stripe) {
+        console.warn("[STRIPE] Stripe não configurado. Simulando checkout...");
+        // Em desenvolvimento sem chave Stripe, apenas atualizamos o plano
+        await supabase.from('users').update({ 
+          plan_id: planId, 
+          subscription_status: 'active' 
+        }).eq('id', context.userId);
+        return res.json({ url: `${process.env.APP_URL || req.headers.origin}/dashboard?success=true` });
+      }
+
+      // Get or create customer
+      const { data: userRaw } = await supabase.from('users').select('stripe_customer_id, email, name').eq('id', context.userId).single();
+      const user = keysToCamel(userRaw);
+      let customerId = user?.stripeCustomerId;
+
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user?.email,
+          name: user?.name,
+          metadata: { userId: context.userId }
+        });
+        customerId = customer.id;
+        await supabase.from('users').update({ stripe_customer_id: customerId }).eq('id', context.userId);
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [{ price: plan.priceId, quantity: 1 }],
+        mode: 'subscription',
+        success_url: `${process.env.APP_URL || req.headers.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.APP_URL || req.headers.origin}/cancel`,
+        metadata: { userId: context.userId, planId }
+      });
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      console.error("[STRIPE ERROR]", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/stripe-webhook", express.raw({type: 'application/json'}), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    let event;
+
+    try {
+      if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) throw new Error("Webhook secret not set");
+      event = stripe.webhooks.constructEvent(req.body, sig!, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (err: any) {
+      console.warn(`[STRIPE WEBHOOK ERROR] ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    console.log(`[STRIPE WEBHOOK] Evento recebido: ${event.type}`);
+
+    if (event.type === 'checkout.session.completed' || event.type === 'invoice.paid') {
+      const session = event.data.object as any;
+      const userId = session.metadata?.userId;
+      const planId = session.metadata?.planId;
+      
+      if (userId && planId) {
+        await supabase.from('users').update({ 
+          plan_id: planId, 
+          subscription_status: 'active' 
+        }).eq('id', userId);
+        console.log(`[STRIPE WEBHOOK] Plano atualizado para o usuário ${userId}: ${planId}`);
+      }
+    }
+
+    if (event.type === 'customer.subscription.deleted' || event.type === 'customer.subscription.updated') {
+      const subscription = event.data.object as any;
+      const customerId = subscription.customer;
+      
+      const status = subscription.status === 'active' ? 'active' : 'inactive';
+      
+      await supabase.from('users').update({ 
+        subscription_status: status 
+      }).eq('stripe_customer_id', customerId);
+    }
+
+    res.json({received: true});
+  });
+
   // Health
   app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+  
   app.get("/api/health/supabase", async (req, res) => {
     try {
       const { error } = await supabase.from('clients').select('id').limit(1);

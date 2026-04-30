@@ -19,7 +19,7 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
   const [password, setPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | React.ReactNode | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,10 +57,11 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
           <div className="flex flex-col gap-2">
             <span>{err.message || 'Erro de Permissão (RLS).'}</span>
             <button 
-              onClick={() => (window as any).onNavigate?.('audit')}
+              type="button"
+              onClick={() => (window as any).onNavigate?.('admin')}
               className="text-[10px] bg-white/10 hover:bg-white/20 p-2 rounded uppercase font-bold tracking-tighter"
             >
-              Abrir Corretor de Banco de Dados
+              Check Database
             </button>
           </div>
         );

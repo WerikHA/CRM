@@ -117,6 +117,14 @@ export const api = {
       designerPayout: Number(item.designerPayout)
     }));
   },
+  async getClient(id: string): Promise<Client> {
+    const item = await request(`/clients/${id}`, 'GET');
+    return {
+      ...item,
+      monthlyValue: Number(item.monthlyValue),
+      designerPayout: Number(item.designerPayout)
+    };
+  },
   async createClient(client: Client): Promise<Client> {
     return request('/clients', 'POST', client);
   },
@@ -161,6 +169,9 @@ export const api = {
   // ART ORDERS
   async getArtOrders(): Promise<ArtOrder[]> {
     return request('/art-orders', 'GET');
+  },
+  async getArtOrder(id: string): Promise<ArtOrder> {
+    return request(`/art-orders/${id}`, 'GET');
   },
   async createArtOrder(order: ArtOrder): Promise<ArtOrder> {
     return request('/art-orders', 'POST', order);
@@ -241,6 +252,9 @@ export const api = {
   // USERS
   async getUsers(): Promise<User[]> {
     return request('/users', 'GET');
+  },
+  async getUser(id: string): Promise<User> {
+    return request(`/users/${id}`, 'GET');
   },
   async createUser(user: User & { password?: string }): Promise<User> {
     return request('/users', 'POST', user);

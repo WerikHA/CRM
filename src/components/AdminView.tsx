@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare, Terminal, ShieldCheck, Layout, Eye, EyeOff, FileText } from 'lucide-react';
+import { Settings, Shield, Link, Database, Code, Globe, Key, Copy, Check, ExternalLink, Activity, AlertTriangle, CheckCircle, Plus, MoreHorizontal, Download, X, Trash2, Palette, RefreshCcw, ShieldAlert, MessageSquare, Terminal, ShieldCheck, Layout, Eye, EyeOff, FileText, Zap } from 'lucide-react';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import { storageService } from '../lib/storage';
@@ -88,6 +88,104 @@ function VideoLogsView() {
            <span className="opacity-40">[{log.timestamp}]</span> {log.message}
          </div>
        )) : <div className="text-gray-600 italic">Nenhum log de vídeo disponível...</div>}
+    </div>
+  );
+}
+
+function SubscriptionView({ currentUser }: { currentUser: User }) {
+  const [loading, setLoading] = useState(false);
+  const currentPlanId = (currentUser as any).planId || 'plan1';
+
+  const handleUpgrade = async (planId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.error || "Erro ao iniciar checkout");
+      }
+    } catch (err) {
+      toast.error("Erro de conexão");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const plans = [
+    {
+      id: 'plan1',
+      name: 'Growth Pack',
+      price: '147',
+      features: ['Até 3 membros', 'Dashboard', 'Financeiro + Lembretes', 'Workflow Criativo', 'Formulários'],
+      isCurrent: currentPlanId === 'plan1'
+    },
+    {
+      id: 'plan2',
+      name: 'Elite Scale',
+      price: '247',
+      features: ['Até 8 membros', 'Google Drive', 'Agendamento Social', 'Tudo do Growth Pack'],
+      isCurrent: currentPlanId === 'plan2'
+    }
+  ];
+
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-3xl p-10 text-white shadow-2xl relative overflow-hidden">
+        <div className="relative z-10">
+          <h2 className="text-3xl font-black mb-2 uppercase tracking-tighter">Assinatura Atual</h2>
+          <p className="text-indigo-100 font-medium mb-6">Você está no plano <span className="font-bold underline">{currentPlanId === 'plan1' ? 'Growth Pack' : 'Elite Scale'}</span></p>
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-md rounded-full border border-white/20 text-xs font-bold uppercase tracking-widest">
+            {currentUser.subscriptionStatus === 'active' ? 'Assinatura Ativa' : 'Assinatura Inativa'}
+          </div>
+        </div>
+        <Zap className="absolute top-1/2 right-10 -translate-y-1/2 text-white/10 w-48 h-48 -rotate-12" />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-8">
+        {plans.map(plan => (
+          <div key={plan.id} className={cn(
+            "p-8 rounded-[3rem] border transition-all duration-300 flex flex-col",
+            plan.isCurrent 
+              ? "bg-white dark:bg-gray-900 border-indigo-200 dark:border-indigo-900 shadow-xl" 
+              : "bg-gray-50/50 dark:bg-gray-800/50 border-transparent hover:bg-white dark:hover:bg-gray-900 hover:border-gray-100 dark:hover:border-gray-800 hover:shadow-lg"
+          )}>
+            <div className="flex justify-between items-start mb-8 transition-colors">
+              <div>
+                <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-1">{plan.name}</h3>
+                <div className="text-lg font-bold text-gray-400">R$ {plan.price}/mês</div>
+              </div>
+              {plan.isCurrent && (
+                <span className="px-3 py-1 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">Atual</span>
+              )}
+            </div>
+
+            <ul className="space-y-4 mb-10 flex-grow">
+              {plan.features.map((f, idx) => (
+                <li key={idx} className="flex items-center gap-3 text-sm font-bold text-gray-600 dark:text-gray-400">
+                  <CheckCircle size={16} className="text-indigo-500" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+
+            {!plan.isCurrent && (
+              <button
+                disabled={loading}
+                onClick={() => handleUpgrade(plan.id)}
+                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {loading ? 'Processando...' : 'Mudar para este plano'}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -247,8 +345,28 @@ function DatabaseStatus() {
 
                   <div>
                     <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2">Opção 2: Atualização de Esquema (Corrigir Erros)</p>
-                    <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed mb-2">Se você vir o erro "column assigned_video_editor_id does not exist", execute este script no <b>SQL Editor</b> do Supabase:</p>
-                    <div className="group relative">
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed mb-2">Se você vir erros de tabelas faltantes (como form_integrations), execute este script no <b>SQL Editor</b> do Supabase:</p>
+                    <pre className="text-[10px] font-mono bg-indigo-50 dark:bg-indigo-500/5 p-4 rounded-xl border border-indigo-100 dark:border-indigo-500/10 text-indigo-700 dark:text-indigo-400 overflow-x-auto select-all">
+{`CREATE TABLE IF NOT EXISTS public.form_integrations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  fields JSONB DEFAULT '[]'::jsonb,
+  success_message TEXT DEFAULT 'Sucesso!',
+  redirect_url TEXT,
+  owner_id UUID REFERENCES public.users(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Desativar RLS para garantir funcionamento inicial sem complexidade
+ALTER TABLE public.form_integrations DISABLE ROW LEVEL SECURITY;
+
+-- Garantir que leads tenha todas as colunas
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS company TEXT;`}
+                    </pre>
+                  </div>
+                  <div className="group relative pt-4 border-t border-gray-100 dark:border-gray-800">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Opção 3: Editor de Vídeo & Workflow</p>
                       <pre className="text-[10px] font-mono bg-black text-indigo-400 p-4 rounded-xl overflow-x-auto select-all">
                         {`-- Adicionar colunas de Editor de Vídeo na tabela de Clientes
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS assigned_video_editor_id TEXT;
@@ -265,7 +383,6 @@ ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS post_time TEXT;
 ALTER TABLE demand_tasks ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]';`}
                       </pre>
                     </div>
-                  </div>
 
                   <div>
                     <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-2">Opção 3: Desativar RLS (Menos Seguro)</p>
@@ -330,15 +447,27 @@ function FormIntegrationsView() {
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.target as HTMLFormElement);
+    const currentForm = e.currentTarget;
+    const formData = new FormData(currentForm);
+    
+    const fieldsToSave = (editingForm?.fields && editingForm.fields.length > 0) ? editingForm.fields : [
+      { name: 'contact_name', label: 'Nome Completo', type: 'text', required: true },
+      { name: 'email', label: 'E-mail', type: 'email', required: true },
+      { name: 'phone', label: 'WhatsApp / Telefone', type: 'tel', required: false },
+      { name: 'message', label: 'Como podemos ajudar?', type: 'textarea', required: false }
+    ];
+
     const data = {
       id: editingForm?.id,
       name: formData.get('name'),
       success_message: formData.get('success_message'),
       redirect_url: formData.get('redirect_url'),
+      fields: fieldsToSave,
     };
+
+    console.log("[FORM] Salvando formulário:", data);
 
     try {
       const res = await fetchWithAuth('/api/forms', {
@@ -346,13 +475,20 @@ function FormIntegrationsView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      
+      const responseData = await res.json();
+
       if (res.ok) {
         toast.success("Formulário salvo com sucesso!");
         fetchForms();
         setShowModal(false);
+      } else {
+        console.error("[FORM] Erro na resposta:", responseData);
+        toast.error(`Falha ao salvar: ${responseData.error || 'Erro no servidor'}`);
       }
     } catch (err) {
-      toast.error("Erro ao salvar formulário.");
+      console.error("[FORM] Erro de rede:", err);
+      toast.error("Erro de conexão ao salvar formulário.");
     }
   };
 
@@ -369,64 +505,109 @@ function FormIntegrationsView() {
     }
   };
 
-  const copyCode = (id: string, type: 'html' | 'embed') => {
+  const testForm = async (id: string) => {
+    try {
+      const res = await fetch(`/api/forms/submit/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          contact_name: "Teste de Integração",
+          email: "teste@exemplo.com",
+          phone: "11999999999",
+          message: "Esta é uma submissão de teste enviada do painel admin."
+        })
+      });
+      if (res.ok) toast.success("Submissão de teste enviada! Verifique seus leads.");
+      else {
+        const data = await res.json();
+        toast.error(`Falha no teste: ${data.error || 'Erro desconhecido'}`);
+      }
+    } catch (err) {
+      toast.error("Erro ao conectar com o servidor.");
+    }
+  };
+  const copyCode = (id: string, type: 'html' | 'embed', form?: any) => {
     const baseUrl = window.location.origin;
     const submitUrl = `${baseUrl}/api/forms/submit/${id}`;
+    const fields = form?.fields || [
+      { name: 'contact_name', label: 'Nome Completo', type: 'text', required: true },
+      { name: 'email', label: 'E-mail', type: 'email', required: true },
+      { name: 'phone', label: 'WhatsApp / Telefone', type: 'tel', required: false },
+      { name: 'message', label: 'Como podemos ajudar?', type: 'textarea', required: false }
+    ];
     
     let code = '';
     if (type === 'html') {
       code = `
-<!-- Formulário de Captura Amplifica CRM -->
-<form action="${submitUrl}" method="POST">
-  <div>
-    <label>Nome:</label>
-    <input type="text" name="contact_name" required>
-  </div>
-  <div>
-    <label>E-mail:</label>
-    <input type="email" name="email" required>
-  </div>
-  <div>
-    <label>Telefone:</label>
-    <input type="tel" name="phone">
-  </div>
-  <div>
-    <label>Empresa:</label>
-    <input type="text" name="company">
-  </div>
-  <div>
-    <label>Mensagem:</label>
-    <textarea name="message"></textarea>
-  </div>
-  <button type="submit">Enviar</button>
-</form>
+<!-- Formulário de Captura Amplifica CRM - Estilo Minimalista -->
+<style>
+  .amplifica-form { font-family: sans-serif; max-width: 400px; padding: 20px; border-radius: 12px; background: #fff; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+  .amplifica-field { margin-bottom: 15px; }
+  .amplifica-label { display: block; font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 5px; text-transform: uppercase; }
+  .amplifica-input { w-full: 100%; width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; box-sizing: border-box; }
+  .amplifica-submit { background: #4f46e5; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+  .amplifica-submit:hover { opacity: 0.9; }
+</style>
+
+<div class="amplifica-form">
+  <form action="${submitUrl}" method="POST">
+    ${fields.map((f: any) => `
+    <div class="amplifica-field">
+      <label class="amplifica-label">${f.label}</label>
+      ${f.type === 'textarea' ? 
+        `<textarea name="${f.name}" class="amplifica-input" rows="3" ${f.required ? 'required' : ''}></textarea>` : 
+        `<input type="${f.type}" name="${f.name}" class="amplifica-input" ${f.required ? 'required' : ''}>`
+      }
+    </div>`).join('')}
+    <button type="submit" class="amplifica-submit">ENVIAR AGORA</button>
+  </form>
+</div>
       `;
     } else {
       code = `
+<!-- Integração com AJAX (Sem Recarregar Página) -->
+<div id="amplifica-container-${id}">
+  <form id="amplifica-form-${id}" style="font-family: sans-serif; display: flex; flex-direction: column; gap: 12px;">
+    ${fields.map((f: any) => `
+    <div>
+      <input type="${f.type === 'textarea' ? 'text' : f.type}" name="${f.name}" placeholder="${f.label}" required style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%;">
+    </div>`).join('')}
+    <button type="submit" style="background: #4f46e5; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer;">CAPTURAR LEAD</button>
+  </form>
+  <div id="amplifica-msg-${id}" style="display: none; padding: 10px; text-align: center; color: green; font-weight: bold;"></div>
+</div>
+
 <script>
-  function submitAmplificaForm(e) {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData.entries());
-    fetch("${submitUrl}", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data)
-    })
-    .then(res => res.json())
-    .then(res => {
-      if(res.redirect) window.location.href = res.redirect;
-      else alert(res.message || "Enviado com sucesso!");
-    })
-    .catch(err => alert("Erro ao enviar formulário"));
-  }
+document.getElementById('amplifica-form-${id}').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const form = e.target;
+  const btn = form.querySelector('button');
+  const msg = document.getElementById('amplifica-msg-${id}');
+  
+  btn.disabled = true;
+  btn.innerText = 'Enviando...';
+  
+  fetch("${submitUrl}", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify(Object.fromEntries(new FormData(form)))
+  })
+  .then(res => res.json())
+  .then(res => {
+    if(res.redirect) window.location.href = res.redirect;
+    else {
+      form.style.display = 'none';
+      msg.innerText = res.message || 'Sucesso!';
+      msg.style.display = 'block';
+    }
+  })
+  .catch(err => {
+    alert('Erro ao enviar. Tente novamente.');
+    btn.disabled = false;
+    btn.innerText = 'Tentar Novamente';
+  });
+});
 </script>
-<form onsubmit="submitAmplificaForm(event)">
-  <!-- Mesmos campos do HTML acima -->
-  <input type="text" name="contact_name" placeholder="Nome" required>
-  <input type="email" name="email" placeholder="E-mail" required>
-  <button type="submit">Capturar Lead</button>
-</form>
       `;
     }
 
@@ -469,6 +650,7 @@ function FormIntegrationsView() {
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
                 <button onClick={() => { setEditingForm(form); setShowModal(true); }} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-xl transition-all"><Settings size={16} /></button>
                 <button onClick={() => handleDelete(form.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/40 rounded-xl transition-all"><Trash2 size={16} /></button>
+                <button onClick={() => testForm(form.id)} className="p-2 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 rounded-xl transition-all" title="Testar Submissão"><Activity size={16} /></button>
               </div>
             </div>
 
@@ -477,7 +659,7 @@ function FormIntegrationsView() {
             
             <div className="space-y-2">
               <button 
-                onClick={() => copyCode(form.id, 'html')}
+                onClick={() => copyCode(form.id, 'html', form)}
                 className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all group/btn"
               >
                 <div className="flex items-center gap-2">
@@ -490,7 +672,7 @@ function FormIntegrationsView() {
               </button>
 
               <button 
-                onClick={() => copyCode(form.id, 'embed')}
+                onClick={() => copyCode(form.id, 'embed', form)}
                 className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all group/btn"
               >
                 <div className="flex items-center gap-2">
@@ -514,6 +696,29 @@ function FormIntegrationsView() {
           </div>
         )}
       </div>
+      
+      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-dashed border-gray-200 dark:border-gray-800 p-8">
+        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-6 flex items-center gap-2">
+            <ShieldCheck size={16} /> Guia de Integração
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="space-y-3">
+                <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs ring-4 ring-indigo-50">1</div>
+                <h4 className="font-bold text-gray-900 dark:text-white text-sm">Crie o Formulário</h4>
+                <p className="text-xs text-gray-500 leading-relaxed">Defina o nome e os campos necessários. Recomendamos sempre pedir Nome, E-mail e WhatsApp.</p>
+            </div>
+            <div className="space-y-3">
+                <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs ring-4 ring-indigo-50">2</div>
+                <h4 className="font-bold text-gray-900 dark:text-white text-sm">Copie o Código</h4>
+                <p className="text-xs text-gray-500 leading-relaxed">Escolha entre HTML (estilo padrão) ou Embed JS (AJAX sem recarregar a página para sites modernos).</p>
+            </div>
+            <div className="space-y-3">
+                <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs ring-4 ring-indigo-50">3</div>
+                <h4 className="font-bold text-gray-900 dark:text-white text-sm">Cole no seu Site</h4>
+                <p className="text-xs text-gray-500 leading-relaxed">Cole no local desejado do seu site (WordPress, Elementor, HTML Puro ou Wix). Os leads cairão no CRM instantly!</p>
+            </div>
+        </div>
+      </div>
 
       <Modal 
         isOpen={showModal} 
@@ -521,32 +726,132 @@ function FormIntegrationsView() {
         title={editingForm ? "Editar Formulário" : "Novo Formulário"}
       >
         <form onSubmit={handleSave} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Nome do Formulário</label>
-            <input 
-              name="name" 
-              defaultValue={editingForm?.name} 
-              required 
-              className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold" 
-              placeholder="Ex: Landing Page Campanha X" 
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Nome do Formulário</label>
+              <input 
+                name="name" 
+                defaultValue={editingForm?.name} 
+                required 
+                className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold" 
+                placeholder="Ex: Landing Page Campanha X" 
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">URL de Redirecionamento (Opcional)</label>
+              <input 
+                name="redirect_url" 
+                defaultValue={editingForm?.redirect_url} 
+                className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm" 
+                placeholder="https://meusite.com/obrigado" 
+              />
+            </div>
           </div>
+          
           <div className="space-y-2">
-            <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Mensagem de Sucesso</label>
+            <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Mensagem de Sucesso (se não houver redirecionamento)</label>
             <input 
               name="success_message" 
               defaultValue={editingForm?.success_message || "Obrigado! Recebemos seus dados."} 
               className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none focus:ring-2 focus:ring-indigo-500 transition-all" 
             />
           </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">URL de Redirecionamento (Opcional)</label>
-            <input 
-              name="redirect_url" 
-              defaultValue={editingForm?.redirect_url} 
-              className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm" 
-              placeholder="https://meusite.com/obrigado" 
-            />
+
+          <div className="space-y-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+            <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Configuração de Campos</label>
+                <button 
+                    type="button" 
+                    onClick={() => setEditingForm((prev: any) => ({
+                        ...prev,
+                        fields: [...(prev?.fields || []), { name: `campo_${Date.now()}`, label: 'Novo Campo', type: 'text', required: false }]
+                    }))}
+                    className="text-[10px] bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 transition-colors"
+                >
+                    + ADICIONAR CAMPO
+                </button>
+            </div>
+            
+            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                {(editingForm?.fields || [
+                    { name: 'contact_name', label: 'Nome Completo', type: 'text', required: true },
+                    { name: 'email', label: 'E-mail', type: 'email', required: true },
+                    { name: 'phone', label: 'WhatsApp / Telefone', type: 'tel', required: false },
+                    { name: 'message', label: 'Mensagem', type: 'textarea', required: false }
+                ]).map((field: any, idx: number) => (
+                    <div key={idx} className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 flex items-end gap-3 group relative">
+                        <div className="flex-1 space-y-2">
+                            <label className="text-[9px] font-bold text-gray-400 uppercase">Label (O que o usuário vê)</label>
+                            <input 
+                                value={field.label}
+                                onChange={(e) => {
+                                    const newFields = [...(editingForm?.fields || [])];
+                                    const val = e.target.value;
+                                    const slug = val.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+                                    
+                                    if (newFields.length === 0) {
+                                        const defaults = [
+                                            { name: 'contact_name', label: 'Nome Completo', type: 'text', required: true },
+                                            { name: 'email', label: 'E-mail', type: 'email', required: true },
+                                            { name: 'phone', label: 'WhatsApp / Telefone', type: 'tel', required: false },
+                                            { name: 'message', label: 'Como podemos ajudar?', type: 'textarea', required: false }
+                                        ];
+                                        defaults[idx].label = val;
+                                        // Only update name if it was auto-generated or default
+                                        if (defaults[idx].name.includes('campo_')) defaults[idx].name = slug;
+                                        setEditingForm((prev: any) => ({ ...prev, fields: defaults }));
+                                    } else {
+                                        newFields[idx].label = val;
+                                        if (newFields[idx].name.includes('campo_')) newFields[idx].name = slug;
+                                        setEditingForm((prev: any) => ({ ...prev, fields: newFields }));
+                                    }
+                                }}
+                                className="w-full bg-white dark:bg-gray-900 p-2 rounded-xl text-xs border border-gray-100 dark:border-gray-800 font-bold"
+                            />
+                        </div>
+                        <div className="w-24 space-y-2">
+                            <label className="text-[9px] font-bold text-gray-400 uppercase">Tipo</label>
+                            <select 
+                                value={field.type}
+                                onChange={(e) => {
+                                    const newFields = [...(editingForm?.fields || [])];
+                                    newFields[idx].type = e.target.value;
+                                    setEditingForm((prev: any) => ({ ...prev, fields: newFields }));
+                                }}
+                                className="w-full bg-white dark:bg-gray-900 p-2 rounded-xl text-xs border border-gray-100 dark:border-gray-800"
+                            >
+                                <option value="text">Texto</option>
+                                <option value="email">E-mail</option>
+                                <option value="tel">Telefone</option>
+                                <option value="textarea">Área de Texto</option>
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-2 pb-2">
+                            <input 
+                                type="checkbox" 
+                                checked={field.required}
+                                onChange={(e) => {
+                                    const newFields = [...(editingForm?.fields || [])];
+                                    newFields[idx].required = e.target.checked;
+                                    setEditingForm((prev: any) => ({ ...prev, fields: newFields }));
+                                }}
+                                className="w-4 h-4 rounded-md border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Obrig.</span>
+                        </div>
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                const newFields = [...(editingForm?.fields || [])].filter((_, i) => i !== idx);
+                                setEditingForm((prev: any) => ({ ...prev, fields: newFields }));
+                            }}
+                            className="p-2 text-rose-300 hover:text-rose-500 transition-colors"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                    </div>
+                ))}
+            </div>
           </div>
           <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-800 mt-6">
             <button type="button" onClick={() => setShowModal(false)} className="px-6 py-2 text-sm font-bold text-gray-500">Voltar</button>
@@ -906,8 +1211,8 @@ export default function AdminView({
   const isAdmin = currentUser.role === 'ADMIN';
   const canManageSystem = isOwner || isAdmin;
 
-  const [activeSubTab, setActiveSubTab] = useState<'integrations' | 'users' | 'database' | 'sql' | 'personalizacao' | 'whatsapp' | 'video' | 'forms' | 'logs' | 'privacidade' | 'network' | 'email' | 'revoke'>(
-    canManageSystem ? 'integrations' : 'personalizacao'
+  const [activeSubTab, setActiveSubTab] = useState<'subscription' | 'integrations' | 'users' | 'database' | 'sql' | 'personalizacao' | 'whatsapp' | 'video' | 'forms' | 'logs' | 'privacidade' | 'network' | 'email' | 'revoke'>(
+    canManageSystem ? 'subscription' : 'personalizacao'
   );
   const [isTeamChatOpen, setIsTeamChatOpen] = useState(false);
 
@@ -1201,6 +1506,17 @@ export default function AdminView({
         <div className="space-y-2">
           {canManageSystem && (
             <button 
+              onClick={() => setActiveSubTab('subscription')}
+              className={cn(
+                "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+                activeSubTab === 'subscription' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              )}
+            >
+              <Activity size={18} /> Assinatura
+            </button>
+          )}
+          {canManageSystem && (
+            <button 
               onClick={() => setActiveSubTab('integrations')}
               className={cn(
                 "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
@@ -1321,6 +1637,7 @@ export default function AdminView({
 
         {/* Content Area */}
         <div className="lg:col-span-2 space-y-6">
+          {activeSubTab === 'subscription' && <SubscriptionView currentUser={currentUser} />}
           {activeSubTab === 'integrations' && (
             <div className="space-y-6">
               {integrations

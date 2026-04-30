@@ -147,7 +147,7 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
         const updated = await api.updateReceivable(editingReceivable.id, formattedData);
         setReceivables(receivables.map(r => r.id === editingReceivable.id ? { ...r, ...updated } : r));
       } else {
-        const created = await api.createReceivable(formattedData);
+        const created = await api.createReceivable(formattedData as any);
         setReceivables([...receivables, created]);
       }
       setIsModalOpen(false);
