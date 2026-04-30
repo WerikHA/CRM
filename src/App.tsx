@@ -75,8 +75,7 @@ import { api } from './services/api';
 import { VideoOrder, SupportTicket, DemandTask } from './types';
 import ProductivityView from './components/ProductivityView';
 import ErrorNotifier from './components/ErrorNotifier';
-import { ToastContainer } from './components/ui/Toast';
-import toast from 'react-hot-toast';
+import { ToastContainer, toast } from './components/ui/Toast';
 import CookieConsent from './components/CookieConsent';
 import JitsiMeeting from './components/JitsiMeeting';
 
@@ -176,11 +175,26 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [totalUsers, setTotalUsers] = useState<number | null>(null);
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(storageService.getItem('selected_plan') || null);
+  const [stripeSessionId, setStripeSessionId] = useState<string | null>(null);
 
-  const handleStartPlan = (planId?: string) => {
-    if (planId) setSelectedPlanId(planId);
-    setAuthView('signup');
+  const handleStartPlan = async (planId?: string) => {
+    if (!planId) return;
+    
+    try {
+      setIsAuthLoading(true);
+      toast.info("Iniciando checkout seguro...");
+      const res = await api.post('/create-anonymous-checkout', { planId });
+      if (res.url) {
+        window.location.href = res.url;
+        return;
+      }
+    } catch (err: any) {
+      console.error("Erro ao iniciar checkout:", err);
+      toast.error("Erro ao iniciar checkout. Tente novamente.");
+    } finally {
+      setIsAuthLoading(false);
+    }
   };
 
   // Fetch public stats for landing page
@@ -226,6 +240,24 @@ export default function App() {
     }
 
     const path = window.location.pathname;
+    const sessionId = urlParams.get('session_id');
+    const planIdParam = urlParams.get('plan_id');
+
+    if (sessionId) {
+      setStripeSessionId(sessionId);
+      if (planIdParam) {
+        setSelectedPlanId(planIdParam);
+        storageService.setItem('selected_plan', planIdParam);
+      }
+      setAuthView('signup');
+      toast.success("Pagamento confirmado! Finalize seu cadastro.");
+      
+      // Clean up URL without losing session context in state
+      const url = new URL(window.location.href);
+      url.searchParams.delete('session_id');
+      url.searchParams.delete('plan_id');
+      window.history.replaceState({}, '', url.pathname + url.search);
+    }
     
     if (path === '/success' || urlParams.get('session_id')) {
       setActiveView('checkout_success');
@@ -344,9 +376,14 @@ export default function App() {
   }, []);
 
   const processPostAuthRedirect = async (user: User) => {
-    if (selectedPlanId && user.role === 'OWNER') {
+    const planId = selectedPlanId || storageService.getItem('selected_plan');
+    
+    if (planId && user.role === 'OWNER') {
       try {
-        const res = await api.post('/create-checkout-session', { planId: selectedPlanId });
+        toast.info("Redirecionando para o pagamento seguro...");
+        const res = await api.post('/create-checkout-session', { planId });
+        storageService.removeItem('selected_plan');
+        setSelectedPlanId(null);
         if (res.url) {
           window.location.href = res.url;
           return;
@@ -378,13 +415,14 @@ export default function App() {
   const handleSignup = async (name: string, email: string, password: string, acceptedTerms: boolean = true) => {
     try {
       setIsAuthLoading(true);
-      const res = await api.signup(name, email, password, acceptedTerms);
+      const res = await api.signup(name, email, password, acceptedTerms, stripeSessionId, selectedPlanId);
       // Set storage BEFORE state to avoid race conditions
       storageService.setItem('agency_user', JSON.stringify(res.user), true);
       storageService.setItem('agency_token', res.token, true);
       setCurrentUser(res.user);
       setIsAuthenticated(true);
-      await processPostAuthRedirect(res.user);
+      setStripeSessionId(null);
+      setSelectedPlanId(null);
     } catch (err) {
       throw err;
     } finally {
@@ -757,7 +795,11 @@ export default function App() {
           onSignup={handleSignup} 
           isLoading={isAuthLoading} 
           initialMode={authView === 'login' ? 'login' : 'signup'}
-          onBack={() => setAuthView('landing')}
+          selectedPlanId={selectedPlanId}
+          onBack={() => {
+            setAuthView('landing');
+            window.history.pushState({}, '', '/');
+          }}
           onViewTerms={() => {
             setAuthView('terms');
             window.history.pushState({}, '', '/terms');

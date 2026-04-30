@@ -176,7 +176,10 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
               className="flex flex-col sm:flex-row items-center gap-4 mb-24"
             >
               <button 
-                onClick={() => onSignup()}
+                onClick={() => {
+                  const el = document.getElementById('pricing');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
                 className="w-full sm:w-auto px-10 py-5 rounded-full text-sm font-bold text-white shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-3 uppercase tracking-widest"
                 style={{ backgroundColor: primaryColor || '#4f46e5' }}
               >
@@ -270,9 +273,14 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-3xl font-black text-slate-900 tracking-tight">{feature.title}</h3>
                   {(feature as any).status === 'dev' && (
-                    <span className="px-3 py-1 rounded-full bg-amber-50 border border-amber-100 text-[8px] font-black uppercase tracking-[0.2em] text-amber-600">
+                    <motion.span 
+                      animate={{ opacity: [0.6, 1, 0.6] }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/[0.03] border border-slate-900/10 text-[9px] font-black uppercase tracking-[0.1em] text-slate-400 group-hover:border-indigo-600/20 group-hover:text-indigo-600 group-hover:bg-indigo-50/50 transition-colors"
+                    >
+                      <span className="flex h-1.5 w-1.5 rounded-full bg-slate-300 group-hover:bg-indigo-500 transition-colors" />
                       Em desenvolvimento
-                    </span>
+                    </motion.span>
                   )}
                 </div>
                 <p className="text-slate-500 leading-relaxed font-medium text-lg tracking-tight">{feature.description}</p>
@@ -475,7 +483,10 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
               <button 
-                onClick={() => onSignup()}
+                onClick={() => {
+                  const el = document.getElementById('pricing');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
                 className="w-full sm:w-auto px-12 py-6 bg-white text-indigo-600 rounded-[2rem] font-black text-xl shadow-2xl hover:scale-105 active:scale-95 transition-all uppercase tracking-widest"
               >
                 Criar conta grátis

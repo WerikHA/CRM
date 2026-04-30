@@ -10,9 +10,18 @@ interface LoginViewProps {
   initialMode?: 'login' | 'signup';
   onBack?: () => void;
   onViewTerms?: () => void;
+  selectedPlanId?: string | null;
 }
 
-export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 'login', onBack, onViewTerms }: LoginViewProps) {
+export default function LoginView({ 
+  onLogin, 
+  onSignup, 
+  isLoading, 
+  initialMode = 'login', 
+  onBack, 
+  onViewTerms,
+  selectedPlanId 
+}: LoginViewProps) {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(initialMode as any);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -94,6 +103,15 @@ export default function LoginView({ onLogin, onSignup, isLoading, initialMode = 
           <p className="text-gray-400 text-sm font-bold uppercase tracking-widest px-4">
             {mode === 'login' ? 'Autenticação de Usuário' : 'Novo Registro Administrativo'}
           </p>
+
+          {selectedPlanId && mode === 'signup' && (
+            <div className="mt-6 inline-flex items-center gap-3 px-6 py-3 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-700 animate-in zoom-in duration-300">
+              <Zap size={16} className="fill-indigo-600" />
+              <span className="text-xs font-black uppercase tracking-widest">
+                Assinando: <span className="underline">{selectedPlanId === 'plan1' ? 'Growth Pack' : 'Elite Scale'}</span>
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-[2rem] border border-gray-100 p-8 sm:p-12 shadow-sm">

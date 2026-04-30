@@ -357,8 +357,8 @@ export const api = {
     return res.json();
   },
 
-  async signup(name: string, email: string, password: string, acceptedTerms: boolean = true): Promise<{ success: boolean; user: User; token: string }> {
-    return request('/signup', 'POST', { name, email, password, acceptedTerms });
+  async signup(name: string, email: string, password: string, acceptedTerms: boolean = true, sessionId?: string | null, planId?: string | null): Promise<{ success: boolean; user: User; token: string }> {
+    return request('/signup', 'POST', { name, email, password, acceptedTerms, sessionId, planId });
   },
 
   async triggerIntegration(integrationId: string, payload: any): Promise<void> {

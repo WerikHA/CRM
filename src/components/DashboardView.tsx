@@ -367,16 +367,16 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
           index={0}
         />
         <StatCard 
-          title="Usuários Ativos" 
-          value={(users.length * 3).toLocaleString()} 
-          change={8.2} 
+          title="Equipe Ativa" 
+          value={users.length.toString()} 
+          change={0} 
           icon={TrendingUp} 
           color="#10b981" 
           index={1} 
         />
         <StatCard 
-          title={isPartner ? "Clientes em Parceria" : "Leads Administrados"} 
-          value="1.2k" 
+          title={isPartner ? "Clientes em Parceria" : "Leads totais"} 
+          value={leads.length.toString()} 
           change={0} 
           icon={Users} 
           color="#f59e0b" 
@@ -384,8 +384,8 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
         />
         <StatCard 
           title="Projetos Entregues"
-          value="3k" 
-          change={-4.1} 
+          value={(artOrders.filter(o => o.status === 'done').length + videoOrders.filter(o => o.status === 'done').length).toString()} 
+          change={0} 
           icon={Palette} 
           color="#ec4899" 
           index={3} 

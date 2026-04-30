@@ -32,7 +32,14 @@ import { UserRole } from "./src/types.ts";
 
 dotenv.config();
 
-const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const isValidStripeKey = stripeSecretKey && stripeSecretKey.startsWith('sk_');
+
+if (stripeSecretKey && !isValidStripeKey) {
+  console.warn('[STRIPE WARNING] A chave STRIPE_SECRET_KEY fornecida é inválida (deve começar com "sk_"). O sistema entrará em modo de simulação.');
+}
+
+const stripe = isValidStripeKey ? new Stripe(stripeSecretKey!) : null;
 
 // Plans definition matching user request
 const PLANS = {
@@ -457,7 +464,7 @@ async function startServer() {
   const GET_CACHE_TTL = 30000; // 30 seconds cache for generic data
 
   const authMiddleware = async (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
-    const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js", "/api/facebook/callback", "/api/google/callback", "/api/forms/submit", "/api/support-tickets"];
+    const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js", "/api/facebook/callback", "/api/google/callback", "/api/forms/submit", "/api/support-tickets", "/api/create-anonymous-checkout"];
     
     // Check if path is public - handle both originalUrl and relative path
     const isPublic = publicPaths.some(p => 
@@ -920,8 +927,31 @@ async function startServer() {
   });
 
   app.post("/api/signup", async (req, res) => {
-    let { name, email, password, acceptedTerms } = req.body;
+    let { name, email, password, acceptedTerms, accepted_terms, sessionId, planId: reqPlanId } = req.body;
+    const finalAcceptedTerms = acceptedTerms !== undefined ? acceptedTerms : accepted_terms;
     email = email.trim().toLowerCase();
+    
+    let stripeCustomerId = null;
+    let planId = reqPlanId || 'plan1';
+    let subscriptionStatus = 'inactive';
+
+    if (sessionId) {
+      if (stripe) {
+        try {
+          const session = await stripe.checkout.sessions.retrieve(sessionId);
+          if (session.payment_status === 'paid') {
+            stripeCustomerId = session.customer as string;
+            planId = session.metadata?.planId || planId;
+            subscriptionStatus = 'active';
+          }
+        } catch (err) {
+          console.warn("[SIGNUP] Erro ao verificar sessão Stripe:", err);
+        }
+      } else if (sessionId.startsWith('test_dev_')) {
+        subscriptionStatus = 'active';
+      }
+    }
+
     try {
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
@@ -931,7 +961,10 @@ async function startServer() {
         email, 
         password: hashedPassword, 
         role: 'OWNER',
-        acceptedTerms
+        acceptedTerms: finalAcceptedTerms,
+        stripeCustomerId,
+        planId,
+        subscriptionStatus
       })).select().single();
       
       if (insertError) throw insertError;
@@ -1285,12 +1318,39 @@ async function startServer() {
   });
 
   // --- Stripe Endpoints ---
+  app.post("/api/create-anonymous-checkout", async (req, res) => {
+    try {
+      const planId = req.body.planId || req.body.plan_id;
+      const plan = PLANS[planId as keyof typeof PLANS];
+      if (!plan) return res.status(400).json({ error: "Plano inválido" });
+
+      if (!stripe) {
+        console.warn("[STRIPE] Stripe não configurado. Simulando checkout anônimo...");
+        return res.json({ url: `${process.env.APP_URL || req.headers.origin}/signup?session_id=test_dev_${Date.now()}&plan_id=${planId}&test=true` });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{ price: plan.priceId, quantity: 1 }],
+        mode: 'subscription',
+        success_url: `${process.env.APP_URL || req.headers.origin}/signup?session_id={CHECKOUT_SESSION_ID}&plan_id=${planId}`,
+        cancel_url: `${process.env.APP_URL || req.headers.origin}/`,
+        metadata: { planId }
+      });
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      console.error("[STRIPE ERROR]", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/create-checkout-session", async (req: AuthRequest, res) => {
     try {
       const context = getContext(req);
       if (!context) return res.status(401).json({ error: "Não autorizado" });
       
-      const { planId } = req.body;
+      const planId = req.body.planId || req.body.plan_id;
       const plan = PLANS[planId as keyof typeof PLANS];
       if (!plan) return res.status(400).json({ error: "Plano inválido" });
 
