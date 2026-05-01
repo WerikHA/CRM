@@ -33,17 +33,20 @@ import { UserRole } from "./src/types.ts";
 dotenv.config();
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
-const isValidStripeKey = stripeSecretKey && (stripeSecretKey.startsWith('sk_') || stripeSecretKey.startsWith('rk_'));
+// Aceita qualquer chave que pareça uma chave secreta do Stripe (sk_ ou rk_)
+const isValidStripeKey = !!(stripeSecretKey && (stripeSecretKey.startsWith('sk_') || stripeSecretKey.startsWith('rk_')));
 
 if (stripeSecretKey && !isValidStripeKey) {
-  console.warn('[STRIPE WARNING] A chave STRIPE_SECRET_KEY fornecida é inválida (deve começar com "sk_" ou "rk_"). O sistema entrará em modo de simulação.');
+  console.warn('[STRIPE WARNING] A chave STRIPE_SECRET_KEY fornecida não parece seguir o padrão sk_... ou rk_...');
 } else if (!stripeSecretKey) {
   console.info('[STRIPE INFO] STRIPE_SECRET_KEY não encontrada. Checkout em modo de simulação.');
 }
 
-const stripe = isValidStripeKey ? new Stripe(stripeSecretKey!) : null;
+const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
-const APP_URL = process.env.APP_URL || process.env.VITE_APP_URL || '';
+// Prioriza o domínio oficial se fornecido, senão usa a detecção automática
+const OFFICIAL_DOMAIN = "https://crm.amplifamarketing.com.br";
+const APP_URL = process.env.APP_URL || process.env.VITE_APP_URL || OFFICIAL_DOMAIN;
 
 // Plans definition matching user request
 const PLANS = {
@@ -1070,8 +1073,8 @@ async function startServer() {
     let subscriptionStatus = 'inactive';
 
     // Mandatory paywall check if Stripe is enabled
-    if (isValidStripeKey && !sessionId) {
-      return res.status(402).json({ error: "É necessário concluir o pagamento antes de criar sua conta." });
+    if (stripeSecretKey && !sessionId) {
+      return res.status(402).json({ error: "É necessário concluir o pagamento antes de criar sua conta. Por favor, utilize o botão de inscrição no site oficial." });
     }
 
     if (sessionId) {
@@ -1467,6 +1470,11 @@ async function startServer() {
       if (!plan) return res.status(400).json({ error: "Plano inválido" });
 
       const origin = req.headers.origin || APP_URL || `${req.protocol}://${req.get('host')}`;
+      
+      // If user provided a key but authentication failed or initialization was skipped
+      if (stripeSecretKey && !stripe) {
+         return res.status(500).json({ error: "Erro de inicialização do Stripe. Verifique sua STRIPE_SECRET_KEY." });
+      }
 
       if (!stripe) {
         console.warn("[STRIPE] Stripe não configurado. Simulando checkout anônimo para o plano:", planId);

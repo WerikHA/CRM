@@ -191,7 +191,11 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Erro ao iniciar checkout:", err);
-      toast.error("Erro ao iniciar checkout. Tente novamente.");
+      const msg = err.message || "Erro ao iniciar checkout. Verifique a configuração do Stripe.";
+      toast.error(msg);
+      
+      // If it's a simulation error or something, we still don't want to show the signup form directly
+      // but only if the user explicitly wants them to pay.
     } finally {
       setIsAuthLoading(false);
     }
@@ -843,6 +847,7 @@ export default function App() {
           isLoading={isAuthLoading} 
           initialMode={authView === 'login' ? 'login' : 'signup'}
           selectedPlanId={selectedPlanId}
+          stripeSessionId={stripeSessionId}
           onBack={() => {
             setAuthView('landing');
             window.history.pushState({}, '', '/');

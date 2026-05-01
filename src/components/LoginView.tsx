@@ -11,6 +11,7 @@ interface LoginViewProps {
   onBack?: () => void;
   onViewTerms?: () => void;
   selectedPlanId?: string | null;
+  stripeSessionId?: string | null;
 }
 
 export default function LoginView({ 
@@ -20,9 +21,13 @@ export default function LoginView({
   initialMode = 'login', 
   onBack, 
   onViewTerms,
-  selectedPlanId 
+  selectedPlanId,
+  stripeSessionId
 }: LoginViewProps) {
-  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(initialMode as any);
+  // Se o modo inicial for signup mas não houver sessão de pagamento, forçar login
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(
+    initialMode === 'signup' && !stripeSessionId ? 'login' : (initialMode as any)
+  );
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
