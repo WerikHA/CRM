@@ -74,12 +74,40 @@ export const facebookService = {
     const { data: clientData } = await supabase.from('clients').select('owner_id').eq('id', clientId).single();
     const ownerId = clientData?.owner_id || clientId;
 
+    // Save to legacy system_configs for compatibility
     await supabase.from('system_configs').upsert({
       owner_id: ownerId,
       config_key: `facebook_tokens_${clientId}`,
       config_value: encryptObject(tokens),
       updated_at: new Date().toISOString()
     }, { onConflict: 'owner_id,config_key' });
+
+    // Save individual accounts to the new social_accounts table
+    for (const page of pages) {
+      await supabase.from('social_accounts').upsert({
+        owner_id: ownerId,
+        client_id: clientId,
+        platform: 'facebook',
+        platform_account_id: page.id,
+        platform_account_name: page.name,
+        access_token: encryptObject(page.access_token),
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'client_id,platform_account_id' });
+    }
+
+    for (const ig of instagramAccounts) {
+      await supabase.from('social_accounts').upsert({
+        owner_id: ownerId,
+        client_id: clientId,
+        platform: 'instagram',
+        platform_account_id: ig.igAccountId,
+        platform_account_name: ig.pageName,
+        access_token: encryptObject(ig.accessToken),
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'client_id,platform_account_id' });
+    }
     
     return { pages, instagramAccounts };
   },
@@ -211,5 +239,74 @@ export const facebookService = {
     
     if (error) throw error;
     return { success: true };
+  },
+
+  async publishToSpecificAccount(account: any, content: string, mediaUrl?: string) {
+    try {
+      const accessToken = typeof account.access_token === 'string' && (account.access_token.includes(':') || account.access_token.length > 100) 
+        ? decryptObject(account.access_token) 
+        : account.access_token;
+
+      if (account.platform === 'facebook') {
+        let postUrl = `https://graph.facebook.com/v19.0/${account.platform_account_id}/feed`;
+        const body: any = {
+          message: content,
+          access_token: accessToken
+        };
+        
+        if (mediaUrl) {
+          postUrl = `https://graph.facebook.com/v19.0/${account.platform_account_id}/photos`;
+          body.url = mediaUrl;
+          body.caption = content;
+          delete body.message;
+        }
+        
+        const res = await fetch(postUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json() as any;
+        if (data.error) throw new Error(data.error.message);
+        return { success: true, data };
+      } 
+      
+      if (account.platform === 'instagram') {
+        if (!mediaUrl) throw new Error("Instagram exige uma imagem ou vídeo para publicar.");
+        
+        const creationUrl = `https://graph.facebook.com/v19.0/${account.platform_account_id}/media`;
+        const creationRes = await fetch(creationUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_url: mediaUrl,
+            caption: content,
+            access_token: accessToken
+          })
+        });
+        const creationData = await creationRes.json() as any;
+        if (creationData.error) throw new Error(creationData.error.message);
+        
+        if (creationData.id) {
+          const publishUrl = `https://graph.facebook.com/v19.0/${account.platform_account_id}/media_publish`;
+          const publishRes = await fetch(publishUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              creation_id: creationData.id,
+              access_token: accessToken
+            })
+          });
+          const publishData = await publishRes.json() as any;
+          if (publishData.error) throw new Error(publishData.error.message);
+          return { success: true, data: publishData };
+        }
+        throw new Error("Falha ao criar container de mídia no Instagram");
+      }
+      
+      throw new Error(`Plataforma ${account.platform} não suportada`);
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   }
 };

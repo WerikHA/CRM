@@ -123,13 +123,13 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             <a href="#pricing" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Preços</a>
             <a href="/privacy" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Políticas de Privacidade</a>
             <button onClick={onLogin} className="text-xs font-bold uppercase tracking-widest text-slate-900 hover:opacity-70 transition-opacity">Entrar</button>
-            <button 
-              onClick={() => onSignup()}
-              className="px-8 py-3 rounded-full text-xs font-bold uppercase tracking-widest text-white shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all"
+            <a 
+              href="#pricing"
+              className="px-8 py-3 rounded-full text-xs font-bold uppercase tracking-widest text-white shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center"
               style={{ backgroundColor: primaryColor || '#4f46e5' }}
             >
               Começar Agora
-            </button>
+            </a>
           </div>
 
           <button className="md:hidden p-2 text-slate-600" onClick={() => setIsMenuOpen(!isMenuOpen)}>

@@ -33,13 +33,17 @@ import { UserRole } from "./src/types.ts";
 dotenv.config();
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const isValidStripeKey = stripeSecretKey && stripeSecretKey.startsWith('sk_');
+const isValidStripeKey = stripeSecretKey && (stripeSecretKey.startsWith('sk_') || stripeSecretKey.startsWith('rk_'));
 
 if (stripeSecretKey && !isValidStripeKey) {
-  console.warn('[STRIPE WARNING] A chave STRIPE_SECRET_KEY fornecida é inválida (deve começar com "sk_"). O sistema entrará em modo de simulação.');
+  console.warn('[STRIPE WARNING] A chave STRIPE_SECRET_KEY fornecida parece inválida. O sistema entrará em modo de simulação.');
+} else if (!stripeSecretKey) {
+  console.info('[STRIPE INFO] STRIPE_SECRET_KEY não encontrada. Checkout em modo de simulação.');
 }
 
 const stripe = isValidStripeKey ? new Stripe(stripeSecretKey!) : null;
+
+const APP_URL = process.env.APP_URL || process.env.VITE_APP_URL || '';
 
 // Plans definition matching user request
 const PLANS = {
@@ -556,6 +560,118 @@ async function startServer() {
   };
 
   app.use("/api", authMiddleware as any);
+
+  // --- SOCIAL MEDIA SCHEDULER API ---
+  app.get("/api/social-accounts", async (req: AuthRequest, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('social_accounts')
+        .select('*')
+        .eq('owner_id', req.user!.ownerId);
+      if (error) throw error;
+      res.json(keysToCamel(data));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/social-posts", async (req: AuthRequest, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('social_posts')
+        .select('*, post_media(*), post_schedules(*)')
+        .eq('owner_id', req.user!.ownerId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      res.json(keysToCamel(data));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/social-posts", async (req: AuthRequest, res) => {
+    try {
+      const { client_id, content, external_link, hashtags, media, schedules } = req.body;
+      
+      // 1. Create Post
+      const { data: post, error: postError } = await supabase
+        .from('social_posts')
+        .insert({
+          owner_id: req.user!.ownerId,
+          client_id,
+          content,
+          external_link,
+          hashtags,
+          status: (schedules && schedules.length > 0) ? 'scheduled' : 'draft'
+        })
+        .select()
+        .single();
+      
+      if (postError) throw postError;
+
+      // 2. Add Media
+      if (media && media.length > 0) {
+        const mediaToInsert = media.map((m: any) => ({
+          post_id: post.id,
+          media_url: m.media_url,
+          media_type: m.media_type || 'image',
+          format: m.format || 'feed'
+        }));
+        await supabase.from('post_media').insert(mediaToInsert);
+      }
+
+      // 3. Add Schedules
+      if (schedules && schedules.length > 0) {
+        const schedulesToInsert = schedules.map((s: any) => ({
+          post_id: post.id,
+          social_account_id: s.social_account_id,
+          scheduled_at: s.scheduled_at,
+          status: 'scheduled'
+        }));
+        await supabase.from('post_schedules').insert(schedulesToInsert);
+      }
+
+      res.json(keysToCamel(post));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/social-posts/:id", async (req: AuthRequest, res) => {
+    try {
+      const { error } = await supabase
+        .from('social_posts')
+        .delete()
+        .eq('id', req.params.id)
+        .eq('owner_id', req.user!.ownerId);
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/social-posts/:id/reschedule", async (req: AuthRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { scheduled_at } = req.body;
+
+      if (!scheduled_at) return res.status(400).json({ error: "scheduled_at is required" });
+
+      // Update all pending schedules for this post
+      const { error } = await supabase
+        .from('post_schedules')
+        .update({ scheduled_at: new Date(scheduled_at).toISOString() })
+        .eq('post_id', id)
+        .eq('status', 'scheduled');
+
+      if (error) throw error;
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // --- Upload Configuration ---
   const UPLOADS_DIR = path.join(process.cwd(), 'uploads_secure');
@@ -1342,17 +1458,20 @@ async function startServer() {
       const plan = PLANS[planId as keyof typeof PLANS];
       if (!plan) return res.status(400).json({ error: "Plano inválido" });
 
+      const origin = req.headers.origin || APP_URL || `${req.protocol}://${req.get('host')}`;
+
       if (!stripe) {
-        console.warn("[STRIPE] Stripe não configurado. Simulando checkout anônimo...");
-        return res.json({ url: `${process.env.APP_URL || req.headers.origin}/signup?session_id=test_dev_${Date.now()}&plan_id=${planId}&test=true` });
+        console.warn("[STRIPE] Stripe não configurado. Simulando checkout anônimo para o plano:", planId);
+        return res.json({ url: `${origin}/signup?session_id=test_dev_${Date.now()}&plan_id=${planId}&test=true` });
       }
 
+      console.log(`[STRIPE] Criando sessão de checkout anônima para o plano: ${planId}`);
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [{ price: plan.priceId, quantity: 1 }],
         mode: 'subscription',
-        success_url: `${process.env.APP_URL || req.headers.origin}/signup?session_id={CHECKOUT_SESSION_ID}&plan_id=${planId}`,
-        cancel_url: `${process.env.APP_URL || req.headers.origin}/`,
+        success_url: `${origin}/signup?session_id={CHECKOUT_SESSION_ID}&plan_id=${planId}`,
+        cancel_url: `${origin}/`,
         metadata: { planId }
       });
 
@@ -1372,16 +1491,19 @@ async function startServer() {
       const plan = PLANS[planId as keyof typeof PLANS];
       if (!plan) return res.status(400).json({ error: "Plano inválido" });
 
+      const origin = req.headers.origin || APP_URL || `${req.protocol}://${req.get('host')}`;
+
       if (!stripe) {
-        console.warn("[STRIPE] Stripe não configurado. Simulando checkout...");
+        console.warn("[STRIPE] Stripe não configurado. Simulando checkout para usuário logado:", context.userId);
         // Em desenvolvimento sem chave Stripe, apenas atualizamos o plano
         await supabase.from('users').update({ 
           plan_id: planId, 
           subscription_status: 'active' 
         }).eq('id', context.userId);
-        return res.json({ url: `${process.env.APP_URL || req.headers.origin}/dashboard?success=true` });
+        return res.json({ url: `${origin}/dashboard?success=true` });
       }
 
+      console.log(`[STRIPE] Criando sessão de checkout para usuário: ${context.userId}, plano: ${planId}`);
       // Get or create customer
       const { data: userRaw } = await supabase.from('users').select('stripe_customer_id, email, name').eq('id', context.userId).single();
       const user = keysToCamel(userRaw);
@@ -1402,8 +1524,8 @@ async function startServer() {
         payment_method_types: ['card'],
         line_items: [{ price: plan.priceId, quantity: 1 }],
         mode: 'subscription',
-        success_url: `${process.env.APP_URL || req.headers.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.APP_URL || req.headers.origin}/cancel`,
+        success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/cancel`,
         metadata: { userId: context.userId, planId }
       });
 
@@ -1702,6 +1824,106 @@ async function startServer() {
       });
     }
   }
+
+  // Background Worker for Social Posts
+  const processSocialSchedules = async () => {
+    try {
+      const now = new Date().toISOString();
+      const { data: pendingSchedules, error } = await supabase
+        .from('post_schedules')
+        .select('*, social_posts(*), social_accounts(*)')
+        .eq('status', 'scheduled')
+        .lte('scheduled_at', now)
+        .limit(10);
+
+      if (error) {
+        console.error("[WORKER] Erro ao buscar agendamentos:", error);
+        return;
+      }
+
+      if (!pendingSchedules || pendingSchedules.length === 0) return;
+
+      console.log(`[WORKER] Processando ${pendingSchedules.length} agendamentos sociais...`);
+
+      for (const schedule of pendingSchedules) {
+        try {
+          const postText = schedule.social_posts;
+          const account = schedule.social_accounts;
+          
+          // Get media
+          const { data: media } = await supabase
+            .from('post_media')
+            .select('*')
+            .eq('post_id', schedule.post_id);
+
+          const result = await facebookService.publishToSpecificAccount(
+            account,
+            postText.content,
+            media && media.length > 0 ? media[0].media_url : undefined
+          );
+
+          if (result.success) {
+            await supabase.from('post_schedules').update({
+              status: 'published',
+              published_at: new Date().toISOString(),
+              api_response: result.data
+            }).eq('id', schedule.id);
+
+            // Update main post status if all schedules are done
+            const { data: remaining } = await supabase
+              .from('post_schedules')
+              .select('id')
+              .eq('post_id', schedule.post_id)
+              .eq('status', 'scheduled');
+            
+            if (!remaining || remaining.length === 0) {
+              await supabase.from('social_posts').update({ status: 'published' }).eq('id', schedule.post_id);
+            }
+
+            await supabase.from('social_post_logs').insert({
+              post_id: schedule.post_id,
+              schedule_id: schedule.id,
+              owner_id: postText.owner_id,
+              action: 'publish_success',
+              details: `Publicado com sucesso no ${account.platform}: ${account.platform_account_name}`,
+              status: 'success'
+            });
+          } else {
+            throw new Error(result.error);
+          }
+        } catch (postErr: any) {
+          console.error(`[WORKER] Erro ao publicar post ${schedule.post_id}:`, postErr);
+          
+          const retryCount = (schedule.retry_count || 0) + 1;
+          const status = retryCount >= 3 ? 'failed' : 'scheduled';
+          
+          await supabase.from('post_schedules').update({
+            status,
+            retry_count: retryCount,
+            error_message: postErr.message
+          }).eq('id', schedule.id);
+
+          if (status === 'failed') {
+            await supabase.from('social_posts').update({ status: 'failed' }).eq('id', schedule.post_id);
+          }
+
+          await supabase.from('social_post_logs').insert({
+            post_id: schedule.post_id,
+            schedule_id: schedule.id,
+            owner_id: schedule.social_posts.owner_id,
+            action: 'publish_error',
+            details: `Erro ao publicar: ${postErr.message}`,
+            status: 'error'
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[WORKER] Erro crítico no worker social:", err);
+    }
+  };
+
+  // Run worker every minute
+  cron.schedule("* * * * *", processSocialSchedules);
 
   httpServer.listen(Number(PORT), "0.0.0.0", () => console.log(`🚀 Server on ${PORT}`));
 }

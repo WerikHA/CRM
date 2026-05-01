@@ -3,30 +3,53 @@ import { CalendarClock, Plus, Calendar as CalendarIcon, Clock, Image as ImageIco
 import { Client } from '../types';
 import { api } from '../services/api';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
+import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
-import { enUS } from 'date-fns/locale';
+import { ptBR } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
+import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 
 const localizer = dateFnsLocalizer({
   format,
   parse,
   startOfWeek,
   getDay,
-  locales: { 'en-US': enUS },
+  locales: { 'pt-BR': ptBR },
 });
+
+const DnDCalendar = withDragAndDrop(Calendar);
+
 
 interface SocialPost {
   id: string;
   clientId: string;
   content: string;
-  mediaUrls: string[];
-  networks: ('facebook' | 'instagram')[];
-  selectedPageId?: string;
-  selectedIgAccountId?: string;
-  scheduledDate: string; // YYYY-MM-DD
-  scheduledTime: string; // HH:mm
+  externalLink?: string;
+  hashtags?: string;
   status: 'draft' | 'scheduled' | 'published' | 'failed';
+  postMedia?: {
+    id: string;
+    mediaUrl: string;
+    mediaType: 'image' | 'video';
+    format: 'feed' | 'stories' | 'reels';
+  }[];
+  postSchedules?: {
+    id: string;
+    socialAccountId: string;
+    scheduledAt: string;
+    status: 'scheduled' | 'published' | 'failed';
+    errorMessage?: string;
+  }[];
   createdAt: string;
+}
+
+interface SocialAccount {
+  id: string;
+  clientId: string;
+  platform: 'facebook' | 'instagram';
+  platformAccountId: string;
+  platformAccountName: string;
+  isActive: boolean;
 }
 
 interface SocialPostSchedulerViewProps {
@@ -37,23 +60,46 @@ interface SocialPostSchedulerViewProps {
 export function SocialPostSchedulerView({ clients: initialClients, currentUser }: SocialPostSchedulerViewProps) {
   const [clients, setClients] = useState<Client[]>(initialClients);
   const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showAccountsModal, setShowAccountsModal] = useState(false);
   const [view, setView] = useState<'list' | 'calendar'>('list');
-  const [formData, setFormData] = useState<Partial<SocialPost>>({
+  const [formData, setFormData] = useState<any>({
     networks: [],
-    status: 'scheduled'
+    media: [],
+    schedules: []
   });
 
   const [availableAccounts, setAvailableAccounts] = useState<{pages: any[], igAccounts: any[]}>({pages: [], igAccounts: []});
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [postsData, accountsData] = await Promise.all([
+        api.get('/social-posts'),
+        api.get('/social-accounts')
+      ]);
+      setPosts(postsData || []);
+      setSocialAccounts(accountsData || []);
+    } catch (err) {
+      console.error("Erro ao buscar dados do agendador:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   useEffect(() => {
     setClients(initialClients);
   }, [initialClients]);
 
   useEffect(() => {
-    if (formData.clientId) {
-      api.get(`/facebook/status/${formData.clientId}`).then(status => {
+    if (formData.client_id) {
+      api.get(`/facebook/status/${formData.client_id}`).then(status => {
         if (status) {
           setAvailableAccounts({ pages: status.pages || [], igAccounts: status.igAccounts || [] });
           setFormData(prev => ({
@@ -66,7 +112,7 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
     } else {
       setAvailableAccounts({ pages: [], igAccounts: [] });
     }
-  }, [formData.clientId]);
+  }, [formData.client_id]);
 
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
@@ -143,87 +189,50 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
     }
   };
 
+
   const handleSave = async () => {
-    if (!formData.clientId || !formData.content || formData.networks?.length === 0 || !formData.scheduledDate || !formData.scheduledTime) {
-      alert("Preencha os campos obrigatórios (Cliente, Redes, Conteúdo, Data e Hora).");
+    if (!formData.client_id || !formData.content || (formData.schedules || []).length === 0) {
+      alert("Preencha os campos obrigatórios (Cliente, Conteúdo e Agendamento).");
       return;
     }
 
-    // Verify if accounts are connected
-    const client = clients.find(c => c.id === formData.clientId);
-    if (!client) return;
-
-    for (const network of formData.networks) {
-      const isConnected = network === 'facebook' 
-        ? client.socialAccounts?.facebook?.connected
-        : client.socialAccounts?.instagram?.connected;
-        
-      if (!isConnected) {
-        alert(`O cliente ${client.name} não possui a conta do ${network === 'facebook' ? 'Facebook' : 'Instagram'} conectada.`);
-        return;
-      }
+    try {
+      await api.post("/social-posts", {
+        ...formData,
+        media: (formData.media || []).map((url: string) => ({ media_url: url, media_type: 'image', format: 'feed' }))
+      });
+      
+      alert(formData.id ? "Post atualizado com sucesso!" : "Post criado e agendado com sucesso!");
+      fetchData();
+      setShowModal(false);
+      setFormData({ networks: [], media: [], schedules: [], status: 'scheduled' });
+    } catch (e: any) {
+      console.error(e);
+      alert("Falha ao salvar post: " + e.message);
     }
-
-    const scheduledDateObj = new Date(`${formData.scheduledDate}T${formData.scheduledTime}`);
-    const isPastOrNow = scheduledDateObj.getTime() <= Date.now() + 60000; // scheduled for past or less than 1 min
-    
-    // Only call API if we are actually publishing now, or if it's scheduling (Facebook expects unix timestamp for scheduling)
-    let finalStatus: any = formData.status;
-    
-    if (formData.status === 'scheduled' || formData.status === 'published') {
-       try {
-         const scheduledTimeUnix = isPastOrNow ? undefined : Math.floor(scheduledDateObj.getTime() / 1000);
-         const data = await api.post("/facebook/publish", {
-             clientId: formData.clientId,
-             networks: formData.networks,
-             content: formData.content,
-             mediaUrl: formData.mediaUrls?.[0],
-             scheduledTimeUnix,
-             selectedPageId: formData.selectedPageId,
-             selectedIgAccountId: formData.selectedIgAccountId
-         });
-         
-         if (data.success) {
-           alert(isPastOrNow ? "Publicado com sucesso!" : "Agendado via API do Facebook com sucesso (Verifique limitações no Instagram).");
-           finalStatus = isPastOrNow ? 'published' : 'scheduled';
-         } else {
-           alert("Erro ao publicar: " + JSON.stringify(data));
-           finalStatus = 'failed';
-         }
-       } catch (e) {
-         console.error(e);
-         alert("Falha na chamada à API do Facebook.");
-         finalStatus = 'failed';
-       }
-    }
-
-    const newPost: SocialPost = {
-      id: formData.id || Math.random().toString(36).substr(2, 9),
-      clientId: formData.clientId,
-      content: formData.content,
-      mediaUrls: formData.mediaUrls || [],
-      networks: formData.networks as ('facebook' | 'instagram')[],
-      scheduledDate: formData.scheduledDate,
-      scheduledTime: formData.scheduledTime,
-      status: finalStatus,
-      createdAt: new Date().toISOString()
-    };
-
-    if (formData.id) {
-      setPosts(posts.map(p => p.id === formData.id ? newPost : p));
-    } else {
-      setPosts([newPost, ...posts]);
-    }
-    
-    setShowModal(false);
-    setFormData({ networks: [], status: 'scheduled' });
   };
 
   const getClientName = (id: string) => {
     return clients.find(c => c.id === id)?.name || 'Cliente Desconhecido';
   };
 
+  const getAccountsForClient = (clientId: string) => {
+    return socialAccounts.filter(acc => acc.clientId === clientId);
+  };
+
   const isAdminOrOwner = ['ADMIN', 'OWNER'].includes(currentUser?.role);
+  
+  const moveEvent = async ({ event, start }: any) => {
+    try {
+      await api.patch(`/social-posts/${event.id}/reschedule`, {
+        scheduled_at: start
+      });
+      fetchData();
+    } catch (err) {
+      console.error("Erro ao reagendar post:", err);
+      alert("Falha ao reagendar post.");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -258,7 +267,7 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
           </div>
           <button
             onClick={() => {
-              setFormData({ networks: [], status: 'scheduled' });
+              setFormData({ networks: [], media: [], schedules: [], status: 'scheduled' });
               setShowModal(true);
             }}
             className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-sm"
@@ -305,8 +314,8 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
                     <tr key={post.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                       <td className="py-4 pr-4">
                         <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden">
-                          {post.mediaUrls?.[0] ? (
-                            <img src={post.mediaUrls[0]} alt="" className="w-full h-full object-cover" />
+                          {post.postMedia?.[0]?.mediaUrl ? (
+                            <img src={post.postMedia?.[0]?.mediaUrl} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <ImageIcon className="w-5 h-5 text-gray-400" />
                           )}
@@ -320,14 +329,24 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
                       </td>
                       <td className="py-4 pr-4">
                         <div className="flex space-x-2">
-                          {post.networks.includes('facebook') && <Facebook className="w-4 h-4 text-blue-600" />}
-                          {post.networks.includes('instagram') && <Instagram className="w-4 h-4 text-pink-600" />}
+                          {post.postSchedules?.some(s => {
+                            const acc = socialAccounts.find(a => a.id === s.socialAccountId);
+                            return acc?.platform === 'facebook';
+                          }) && <Facebook className="w-4 h-4 text-blue-600" />}
+                          {post.postSchedules?.some(s => {
+                            const acc = socialAccounts.find(a => a.id === s.socialAccountId);
+                            return acc?.platform === 'instagram';
+                          }) && <Instagram className="w-4 h-4 text-pink-600" />}
                         </div>
                       </td>
                       <td className="py-4 pr-4">
                         <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">{post.scheduledDate}</span>
-                          <span className="text-xs text-gray-500">{post.scheduledTime}</span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {post.postSchedules?.[0]?.scheduledAt ? format(new Date(post.postSchedules[0].scheduledAt), 'dd/MM/yyyy') : 'N/A'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {post.postSchedules?.[0]?.scheduledAt ? format(new Date(post.postSchedules[0].scheduledAt), 'HH:mm') : '-'}
+                          </span>
                         </div>
                       </td>
                       <td className="py-4 pr-4">
@@ -343,7 +362,18 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
                       </td>
                       <td className="py-4 text-right">
                         <div className="flex justify-end space-x-2">
-                          <button onClick={() => { setFormData(post); setShowModal(true); }} className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition">
+                          <button onClick={() => { 
+                            setFormData({
+                              ...post,
+                              client_id: post.clientId,
+                              media: post.postMedia?.map(m => m.mediaUrl) || [],
+                              schedules: post.postSchedules?.map(s => ({
+                                social_account_id: s.socialAccountId,
+                                scheduled_at: s.scheduledAt
+                              })) || []
+                            }); 
+                            setShowModal(true); 
+                          }} className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition">
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button onClick={() => setPosts(posts.filter(p => p.id !== post.id))} className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition">
@@ -357,228 +387,241 @@ export function SocialPostSchedulerView({ clients: initialClients, currentUser }
               </table>
             </div>
           ) : (
-            <div className="h-[600px] bg-white dark:bg-gray-800 p-4 rounded-xl">
-              <Calendar
+            <div className="h-[700px] bg-white dark:bg-gray-800 p-4 rounded-xl shadow-inner border border-gray-100 dark:border-gray-700">
+              <DnDCalendar
                 localizer={localizer}
-                events={posts.map(p => ({
-                  id: p.id,
-                  title: p.content,
-                  start: new Date(`${p.scheduledDate}T${p.scheduledTime}`),
-                  end: new Date(`${p.scheduledDate}T${p.scheduledTime}`),
-                }))}
-                startAccessor="start"
-                endAccessor="end"
+                events={posts.map(p => {
+                  const firstSchedule = p.postSchedules?.[0];
+                  const date = firstSchedule ? new Date(firstSchedule.scheduledAt) : new Date();
+                  return {
+                    id: p.id,
+                    title: p.content,
+                    start: date,
+                    end: date,
+                    resource: p
+                  };
+                })}
+                startAccessor={(event: any) => event.start}
+                endAccessor={(event: any) => event.end}
+                draggableAccessor={() => true}
+                onEventDrop={moveEvent}
+                resizable={false}
+                messages={{
+                  next: "Próximo",
+                  previous: "Anterior",
+                  today: "Hoje",
+                  month: "Mês",
+                  week: "Semana",
+                  day: "Dia"
+                }}
+                className="rounded-lg overflow-hidden"
               />
             </div>
           )}
         </div>
       </div>
 
+
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-4xl flex overflow-hidden shadow-xl max-h-[90vh]">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-5xl flex overflow-hidden shadow-xl max-h-[95vh]">
             
             {/* Esquerda: Formulário */}
             <div className="w-1/2 p-6 overflow-y-auto border-r border-gray-100 dark:border-gray-800">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">
-                {formData.id ? 'Editar Post' : 'Criar Novo Post'}
-              </h3>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  {formData.id ? 'Editar Publicação' : 'Nova Publicação Multi-Rede'}
+                </h3>
+              </div>
               
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Cliente</label>
-                  <select 
-                    value={formData.clientId || ''}
-                    onChange={e => setFormData({...formData, clientId: e.target.value})}
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 mb-2 dark:text-white"
-                  >
-                    <option value="">Selecione o Cliente</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Redes Sociais</label>
-                  <div className="flex flex-col space-y-4">
-                    <div className="flex space-x-4">
-                      <label className={`flex items-center p-3 rounded-xl border cursor-pointer transition flex-1 ${formData.networks?.includes('facebook') ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}>
-                        <input 
-                          type="checkbox" 
-                          className="hidden"
-                          checked={formData.networks?.includes('facebook') || false}
-                          disabled={availableAccounts.pages.length === 0}
-                          onChange={(e) => {
-                            const n = formData.networks || [];
-                            if (e.target.checked) setFormData({...formData, networks: [...n, 'facebook'] as any});
-                            else setFormData({...formData, networks: n.filter(x => x !== 'facebook')});
-                          }}
-                        />
-                        <Facebook className={`w-5 h-5 mr-2 ${formData.networks?.includes('facebook') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
-                        <span className={`text-sm ${formData.networks?.includes('facebook') ? 'text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>Facebook</span>
-                      </label>
-                      <label className={`flex items-center p-3 rounded-xl border cursor-pointer transition flex-1 ${formData.networks?.includes('instagram') ? 'bg-pink-50 border-pink-200 dark:bg-pink-900/20 dark:border-pink-800' : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}>
-                        <input 
-                          type="checkbox" 
-                          className="hidden"
-                          checked={formData.networks?.includes('instagram') || false}
-                          disabled={availableAccounts.igAccounts.length === 0}
-                          onChange={(e) => {
-                            const n = formData.networks || [];
-                            if (e.target.checked) setFormData({...formData, networks: [...n, 'instagram'] as any});
-                            else setFormData({...formData, networks: n.filter(x => x !== 'instagram')});
-                          }}
-                        />
-                        <Instagram className={`w-5 h-5 mr-2 ${formData.networks?.includes('instagram') ? 'text-pink-600 dark:text-pink-400' : 'text-gray-400'}`} />
-                        <span className={`text-sm ${formData.networks?.includes('instagram') ? 'text-pink-700 dark:text-pink-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>Instagram</span>
-                      </label>
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Cliente Alvo</label>
+                    <select 
+                      value={formData.client_id || ''}
+                      onChange={e => setFormData({...formData, client_id: e.target.value, schedules: []})}
+                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                    >
+                      <option value="">Selecione o Cliente</option>
+                      {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Link Externo (Opcional)</label>
+                    <div className="relative">
+                      <LinkIcon className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                      <input 
+                        type="url" 
+                        value={formData.external_link || ''}
+                        onChange={e => setFormData({...formData, external_link: e.target.value})}
+                        placeholder="https://suapagina.com"
+                        className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                      />
                     </div>
-
-                    {/* Account Selection */}
-                    {formData.networks?.includes('facebook') && availableAccounts.pages.length > 0 && (
-                      <div className="bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100 dark:border-blue-900/30">
-                        <label className="block text-xs font-medium text-blue-800 dark:text-blue-300 mb-1">Selecione a Página do Facebook</label>
-                        <select
-                          value={formData.selectedPageId || ''}
-                          onChange={e => setFormData({...formData, selectedPageId: e.target.value})}
-                          className="w-full text-sm px-3 py-2 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-lg focus:ring-1 focus:ring-blue-500 dark:text-white"
-                        >
-                          <option value="">Selecione uma página...</option>
-                          {availableAccounts.pages.map(page => (
-                            <option key={page.id} value={page.id}>{page.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {formData.networks?.includes('instagram') && availableAccounts.igAccounts.length > 0 && (
-                      <div className="bg-pink-50/50 dark:bg-pink-900/10 p-3 rounded-xl border border-pink-100 dark:border-pink-900/30">
-                        <label className="block text-xs font-medium text-pink-800 dark:text-pink-300 mb-1">Selecione a Conta do Instagram</label>
-                        <select
-                          value={formData.selectedIgAccountId || ''}
-                          onChange={e => setFormData({...formData, selectedIgAccountId: e.target.value})}
-                          className="w-full text-sm px-3 py-2 bg-white dark:bg-gray-800 border border-pink-200 dark:border-pink-800 rounded-lg focus:ring-1 focus:ring-pink-500 dark:text-white"
-                        >
-                          <option value="">Selecione uma conta...</option>
-                          {availableAccounts.igAccounts.map(ig => (
-                            <option key={ig.igAccountId} value={ig.igAccountId}>{`@${ig.pageName}`}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Texto da Publicação</label>
+                  <div className="flex justify-between mb-2">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">Legenda Oficial</label>
+                    <span className="text-xs text-gray-500">{formData.content?.length || 0}/2200</span>
+                  </div>
                   <textarea 
                     value={formData.content || ''}
                     onChange={e => setFormData({...formData, content: e.target.value})}
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 h-32 resize-none dark:text-white"
-                    placeholder="O que você quer compartilhar?"
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 h-32 resize-none dark:text-white text-sm"
+                    placeholder="Escreva sua legenda aqui... Use #hashtags para maior alcance."
                   ></textarea>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Mídia (URL da Imagem/Vídeo para preview)</label>
-                  <input 
-                    type="url" 
-                    value={formData.mediaUrls?.[0] || ''}
-                    onChange={e => setFormData({...formData, mediaUrls: [e.target.value]})}
-                    placeholder="https://exemplo.com/imagem.png"
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                  />
-                  <p className="text-xs text-gray-500 mt-2">Para o MVP, insira um link direto de imagem.</p>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Canais de Publicação & Agendamento</label>
+                  {!formData.client_id ? (
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl text-center text-sm text-gray-500 border border-dashed border-gray-200 dark:border-gray-700">
+                      Selecione um cliente para ver as contas conectadas.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {getAccountsForClient(formData.client_id).map(acc => {
+                        const existingSchedule = (formData.schedules || []).find((s: any) => s.social_account_id === acc.id);
+                        return (
+                          <div key={acc.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <div className="flex items-center">
+                              <div className={`p-2 rounded-lg mr-3 ${acc.platform === 'facebook' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
+                                {acc.platform === 'facebook' ? <Facebook size={18} /> : <Instagram size={18} />}
+                              </div>
+                              <span className="text-sm font-medium text-gray-900 dark:text-white">{acc.platformAccountName}</span>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              {existingSchedule ? (
+                                <div className="flex items-center space-x-2">
+                                  <input 
+                                    type="datetime-local" 
+                                    value={existingSchedule.scheduled_at?.substring(0, 16)}
+                                    onChange={(e) => {
+                                      const newSchedules = (formData.schedules || []).map((s: any) => 
+                                        s.social_account_id === acc.id ? { ...s, scheduled_at: e.target.value } : s
+                                      );
+                                      setFormData({...formData, schedules: newSchedules});
+                                    }}
+                                    className="px-2 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-xs dark:text-white"
+                                  />
+                                  <button 
+                                    onClick={() => setFormData({...formData, schedules: (formData.schedules || []).filter((s: any) => s.social_account_id !== acc.id)})}
+                                    className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button 
+                                  onClick={() => setFormData({...formData, schedules: [...(formData.schedules || []), { social_account_id: acc.id, scheduled_at: new Date(Date.now() + 3600000).toISOString().substring(0, 16) }]})}
+                                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                >
+                                  + Agendar nesta conta
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center">
-                      <CalendarIcon className="w-4 h-4 mr-1" /> Data
-                    </label>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Mídia Principal (URL)</label>
+                  <div className="relative">
+                    <ImageIcon className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                     <input 
-                      type="date" 
-                      value={formData.scheduledDate || ''}
-                      onChange={e => setFormData({...formData, scheduledDate: e.target.value})}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center">
-                      <Clock className="w-4 h-4 mr-1" /> Hora
-                    </label>
-                    <input 
-                      type="time" 
-                      value={formData.scheduledTime || ''}
-                      onChange={e => setFormData({...formData, scheduledTime: e.target.value})}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                      type="url" 
+                      value={formData.media?.[0] || ''}
+                      onChange={e => setFormData({...formData, media: [e.target.value]})}
+                      placeholder="https://exemplo.com/imagem.png"
+                      className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Direita: Preview */}
-            <div className="w-1/2 p-6 bg-gray-50 dark:bg-gray-800/50 flex flex-col items-center justify-center relative">
-              <h4 className="absolute top-6 left-6 text-sm font-bold text-gray-400 uppercase tracking-widest">Preview</h4>
-              
-              <div className="w-full max-w-[320px] bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden transform scale-95">
-                {/* Instagram Header Mock */}
-                <div className="flex items-center p-3 border-b border-gray-100 dark:border-gray-800">
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center">
-                    <span className="text-indigo-600 dark:text-indigo-400 font-bold text-xs">RM</span>
+            {/* Direita: Preview Realista */}
+            <div className="w-1/2 p-8 bg-gray-50 dark:bg-gray-800/40 flex flex-col items-center justify-between relative overflow-y-auto">
+              <div>
+                <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-8 text-center italic">Preview Mobile (Simulado)</h4>
+                
+                <div className="w-full max-w-[340px] bg-white dark:bg-gray-900 rounded-[3rem] shadow-2xl border-[10px] border-gray-900 dark:border-gray-950 overflow-hidden aspect-[9/18.5] flex flex-col relative">
+                  {/* Phone Notch/Status Bar */}
+                  <div className="h-10 w-full flex items-center justify-between px-8 pt-4">
+                    <span className="text-[10px] font-bold text-gray-900 dark:text-white">9:41</span>
+                    <div className="flex space-x-1 items-center">
+                      <div className="w-4 h-2 bg-gray-900 dark:bg-white rounded-full"></div>
+                    </div>
                   </div>
-                  <div className="ml-2">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">Sua Agência / Cliente</p>
-                    <p className="text-xs text-gray-500">Patrocinado</p>
+
+                  {/* App Header */}
+                  <div className="flex items-center px-4 py-3 border-b border-gray-50 dark:border-gray-800">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 to-purple-600 p-[2px]">
+                      <div className="w-full h-full rounded-full bg-white dark:bg-black p-[2px]">
+                         <div className="w-full h-full rounded-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
+                            <Instagram size={14} className="text-pink-500" />
+                         </div>
+                      </div>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-xs font-bold text-gray-900 dark:text-white">Publicidade</p>
+                      <p className="text-[10px] text-gray-400">Patrocinado</p>
+                    </div>
                   </div>
-                </div>
 
-                {/* Media Mock */}
-                <div className="w-full aspect-square bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                  {formData.mediaUrls?.[0] ? (
-                    <img src={formData.mediaUrls[0]} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <ImageIcon className="w-12 h-12 text-gray-300 dark:text-gray-600" />
-                  )}
-                </div>
+                  {/* Media */}
+                  <div className="w-full aspect-square bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                    {formData.media?.[0] ? (
+                      <img src={formData.media?.[0]} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="text-center p-8">
+                        <ImageIcon className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                        <p className="text-[10px] text-gray-400 font-medium italic">Insira uma URL de mídia para visualizar o preview</p>
+                      </div>
+                    )}
+                  </div>
 
-                {/* Content Mock */}
-                <div className="p-4">
-                  <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap line-clamp-4">
-                    {formData.content || 'Sua legenda aparecerá aqui...'}
-                  </p>
+                  {/* Actions */}
+                  <div className="p-4 flex flex-col flex-1 overflow-hidden">
+                    <div className="flex space-x-4 mb-3">
+                      <div className="w-5 h-5 border-2 border-gray-900 dark:border-white rounded-full"></div>
+                      <div className="w-5 h-5 border-2 border-gray-900 dark:border-white rounded"></div>
+                      <div className="w-5 h-5 border-2 border-gray-900 dark:border-white rounded-tr-lg"></div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto no-scrollbar">
+                      <p className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed">
+                        <span className="font-bold mr-2 text-[11px]">Sua Empresa</span>
+                        {formData.content || 'Sua legenda aparecerá aqui...'}
+                        {formData.external_link && <span className="block text-blue-500 mt-1">{formData.external_link}</span>}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Ações */}
-              <div className="absolute bottom-6 right-6 left-6 flex justify-end space-x-3 bg-gray-50 dark:bg-transparent pt-4">
+              {/* Ações do Modal */}
+              <div className="w-full flex justify-end space-x-3 pt-8 border-t border-gray-100 dark:border-gray-800 mt-8">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition font-medium"
+                  className="px-6 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition font-bold text-sm"
                 >
                   Cancelar
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setFormData({...formData, status: 'draft'});
-                    setTimeout(handleSave, 0);
-                  }}
-                  className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition font-medium"
+                  disabled={(formData.schedules || []).length === 0}
+                  onClick={handleSave}
+                  className="px-8 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition font-bold text-sm shadow-lg shadow-indigo-200 dark:shadow-none flex items-center"
                 >
-                  Salvar Rascunho
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData({...formData, status: 'published'});
-                    setTimeout(handleSave, 0);
-                  }}
-                  className="px-6 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl transition font-medium shadow-sm flex items-center"
-                >
-                  <Send className="w-4 h-4 mr-2" />
-                  Publicar/Agendar via API
+                  <CalendarIcon className="w-4 h-4 mr-2" />
+                  Salvar e Agendar
                 </button>
               </div>
             </div>

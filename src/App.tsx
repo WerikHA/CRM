@@ -604,7 +604,7 @@ export default function App() {
       const planId = effectiveUser.planId || 'plan1';
       if (planId === 'plan1') {
         // Plano 1 restricted features
-        if (item.id === 'social_posts' || item.id === 'drive') return false;
+        if (item.id === 'drive') return false;
       }
 
       if (effectiveUser.role === 'OWNER' && item.id === 'partners') {

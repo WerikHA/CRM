@@ -426,6 +426,9 @@ export const api = {
   async put(endpoint: string, data: any): Promise<any> {
     return request(endpoint, 'PUT', data);
   },
+  async patch(endpoint: string, data: any): Promise<any> {
+    return request(endpoint, 'PATCH', data);
+  },
   async delete(endpoint: string): Promise<any> {
     return request(endpoint, 'DELETE');
   }
