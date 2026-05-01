@@ -32,11 +32,11 @@ import { UserRole } from "./src/types.ts";
 
 dotenv.config();
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const isValidStripeKey = stripeSecretKey && stripeSecretKey.length > 10;
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
+const isValidStripeKey = stripeSecretKey && (stripeSecretKey.startsWith('sk_') || stripeSecretKey.startsWith('rk_'));
 
 if (stripeSecretKey && !isValidStripeKey) {
-  console.warn('[STRIPE WARNING] A chave STRIPE_SECRET_KEY fornecida parece curta demais. O sistema entrará em modo de simulação.');
+  console.warn('[STRIPE WARNING] A chave STRIPE_SECRET_KEY fornecida é inválida (deve começar com "sk_" ou "rk_"). O sistema entrará em modo de simulação.');
 } else if (!stripeSecretKey) {
   console.info('[STRIPE INFO] STRIPE_SECRET_KEY não encontrada. Checkout em modo de simulação.');
 }
@@ -1069,6 +1069,11 @@ async function startServer() {
     let planId = reqPlanId || 'plan1';
     let subscriptionStatus = 'inactive';
 
+    // Mandatory paywall check if Stripe is enabled
+    if (isValidStripeKey && !sessionId) {
+      return res.status(402).json({ error: "É necessário concluir o pagamento antes de criar sua conta." });
+    }
+
     if (sessionId) {
       if (stripe) {
         try {
@@ -1077,9 +1082,12 @@ async function startServer() {
             stripeCustomerId = session.customer as string;
             planId = session.metadata?.planId || planId;
             subscriptionStatus = 'active';
+          } else {
+            return res.status(402).json({ error: "O pagamento desta sessão ainda não foi confirmado." });
           }
         } catch (err) {
           console.warn("[SIGNUP] Erro ao verificar sessão Stripe:", err);
+          return res.status(400).json({ error: "Sessão de pagamento inválida ou expirada." });
         }
       } else if (sessionId.startsWith('test_dev_')) {
         subscriptionStatus = 'active';
@@ -1477,8 +1485,11 @@ async function startServer() {
 
       res.json({ url: session.url });
     } catch (err: any) {
-      console.error("[STRIPE ERROR]", err);
-      res.status(500).json({ error: err.message });
+      console.error("[STRIPE ERROR ANONYMOUS]", err);
+      if (err.type === 'StripeAuthenticationError') {
+        return res.status(401).json({ error: "Configuração do Stripe inválida (Chave API). Por favor, verifique as variáveis de ambiente." });
+      }
+      res.status(500).json({ error: "Erro ao processar pagamento: " + (err.message || "Unknown error") });
     }
   });
 
@@ -1531,8 +1542,11 @@ async function startServer() {
 
       res.json({ url: session.url });
     } catch (err: any) {
-      console.error("[STRIPE ERROR]", err);
-      res.status(500).json({ error: err.message });
+      console.error("[STRIPE ERROR AUTH]", err);
+      if (err.type === 'StripeAuthenticationError') {
+        return res.status(401).json({ error: "Configuração do Stripe inválida (Chave API). Por favor, verifique as variáveis de ambiente." });
+      }
+      res.status(500).json({ error: "Erro ao processar pagamento: " + (err.message || "Unknown error") });
     }
   });
 

@@ -248,10 +248,21 @@ export default function LoginView({
               ) : (
                 <button 
                   type="button"
-                  onClick={() => { setMode('signup'); setError(null); }}
+                  onClick={() => { 
+                    if (onBack) {
+                      onBack();
+                      setTimeout(() => {
+                        const el = document.getElementById('pricing');
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                      }, 100);
+                    } else {
+                      setMode('signup'); 
+                    }
+                    setError(null); 
+                  }}
                   className="text-sm font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
                 >
-                  Ainda não tem conta? Cadastre-se
+                  Ainda não tem conta? Clique aqui para assinar um plano
                 </button>
               )}
             </div>
