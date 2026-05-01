@@ -31,7 +31,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/amplifica-crm:2.9.15
+            ${{ secrets.DOCKER_USERNAME }}/amplifica-crm:2.9.16
             ${{ secrets.DOCKER_USERNAME }}/amplifica-crm:2.9
             ${{ secrets.DOCKER_USERNAME }}/amplifica-crm:latest
           cache-from: type=gha
