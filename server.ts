@@ -33,10 +33,10 @@ import { UserRole } from "./src/types.ts";
 dotenv.config();
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const isValidStripeKey = stripeSecretKey && (stripeSecretKey.startsWith('sk_') || stripeSecretKey.startsWith('rk_'));
+const isValidStripeKey = stripeSecretKey && stripeSecretKey.length > 10;
 
 if (stripeSecretKey && !isValidStripeKey) {
-  console.warn('[STRIPE WARNING] A chave STRIPE_SECRET_KEY fornecida parece inválida. O sistema entrará em modo de simulação.');
+  console.warn('[STRIPE WARNING] A chave STRIPE_SECRET_KEY fornecida parece curta demais. O sistema entrará em modo de simulação.');
 } else if (!stripeSecretKey) {
   console.info('[STRIPE INFO] STRIPE_SECRET_KEY não encontrada. Checkout em modo de simulação.');
 }
