@@ -257,6 +257,7 @@ export default function App() {
       url.searchParams.delete('session_id');
       url.searchParams.delete('plan_id');
       window.history.replaceState({}, '', url.pathname + url.search);
+      return; // Stop here to avoid being overwritten by the next useEffect
     }
     
     if (path === '/success' || urlParams.get('session_id')) {
@@ -421,8 +422,15 @@ export default function App() {
       storageService.setItem('agency_token', res.token, true);
       setCurrentUser(res.user);
       setIsAuthenticated(true);
+      
+      // If we don't have a session ID yet, they might need to be redirected to checkout
+      if (!stripeSessionId) {
+        await processPostAuthRedirect(res.user);
+      }
+      
       setStripeSessionId(null);
       setSelectedPlanId(null);
+      storageService.removeItem('selected_plan');
     } catch (err) {
       throw err;
     } finally {
@@ -454,7 +462,11 @@ export default function App() {
     } else {
       setIsAuthenticated(false);
       setCurrentUser(null);
-      setAuthView('landing');
+      // Only reset to landing if we're not currently in a specific auth flow (like signup from URL)
+      setAuthView(prev => {
+        if (prev === 'signup' || prev === 'login' || prev === 'privacy' || prev === 'terms') return prev;
+        return 'landing';
+      });
     }
   }, []);
 
