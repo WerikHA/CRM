@@ -464,7 +464,7 @@ async function startServer() {
   const GET_CACHE_TTL = 30000; // 30 seconds cache for generic data
 
   const authMiddleware = async (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
-    const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js", "/api/facebook/callback", "/api/google/callback", "/api/forms/submit", "/api/support-tickets", "/api/create-anonymous-checkout"];
+    const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js", "/api/facebook/callback", "/api/google/callback", "/api/forms/submit", "/api/support-tickets", "/api/create-anonymous-checkout", "/api/stripe-webhook"];
     
     // Check if path is public - handle both originalUrl and relative path
     const isPublic = publicPaths.some(p => 
@@ -506,21 +506,39 @@ async function startServer() {
     const cached = userCache.get(token);
     if (cached && (Date.now() - cached.timestamp < AUTH_CACHE_TTL)) {
       req.user = cached.user;
-      return next();
+    } else {
+      try {
+        // Decode JWT locally first (much faster, no rate limit)
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        const userData = { 
+          id: decoded.id, 
+          role: decoded.role, 
+          ownerId: decoded.ownerId,
+          planId: decoded.planId,
+          subscriptionStatus: decoded.subscriptionStatus 
+        };
+        
+        // Cache and proceed
+        userCache.set(token, { user: userData, timestamp: Date.now() });
+        req.user = userData;
+      } catch (err) {
+        return res.status(401).json({ error: "Sessão inválida ou expirada" });
+      }
     }
 
-    try {
-      // Decode JWT locally first (much faster, no rate limit)
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const userData = { id: decoded.id, role: decoded.role, ownerId: decoded.ownerId };
-      
-      // Cache and proceed
-      userCache.set(token, { user: userData, timestamp: Date.now() });
-      req.user = userData;
-      next();
-    } catch (err) {
-      return res.status(401).json({ error: "Sessão inválida ou expirada" });
+    // BLOCK access if subscription is inactive, UNLESS it's a checkout related route or user-notifications
+    const allowedForInactive = ["/api/create-checkout-session", "/api/user-notifications", "/api/sync"];
+    const isAllowedForInactive = allowedForInactive.some(p => req.originalUrl.startsWith(p));
+
+    if (req.user?.subscriptionStatus === 'inactive' && !isAllowedForInactive && req.method !== 'GET') {
+      return res.status(403).json({ 
+        error: "Assinatura pendente", 
+        message: "Sua assinatura não está ativa. Por favor, complete o pagamento para acessar este recurso.",
+        code: "SUBSCRIPTION_REQUIRED"
+      });
     }
+
+    next();
     
     // Periodically clean caches
     if (userCache.size > 1000) {

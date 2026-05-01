@@ -446,6 +446,41 @@ export default function App() {
     setAuthView('landing');
   };
 
+  const renderSubscriptionRequired = () => {
+    if (!currentUser) return null;
+    const planId = currentUser.planId || storageService.getItem('selected_plan') || 'plan1';
+    
+    return (
+      <div className="fixed inset-0 z-[9999] bg-white dark:bg-gray-950 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-800 p-8 text-center">
+          <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center mx-auto mb-6 text-amber-600 dark:text-amber-400">
+            <DollarSign size={40} />
+          </div>
+          <h2 className="text-3xl font-black text-gray-900 dark:text-white mb-4">Assinatura Pendente</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-8 leading-relaxed">
+            Sua conta foi criada com sucesso, mas a assinatura ainda não está ativa. 
+            Complete o pagamento para liberar o acesso total ao {agencyConfig.name}.
+          </p>
+          <div className="space-y-4">
+            <button 
+              onClick={() => processPostAuthRedirect(currentUser)}
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-200 dark:shadow-none flex items-center justify-center gap-2"
+            >
+              Concluir Pagamento agora
+              <ChevronRight size={20} />
+            </button>
+            <button 
+              onClick={handleLogout}
+              className="w-full py-4 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl font-bold transition-all"
+            >
+              Sair da conta
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   useEffect(() => {
     (window as any).onLogout = handleLogout;
     return () => { delete (window as any).onLogout; };
@@ -820,6 +855,11 @@ export default function App() {
         <CookieConsent />
       </>
     );
+  }
+
+  // Blocking check for inactive subscription
+  if (currentUser?.role === 'OWNER' && currentUser?.subscriptionStatus === 'inactive') {
+    return renderSubscriptionRequired();
   }
 
   return (
