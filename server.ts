@@ -90,7 +90,17 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
-  console.log("[STARTUP] Iniciando servidor Express...");
+  console.log(`[STARTUP] Iniciando servidor Express na porta ${PORT}...`);
+  console.log(`[STARTUP] NODE_ENV: ${process.env.NODE_ENV}`);
+
+  // Health check early to satisfy TCP probes
+  app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
+  
+  const httpServer = createServer(app);
+  httpServer.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`🚀 [STARTUP] Servidor pronto e ouvindo na porta ${PORT}`);
+  });
+
   app.use((req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
@@ -224,7 +234,6 @@ async function startServer() {
     console.error('[CRITICAL] Uncaught Exception:', err);
   });
 
-  const httpServer = createServer(app);
   const io = new Server(httpServer, {
     cors: { origin: "*", methods: ["GET", "POST"] }
   });
@@ -1147,7 +1156,7 @@ async function startServer() {
     const ownerId = req.user?.ownerId || req.user?.id;
     if (!ownerId) return res.status(401).json({ error: "Não autorizado" });
     await saveEmailConfig(ownerId, req.body); 
-    resetTransporter(); 
+    resetTransporter(ownerId); 
     res.json({ success: true }); 
   });
   app.post("/api/email/test", async (req: AuthRequest, res) => {
@@ -1508,7 +1517,7 @@ async function startServer() {
         return res.status(401).json({ error: "Configuração do Stripe inválida (Chave API). Por favor, verifique as variáveis de ambiente." });
       }
       if (err.message?.includes('No such price')) {
-        return res.status(400).json({ error: `O Price ID '${plan.priceId}' não foi encontrado na sua conta Stripe. Certifique-se de criar os produtos/preços no painel do Stripe e configurar as variáveis STRIPE_PLAN1_PRICE_ID e STRIPE_PLAN2_PRICE_ID.` });
+        return res.status(400).json({ error: `O Price ID de um dos planos não foi encontrado na sua conta Stripe. Certifique-se de criar os produtos/preços no painel do Stripe e configurar as variáveis STRIPE_PLAN1_PRICE_ID e STRIPE_PLAN2_PRICE_ID.` });
       }
       res.status(500).json({ error: "Erro ao processar pagamento: " + (err.message || "Unknown error") });
     }
@@ -1959,8 +1968,6 @@ async function startServer() {
 
   // Run worker every minute
   cron.schedule("* * * * *", processSocialSchedules);
-
-  httpServer.listen(Number(PORT), "0.0.0.0", () => console.log(`🚀 Server on ${PORT}`));
 }
 
 startServer().catch(err => {

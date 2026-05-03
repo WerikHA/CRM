@@ -121,7 +121,7 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             <a href="#features" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Funcionalidades</a>
             <a href="#workflow" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Como Funciona</a>
             <a href="#pricing" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Preços</a>
-            <a href="/privacy" className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Políticas de Privacidade</a>
+            <button onClick={onPrivacy} className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-indigo-600 transition-colors">Política de Privacidade</button>
             <button onClick={onLogin} className="text-xs font-bold uppercase tracking-widest text-slate-900 hover:opacity-70 transition-opacity">Entrar</button>
             <a 
               href="#pricing"
@@ -531,11 +531,11 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
             <div>
               <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-8">Suporte</h4>
               <ul className="space-y-4">
-                <li><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Ajuda</a></li>
-                <li><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Contato</a></li>
-                <li><a href="/privacy" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Políticas de Privacidade</a></li>
-                <li><a href="/terms" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Termos de Uso</a></li>
-                <li><a href="#" className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest">Status</a></li>
+                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest cursor-pointer">Ajuda</button></li>
+                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest cursor-pointer">Contato</button></li>
+                <li><button onClick={(e) => { e.preventDefault(); onPrivacy(); }} className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest cursor-pointer">Política de Privacidade</button></li>
+                <li><button onClick={(e) => { e.preventDefault(); onTerms(); }} className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest cursor-pointer">Termos de Uso</button></li>
+                <li><button className="text-slate-400 font-bold hover:text-indigo-600 transition-colors uppercase text-[10px] tracking-widest cursor-not-allowed">Status</button></li>
               </ul>
             </div>
           </div>

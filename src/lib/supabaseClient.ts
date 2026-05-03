@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { storageService } from './storage';
+import { storageService } from './storage.ts';
 
 const getEnv = (key: string) => {
   if (typeof window !== 'undefined' && (window as any)._env_ && (window as any)._env_[key]) {

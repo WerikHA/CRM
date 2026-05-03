@@ -35,14 +35,14 @@ export async function saveEmailConfig(ownerId: string, config: EmailConfig) {
     }, { onConflict: 'owner_id,config_key' });
 }
 
-let transporter: nodemailer.Transporter | null = null;
+const transporters: Record<string, nodemailer.Transporter> = {};
 
 async function getTransporter(ownerId: string) {
     const config = await getEmailConfig(ownerId);
     if (!config) return null;
     
-    if (!transporter) {
-        transporter = nodemailer.createTransport({
+    if (!transporters[ownerId]) {
+        transporters[ownerId] = nodemailer.createTransport({
             host: config.host,
             port: config.port,
             secure: config.secure,
@@ -52,11 +52,16 @@ async function getTransporter(ownerId: string) {
             },
         });
     }
-    return transporter;
+    return transporters[ownerId];
 }
 
-export function resetTransporter() {
-    transporter = null;
+export function resetTransporter(ownerId?: string) {
+    if (ownerId) {
+        delete transporters[ownerId];
+    } else {
+        // Limpa todos se não especificar
+        Object.keys(transporters).forEach(k => delete transporters[k]);
+    }
 }
 
 export async function sendEmail(ownerId: string, to: string, subject: string, html: string): Promise<boolean> {

@@ -2134,6 +2134,10 @@ export default function AdminView({
               )}
             </div>
           )}
+
+          {activeSubTab === 'email' && isAdmin && (
+            <EmailConfigView />
+          )}
         </div>
       </div>
     </div>
