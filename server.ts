@@ -1464,24 +1464,33 @@ async function startServer() {
 
   // --- Stripe Endpoints ---
   app.post("/api/create-anonymous-checkout", async (req, res) => {
+    console.log(`[DEBUG] POST /api/create-anonymous-checkout received. Body:`, req.body);
     try {
       const planId = req.body.planId || req.body.plan_id;
+      console.log(`[DEBUG] planId extracted: ${planId}`);
       const plan = PLANS[planId as keyof typeof PLANS];
-      if (!plan) return res.status(400).json({ error: "Plano inválido" });
+      if (!plan) {
+        console.warn(`[DEBUG] Plan not found for id: ${planId}`);
+        return res.status(400).json({ error: "Plano inválido" });
+      }
 
       const origin = req.headers.origin || APP_URL || `${req.protocol}://${req.get('host')}`;
+      console.log(`[DEBUG] origin determined: ${origin}`);
       
       // If user provided a key but authentication failed or initialization was skipped
       if (stripeSecretKey && !stripe) {
+         console.error(`[DEBUG] stripeSecretKey exists but stripe client is null`);
          return res.status(500).json({ error: "Erro de inicialização do Stripe. Verifique sua STRIPE_SECRET_KEY." });
       }
 
       if (!stripe) {
         console.warn("[STRIPE] Stripe não configurado. Simulando checkout anônimo para o plano:", planId);
-        return res.json({ url: `${origin}/signup?session_id=test_dev_${Date.now()}&plan_id=${planId}&test=true` });
+        const simUrl = `${origin}/signup?session_id=test_dev_${Date.now()}&plan_id=${planId}&test=true`;
+        console.log(`[DEBUG] Returning simulation URL: ${simUrl}`);
+        return res.json({ url: simUrl });
       }
 
-      console.log(`[STRIPE] Criando sessão de checkout anônima para o plano: ${planId}`);
+      console.log(`[STRIPE] Criando sessão de checkout anônima para o plano: ${planId}. Usando priceId: ${plan.priceId}`);
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [{ price: plan.priceId, quantity: 1 }],
@@ -1491,11 +1500,15 @@ async function startServer() {
         metadata: { planId }
       });
 
+      console.log(`[DEBUG] Stripe session created: ${session.id}, URL: ${session.url}`);
       res.json({ url: session.url });
     } catch (err: any) {
-      console.error("[STRIPE ERROR ANONYMOUS]", err);
+      console.error("[STRIPE ERROR ANONYMOUS] Error during checkout session creation:", err);
       if (err.type === 'StripeAuthenticationError') {
         return res.status(401).json({ error: "Configuração do Stripe inválida (Chave API). Por favor, verifique as variáveis de ambiente." });
+      }
+      if (err.message?.includes('No such price')) {
+        return res.status(400).json({ error: `O Price ID '${plan.priceId}' não foi encontrado na sua conta Stripe. Certifique-se de criar os produtos/preços no painel do Stripe e configurar as variáveis STRIPE_PLAN1_PRICE_ID e STRIPE_PLAN2_PRICE_ID.` });
       }
       res.status(500).json({ error: "Erro ao processar pagamento: " + (err.message || "Unknown error") });
     }

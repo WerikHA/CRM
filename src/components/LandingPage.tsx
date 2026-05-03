@@ -418,7 +418,10 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
                 </ul>
 
                 <button 
-                  onClick={() => onSignup(plan.id)}
+                  onClick={() => {
+                    console.log("[DEBUG] LandingPage: Inscrição clicada para o plano:", plan.id);
+                    onSignup(plan.id);
+                  }}
                   className={cn(
                     "w-full py-6 rounded-full font-black text-xs uppercase tracking-[0.2em] transition-all",
                     plan.featured 

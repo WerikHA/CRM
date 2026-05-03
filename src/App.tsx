@@ -179,25 +179,35 @@ export default function App() {
   const [stripeSessionId, setStripeSessionId] = useState<string | null>(null);
 
   const handleStartPlan = async (planId?: string) => {
-    if (!planId) return;
+    console.log("[DEBUG] handleStartPlan called with planId:", planId);
+    if (!planId) {
+      console.warn("[DEBUG] planId is missing");
+      return;
+    }
     
     try {
       setIsAuthLoading(true);
+      console.log("[DEBUG] Showing toast info...");
       toast.info("Iniciando checkout seguro...");
+      
+      console.log("[DEBUG] Sending request to /create-anonymous-checkout...");
       const res = await api.post('/create-anonymous-checkout', { planId });
+      console.log("[DEBUG] Response from server:", res);
+      
       if (res.url) {
+        console.log("[DEBUG] Redirecting to:", res.url);
         window.location.href = res.url;
         return;
+      } else {
+        console.warn("[DEBUG] Response missing url field");
       }
     } catch (err: any) {
-      console.error("Erro ao iniciar checkout:", err);
+      console.error("[DEBUG] Erro ao iniciar checkout:", err);
       const msg = err.message || "Erro ao iniciar checkout. Verifique a configuração do Stripe.";
       toast.error(msg);
-      
-      // If it's a simulation error or something, we still don't want to show the signup form directly
-      // but only if the user explicitly wants them to pay.
     } finally {
       setIsAuthLoading(false);
+      console.log("[DEBUG] handleStartPlan finished");
     }
   };
 
