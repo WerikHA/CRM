@@ -25,7 +25,9 @@ export function EmailConfigView() {
     try {
       const res = await fetch('/api/email/config');
       const data = await res.json();
-      setConfig(data);
+      if (data && typeof data === 'object') {
+        setConfig(prev => ({ ...prev, ...data }));
+      }
     } catch (err) {
       console.error('Erro ao buscar config de email', err);
     } finally {

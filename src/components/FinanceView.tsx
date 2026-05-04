@@ -28,7 +28,14 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
   const [financeConfig, setFinanceConfig] = useState<FinanceConfig>({ pixKey: '', enableReminders: false, reminderTemplate: '' });
 
   useEffect(() => {
-    fetch('/api/finance/config').then(res => res.json()).then(setFinanceConfig);
+    fetch('/api/finance/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data === 'object') {
+          setFinanceConfig(prev => ({ ...prev, ...data }));
+        }
+      })
+      .catch(err => console.error("Erro ao buscar config financeira:", err));
   }, []);
 
   const saveConfig = async () => {

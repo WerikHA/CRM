@@ -27,8 +27,9 @@ import { Server } from "socket.io";
 import { createServer } from "http";
 import Stripe from 'stripe';
 
-import { dbService, DbContext, keysToCamel, keysToSnake } from "./src/services/dbService.ts";
-import { UserRole } from "./src/types.ts";
+import { dbService, keysToCamel, keysToSnake } from "./src/services/dbService.ts";
+import type { DbContext } from "./src/services/dbService.ts";
+import type { UserRole } from "./src/types.ts";
 
 dotenv.config();
 

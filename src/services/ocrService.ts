@@ -1,5 +1,6 @@
 import { createWorker } from 'tesseract.js';
-import { dbService, DbContext } from './dbService.ts';
+import { dbService } from './dbService.ts';
+import type { DbContext } from './dbService.ts';
 
 export const ocrService = {
   async processReceipt(imagePath: string): Promise<string> {

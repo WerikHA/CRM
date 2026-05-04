@@ -783,7 +783,7 @@ document.getElementById('amplifica-form-${id}').addEventListener('submit', funct
                         <div className="flex-1 space-y-2">
                             <label className="text-[9px] font-bold text-gray-400 uppercase">Label (O que o usuário vê)</label>
                             <input 
-                                value={field.label}
+                                value={field.label || ''}
                                 onChange={(e) => {
                                     const newFields = [...(editingForm?.fields || [])];
                                     const val = e.target.value;
@@ -812,7 +812,7 @@ document.getElementById('amplifica-form-${id}').addEventListener('submit', funct
                         <div className="w-24 space-y-2">
                             <label className="text-[9px] font-bold text-gray-400 uppercase">Tipo</label>
                             <select 
-                                value={field.type}
+                                value={field.type || 'text'}
                                 onChange={(e) => {
                                     const newFields = [...(editingForm?.fields || [])];
                                     newFields[idx].type = e.target.value;

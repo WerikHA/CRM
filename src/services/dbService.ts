@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabaseClient.ts";
-import { UserRole } from "../types.ts";
+import type { UserRole } from "../types.ts";
 
 export interface DbContext {
   userId: string;
