@@ -4,7 +4,6 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   Browsers,
   makeCacheableSignalKeyStore,
-  WAConnectionState,
   decryptPollVote,
   jidNormalizedUser,
   getAggregateVotesInPollMessage,
@@ -187,7 +186,7 @@ export class WhatsAppService extends EventEmitter {
         "connection.update",
         (
           update: Partial<{
-            connection: WAConnectionState;
+            connection: 'open' | 'connecting' | 'close';
             lastDisconnect: any;
             qr: string;
           }>,

@@ -733,6 +733,7 @@ export default function App() {
           setTasks={setDemandTasks}
           clients={clients}
           users={users}
+          currentUser={effectiveUser}
         />;
       case 'demands':
         return <DemandsView 
