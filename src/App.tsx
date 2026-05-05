@@ -215,14 +215,20 @@ export default function App() {
   useEffect(() => {
     if (authView === 'landing' && !isAuthenticated) {
       fetch('/api/public/stats')
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+          return res.json();
+        })
         .then(data => {
           console.log("[STATS] Dados públicos carregados:", data);
           if (data && typeof data.totalUsers === 'number') {
             setTotalUsers(data.totalUsers);
           }
         })
-        .catch(err => console.error("Erro ao buscar estatísticas públicas:", err));
+        .catch(err => {
+          console.error("Erro ao buscar estatísticas públicas:", err);
+          // Opcional: tentar novamente com delay ou falhar silenciosamente para o usuário
+        });
     }
   }, [authView, isAuthenticated]);
 

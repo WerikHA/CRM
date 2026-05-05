@@ -123,11 +123,18 @@ async function startServer() {
   app.use(compression());
   app.set('trust proxy', 1);
   
-  // CORS configurado para ser mais restrito
+  // CORS configurado para ser mais flexível, permitindo o domínio oficial e previews
   app.use(cors({
-    origin: process.env.APP_URL || "*", // Em produção, mude para o domínio real
+    origin: (origin, callback) => {
+      if (!origin || origin === APP_URL || origin.includes('localhost') || origin.includes('run.app') || origin.includes('amplifamarketing.com.br')) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
   }));
 
   // Helmet para cabeçalhos de segurança robustos
@@ -481,7 +488,21 @@ async function startServer() {
   const GET_CACHE_TTL = 30000; // 30 seconds cache for generic data
 
   const authMiddleware = async (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
-    const publicPaths = ["/api/login", "/api/signup", "/api/forgot-password", "/api/health", "/api/health/supabase", "/env-config.js", "/api/facebook/callback", "/api/google/callback", "/api/forms/submit", "/api/support-tickets", "/api/create-anonymous-checkout", "/api/stripe-webhook"];
+    const publicPaths = [
+      "/api/login", 
+      "/api/signup", 
+      "/api/forgot-password", 
+      "/api/health", 
+      "/api/health/supabase", 
+      "/env-config.js", 
+      "/api/facebook/callback", 
+      "/api/google/callback", 
+      "/api/forms/submit", 
+      "/api/support-tickets", 
+      "/api/create-anonymous-checkout", 
+      "/api/stripe-webhook",
+      "/api/public/stats"
+    ];
     
     // Check if path is public - handle both originalUrl and relative path
     const isPublic = publicPaths.some(p => 
