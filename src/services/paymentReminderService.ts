@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { Receivable, Client, FinanceConfig } from '../types.ts';
+import type { Receivable, Client, FinanceConfig } from '../types.ts';
 import { supabase } from '../lib/supabaseClient.ts';
 
 // Cache for performance, but fetch from DB regularly
