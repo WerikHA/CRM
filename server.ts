@@ -53,19 +53,19 @@ const APP_URL = process.env.APP_URL || process.env.VITE_APP_URL || OFFICIAL_DOMA
 const PLANS = {
   plan1: {
     id: 'plan1',
-    name: 'Plano 1',
+    name: 'Growth Pack',
     price: 147,
     maxMembers: 3,
     features: ['dashboard', 'finance', 'workflow', 'personalization', 'productivity', 'forms', 'support'],
-    priceId: process.env.STRIPE_PLAN1_PRICE_ID || 'price_1QxX' // Placeholder
+    priceId: process.env.STRIPE_PLAN1_PRICE_ID || 'price_1QxX' 
   },
   plan2: {
     id: 'plan2',
-    name: 'Plano 2',
+    name: 'Elite Scale',
     price: 247,
     maxMembers: 8,
     features: ['dashboard', 'finance', 'workflow', 'personalization', 'productivity', 'forms', 'support', 'scheduler', 'google_drive'],
-    priceId: process.env.STRIPE_PLAN2_PRICE_ID || 'price_1QxY' // Placeholder
+    priceId: process.env.STRIPE_PLAN2_PRICE_ID || 'price_1QxY'
   }
 };
 
@@ -1589,7 +1589,10 @@ async function startServer() {
         mode: 'subscription',
         success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/cancel`,
-        metadata: { userId: context.userId, planId }
+        metadata: { userId: context.userId, planId },
+        subscription_data: {
+          metadata: { userId: context.userId, planId }
+        }
       });
 
       res.json({ url: session.url });
@@ -1599,6 +1602,31 @@ async function startServer() {
         return res.status(401).json({ error: "Configuração do Stripe inválida (Chave API). Por favor, verifique as variáveis de ambiente." });
       }
       res.status(500).json({ error: "Erro ao processar pagamento: " + (err.message || "Unknown error") });
+    }
+  });
+
+  app.post("/api/create-portal-session", async (req: AuthRequest, res) => {
+    try {
+      const context = getContext(req);
+      if (!context) return res.status(401).json({ error: "Não autorizado" });
+      if (!stripe) return res.status(400).json({ error: "Stripe não configurado" });
+
+      const { data: user } = await supabase.from('users').select('stripe_customer_id').eq('id', context.userId).single();
+      if (!user?.stripe_customer_id) {
+        return res.status(404).json({ error: "Cliente Stripe não encontrado para este usuário." });
+      }
+
+      const origin = req.headers.origin || APP_URL || `${req.protocol}://${req.get('host')}`;
+      
+      const session = await stripe.billingPortal.sessions.create({
+        customer: user.stripe_customer_id,
+        return_url: `${origin}/admin`, // Retornar para a aba de admin (assinatura)
+      });
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      console.error("[STRIPE PORTAL ERROR]", err);
+      res.status(500).json({ error: "Erro ao abrir portal do cliente: " + err.message });
     }
   });
 
@@ -1635,10 +1663,24 @@ async function startServer() {
       const customerId = subscription.customer;
       
       const status = subscription.status === 'active' ? 'active' : 'inactive';
+      const priceId = subscription.items?.data[0]?.price?.id;
       
-      await supabase.from('users').update({ 
-        subscription_status: status 
-      }).eq('stripe_customer_id', customerId);
+      // Tentar encontrar o planId com base no priceId
+      let planId = null;
+      for (const [pId, pData] of Object.entries(PLANS)) {
+        if (pData.priceId === priceId) {
+          planId = pId;
+          break;
+        }
+      }
+      
+      const updateData: any = { subscription_status: status };
+      if (planId) {
+        updateData.plan_id = planId;
+      }
+      
+      await supabase.from('users').update(updateData).eq('stripe_customer_id', customerId);
+      console.log(`[STRIPE WEBHOOK] Assinatura atualizada para o cliente ${customerId}. Status: ${status}, Plano: ${planId || 'Não identificado'}`);
     }
 
     res.json({received: true});

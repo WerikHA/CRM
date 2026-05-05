@@ -117,6 +117,25 @@ function SubscriptionView({ currentUser }: { currentUser: User }) {
     }
   };
 
+  const handleOpenPortal = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth('/api/create-portal-session', {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.error || "Erro ao abrir portal do cliente");
+      }
+    } catch (err) {
+      toast.error("Erro de conexão");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const plans = [
     {
       id: 'plan1',
@@ -140,8 +159,20 @@ function SubscriptionView({ currentUser }: { currentUser: User }) {
         <div className="relative z-10">
           <h2 className="text-3xl font-black mb-2 uppercase tracking-tighter">Assinatura Atual</h2>
           <p className="text-indigo-100 font-medium mb-6">Você está no plano <span className="font-bold underline">{currentPlanId === 'plan1' ? 'Growth Pack' : 'Elite Scale'}</span></p>
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-md rounded-full border border-white/20 text-xs font-bold uppercase tracking-widest">
-            {currentUser.subscriptionStatus === 'active' ? 'Assinatura Ativa' : 'Assinatura Inativa'}
+          <div className="flex flex-wrap gap-4 items-center mb-6">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-md rounded-full border border-white/20 text-xs font-bold uppercase tracking-widest">
+              {currentUser.subscriptionStatus === 'active' ? 'Assinatura Ativa' : 'Assinatura Inativa'}
+            </div>
+            {currentUser.subscriptionStatus === 'active' && (
+              <button 
+                onClick={handleOpenPortal}
+                disabled={loading}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+              >
+                <ShieldCheck size={14} />
+                Portal do Cliente
+              </button>
+            )}
           </div>
         </div>
         <Zap className="absolute top-1/2 right-10 -translate-y-1/2 text-white/10 w-48 h-48 -rotate-12" />

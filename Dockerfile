@@ -23,26 +23,32 @@ RUN npm run build
 # Stage 2: Production
 FROM node:20-slim
 
-# Install curl for healthcheck and runtime dependencies
+# Install system dependencies for runtime and native modules
 RUN apt-get update && apt-get install -y \
     curl \
+    python3 \
+    make \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Playwright system dependencies
+RUN npx -y playwright install-deps
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
+# Install production dependencies (tsx is in dependencies so it will be included)
 RUN npm ci --omit=dev
 
-# Copy built frontend and server code
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/public ./public
+# Copy configuration and source code
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/server.ts ./server.ts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/db ./db
-# Copy other necessary files (metadata, etc if needed)
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/metadata.json ./metadata.json
 
 # Environment defaults
@@ -52,5 +58,5 @@ ENV PORT=3000
 # Expose port
 EXPOSE 3000
 
-# Start the application
+# Start the application using tsx to handle .ts files
 CMD ["npm", "start"]
