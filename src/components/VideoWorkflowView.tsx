@@ -392,6 +392,25 @@ export default function VideoWorkflowView({
     }
   };
 
+  const handleDuplicateOrder = async (e: React.MouseEvent, order: VideoOrder) => {
+    e.stopPropagation();
+    try {
+      // Destructure and ignore id to create a new record
+      const { id, status, progress, approvedAt, videoUrl, ...rest } = order as any;
+      const duplicatedData = {
+        ...rest,
+        title: `${order.title} (Cópia)`,
+        status: 'queue' as WorkStatus,
+        progress: 10
+      };
+      const created = await api.createVideoOrder(duplicatedData as any);
+      setVideoOrders(prev => [...prev, created]);
+      notifySuccess("Vídeo duplicado com sucesso!");
+    } catch (err: any) {
+      notifyError("Erro ao duplicar vídeo", err.message);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -543,12 +562,21 @@ export default function VideoWorkflowView({
                       <MessageSquare size={16} />
                     </button>
                     {(isAdminOrOwner || isPartner) && (
-                      <button 
-                        onClick={(e) => handleDeleteOrder(e, order.id)}
-                        className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-rose-500 transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={(e) => handleDuplicateOrder(e, order)}
+                          title="Duplicar Vídeo"
+                          className="p-1.5 text-gray-300 dark:text-gray-500 hover:text-indigo-500 transition-colors"
+                        >
+                          <Copy size={16} />
+                        </button>
+                        <button 
+                          onClick={(e) => handleDeleteOrder(e, order.id)}
+                          className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-rose-500 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

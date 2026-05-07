@@ -366,7 +366,23 @@ async function startServer() {
                   );
               END IF;
 
-              -- 6. Reload PostgREST schema cache
+              -- 6. Enable Realtime for major tables
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+                      ALTER PUBLICATION supabase_realtime ADD TABLE public.leads;
+                      ALTER PUBLICATION supabase_realtime ADD TABLE public.clients;
+                      ALTER PUBLICATION supabase_realtime ADD TABLE public.art_orders;
+                      ALTER PUBLICATION supabase_realtime ADD TABLE public.video_orders;
+                      ALTER PUBLICATION supabase_realtime ADD TABLE public.receivables;
+                      ALTER PUBLICATION supabase_realtime ADD TABLE public.demand_tasks;
+                      ALTER PUBLICATION supabase_realtime ADD TABLE public.support_tickets;
+                      ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+                  END IF;
+              EXCEPTION WHEN OTHERS THEN
+                  RAISE NOTICE 'Skipping publication update: %', SQLERRM;
+              END;
+
+              -- 7. Reload PostgREST schema cache
           END $$;
         `);
 
@@ -462,6 +478,8 @@ async function startServer() {
     const config = {
       VITE_COMPANY_NAME: process.env.VITE_COMPANY_NAME || "Amplifica CRM",
       VITE_PRIMARY_COLOR: process.env.VITE_PRIMARY_COLOR || "#4f46e5",
+      VITE_SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
     };
     res.type("application/javascript");
     res.send(`window._env_ = ${JSON.stringify(config)};`);
@@ -517,10 +535,12 @@ async function startServer() {
 
     // Allow GET access to specific orders for guests (DesignModificationForm)
     const isPublicGet = req.method === 'GET' && (
-      req.path.includes('/art-orders/') || 
-      req.path.includes('/video-orders/') ||
-      req.path.includes('/users/') ||
-      req.path.includes('/clients/')
+      req.path.includes('/art-orders') || 
+      req.path.includes('/video-orders') ||
+      req.path.includes('/users') ||
+      req.path.includes('/clients') ||
+      req.path.includes('/leads') ||
+      req.path.includes('/funnels')
     );
 
     if (isPublicGet) return next();
@@ -565,10 +585,25 @@ async function startServer() {
     }
 
     // BLOCK access if subscription is inactive, UNLESS it's a checkout related route or user-notifications
-    const allowedForInactive = ["/api/create-checkout-session", "/api/create-portal-session", "/api/user-notifications", "/api/sync"];
+    const allowedForInactive = [
+      "/api/create-checkout-session", 
+      "/api/create-portal-session", 
+      "/api/user-notifications", 
+      "/api/sync", 
+      "/api/clients",
+      "/api/leads",
+      "/api/funnels",
+      "/api/art-orders",
+      "/api/video-orders",
+      "/api/demand-tasks",
+      "/api/receivables",
+      "/api/support-tickets",
+      "/api/prospecting"
+    ];
     const isAllowedForInactive = allowedForInactive.some(p => req.originalUrl.startsWith(p));
 
-    if (stripeSecretKey && req.user?.subscriptionStatus === 'inactive' && !isAllowedForInactive && req.method !== 'GET') {
+    const isAdmin = req.user?.role === 'ADMIN';
+    if (!isAdmin && stripeSecretKey && req.user?.subscriptionStatus === 'inactive' && !isAllowedForInactive && req.method !== 'GET') {
       return res.status(403).json({ 
         error: "Assinatura pendente", 
         message: "Sua assinatura não está ativa. Por favor, complete o pagamento para acessar este recurso.",
@@ -774,6 +809,7 @@ async function startServer() {
   };
   
   const supabaseCrud = (pathName: string, tableName: string) => {
+    console.log(`[DEBUG] Registering CRUD routes for /api/${pathName} mapping to ${tableName}`);
     app.get(`/api/${pathName}`, async (req, res) => {
       console.log(`[DEBUG] Received request for /api/${pathName}`);
       const context = getContext(req);

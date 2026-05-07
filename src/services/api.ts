@@ -51,6 +51,12 @@ async function request(endpoint: string, method: string, data?: any) {
       body: data ? JSON.stringify(toSnakeCase(data)) : undefined,
     });
     
+    // Handle 429 Too Many Requests
+    if (res.status === 429) {
+      console.warn(`[API] Rate limit exceeded for ${url}`);
+      throw new Error('Rate exceeded');
+    }
+
     const contentType = res.headers.get('content-type');
     if (contentType && contentType.includes('text/html')) {
       const text = await res.text();
@@ -402,7 +408,7 @@ export const api = {
       try {
         return await request('/user-notifications', 'GET');
       } catch (error: any) {
-        if (attempt === maxRetries || !error.message?.includes('HTML')) throw error;
+        if (attempt === maxRetries || (!error.message?.includes('HTML') && !error.message?.includes('Rate exceeded'))) throw error;
         attempt++;
         await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
       }

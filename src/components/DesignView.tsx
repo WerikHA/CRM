@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Palette, Clock, CheckCircle2, AlertCircle, Plus, Send, User as UserIcon, Trash2, ArrowUpCircle, Filter, MessageSquare, Check, X as XIcon, RefreshCcw, Eye, Download, Copy, ChevronLeft, ChevronRight } from 'lucide-react';
-import { cn, notifyError } from '../lib/utils';
+import { cn, notifyError, notifySuccess } from '../lib/utils';
 import { ArtOrder, Client, WorkStatus, IntegrationConfig, ApprovalStatus, User, Receivable, PartnerRequest } from '../types';
 import Modal from './Modal';
 import { api } from '../services/api';
@@ -271,6 +271,26 @@ export default function DesignView({
       setArtOrders(orders => orders.filter(o => o.id !== id));
     } catch (err: any) {
       notifyError('Erro ao excluir pedido', err.message);
+    }
+  };
+
+  const handleDuplicateOrder = async (e: React.MouseEvent, order: ArtOrder) => {
+    e.stopPropagation();
+    try {
+      // Destructure and ignore id to create a new record
+      // Using any cast effectively handles dynamic properties that might come from Supabase but aren't in the interface
+      const { id, status, progress, approvalStatus, rejectionNotes, feedbackRequested, whatsappSentAt, ...rest } = order as any;
+      const duplicatedData = {
+        ...rest,
+        title: `${order.title} (Cópia)`,
+        status: 'queue' as WorkStatus,
+        progress: 0
+      };
+      const created = await api.createArtOrder(duplicatedData as any);
+      setArtOrders(prev => [...prev, created]);
+      notifySuccess("Tarefa duplicada com sucesso!");
+    } catch (err: any) {
+      notifyError("Erro ao duplicar tarefa", err.message);
     }
   };
 
@@ -657,6 +677,13 @@ export default function DesignView({
                     <option value="review" className="dark:bg-gray-900">Aprovação</option>
                     <option value="done" className="dark:bg-gray-900">Finalizado</option>
                   </select>
+                  <button 
+                    onClick={(e) => handleDuplicateOrder(e, order)}
+                    title="Duplicar Tarefa"
+                    className="p-1.5 text-gray-300 dark:text-gray-500 hover:text-indigo-500 transition-colors"
+                  >
+                    <Copy size={16} />
+                  </button>
                   <button 
                     onClick={(e) => handleDeleteOrder(e, order.id)}
                     className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-rose-500 transition-colors"

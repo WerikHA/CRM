@@ -11,9 +11,10 @@ interface FinanceViewProps {
   setReceivables: React.Dispatch<React.SetStateAction<Receivable[]>>;
   clients: Client[];
   currentUser: User;
+  users: User[];
 }
 
-export default function FinanceView({ receivables, setReceivables, clients, currentUser }: FinanceViewProps) {
+export default function FinanceView({ receivables, setReceivables, clients, currentUser, users }: FinanceViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingReceivable, setEditingReceivable] = useState<Receivable | null>(null);
   const [formData, setFormData] = useState<Partial<Receivable>>({
@@ -21,8 +22,20 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
     description: '',
     quantia: 0,
     dueDate: '',
-    status: 'pending'
+    status: 'pending',
+    designerId: '',
+    payoutAmount: 0
   });
+
+  const handleClientChange = (clientId: string) => {
+    const client = clients.find(c => c.id === clientId);
+    setFormData(prev => ({
+      ...prev,
+      clientId,
+      designerId: client?.assignedDesignerId || '',
+      payoutAmount: client?.designerPayout || 0
+    }));
+  };
   
   const [filter, setFilter] = useState<ReceivableStatus | 'all'>('all');
   const [financeConfig, setFinanceConfig] = useState<FinanceConfig>({ pixKey: '', enableReminders: false, reminderTemplate: '' });
@@ -109,12 +122,15 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
 
   const handleAddReceivable = () => {
     setEditingReceivable(null);
+    const firstClient = clients[0];
     setFormData({
-      clientId: clients[0]?.id || '',
+      clientId: firstClient?.id || '',
       description: '',
       quantia: 0,
       dueDate: new Date().toLocaleDateString('pt-BR'),
-      status: 'pending'
+      status: 'pending',
+      designerId: firstClient?.assignedDesignerId || '',
+      payoutAmount: firstClient?.designerPayout || 0
     });
     setIsModalOpen(true);
   };
@@ -550,36 +566,17 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
         }
       >
         <form className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Cliente</label>
-            <select 
-              value={formData.clientId || ''}
-              onChange={e => setFormData({...formData, clientId: e.target.value})}
-              className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
-            >
-              <option value="" className="dark:bg-gray-900">Selecione um cliente...</option>
-              {clients.map(c => <option key={c.id} value={c.id} className="dark:bg-gray-900">{c.name}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Descrição / Referência</label>
-            <input 
-              type="text" 
-              value={formData.description || ''}
-              onChange={e => setFormData({...formData, description: e.target.value})}
-              className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
-              placeholder="Ex: Gestão de Tráfego - Abril"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Valor (R$)</label>
-              <input 
-                type="number" 
-                value={formData.quantia || 0}
-                onChange={e => setFormData({...formData, quantia: Number(e.target.value)})}
-                className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
-              />
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Cliente</label>
+              <select 
+                value={formData.clientId || ''}
+                onChange={e => handleClientChange(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
+              >
+                <option value="" className="dark:bg-gray-900">Selecione um cliente...</option>
+                {clients.map(c => <option key={c.id} value={c.id} className="dark:bg-gray-900">{c.name}</option>)}
+              </select>
             </div>
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Vencimento</label>
@@ -591,7 +588,30 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                 placeholder="dd/mm/aaaa"
               />
             </div>
-            <div className="col-span-2 space-y-1">
+          </div>
+          
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Descrição / Referência</label>
+            <input 
+              type="text" 
+              value={formData.description || ''}
+              onChange={e => setFormData({...formData, description: e.target.value})}
+              className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
+              placeholder="Ex: Gestão de Tráfego - Abril"
+            />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Valor Recebido (R$)</label>
+              <input 
+                type="number" 
+                value={formData.quantia || 0}
+                onChange={e => setFormData({...formData, quantia: Number(e.target.value)})}
+                className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div className="space-y-1">
               <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Status Inicial</label>
               <select 
                 value={formData.status || 'pending'}
@@ -602,6 +622,34 @@ export default function FinanceView({ receivables, setReceivables, clients, curr
                 <option value="paid" className="dark:bg-gray-900">Pago</option>
                 <option value="overdue" className="dark:bg-gray-900">Atrasado</option>
               </select>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-4">
+            <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">Atribuição de Produção</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Designer / Editor Responsável</label>
+                <select 
+                  value={formData.designerId || ''}
+                  onChange={e => setFormData({...formData, designerId: e.target.value})}
+                  className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
+                >
+                  <option value="" className="dark:bg-gray-900">Nenhum</option>
+                  {users?.filter((u: any) => u.role === 'DESIGNER' || u.role === 'EDITOR' || u.role === 'ADMIN' || u.role === 'OWNER').map((u: any) => (
+                    <option key={u.id} value={u.id} className="dark:bg-gray-900">{u.name} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Valor do Payout (R$)</label>
+                <input 
+                  type="number" 
+                  value={formData.payoutAmount || 0}
+                  onChange={e => setFormData({...formData, payoutAmount: Number(e.target.value)})}
+                  className="w-full px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm text-gray-900 dark:text-gray-100"
+                />
+              </div>
             </div>
           </div>
         </form>

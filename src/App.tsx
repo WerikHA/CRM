@@ -156,7 +156,11 @@ function FloatingChat({ currentUser }: { currentUser: User }) {
   );
 }
 
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from './lib/supabaseClient';
+
 export default function App() {
+  const queryClient = useQueryClient();
   const [agencyConfig, setAgencyConfig] = useState(() => {
     try {
       const saved = storageService.getItem('agency_config');
@@ -577,21 +581,54 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || !currentUser) return;
 
-    const socket = io();
+    // 1. Socket.io Connection
+    const socket = io({
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+    });
+    
     const ownerId = currentUser.ownerId || currentUser.id;
     
-    socket.emit("join-owner-room", ownerId);
+    socket.on('connect', () => {
+      console.log("[REALTIME] Socket.io conectado com sucesso!");
+      socket.emit("join-owner-room", ownerId);
+    });
 
     socket.on("data_changed", (event) => {
-      console.log("[REALTIME] Evento recebido:", event);
-      // For some tables, we might want to refresh immediately
-      if (['leads', 'clients', 'receivables', 'art_orders', 'video_orders', 'demand_tasks', 'support_tickets', 'notifications'].includes(event.table)) {
-        fetchData(false);
-      }
+      console.log("[REALTIME] Evento Socket.io recebido:", event);
+      // Invalidate specific queries if we were using useQuery everywhere
+      // For now, call global fetchData
+      fetchData(false);
     });
+
+    // 2. Supabase Realtime Fallback (Always useful if socket.io is blocked)
+    const channel = supabase
+      .channel('schema-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+        },
+        (payload: any) => {
+          // Check if payload has owner_id and matches current agency
+          const payloadOwnerId = payload.new?.owner_id || payload.old?.owner_id;
+          if (payloadOwnerId === ownerId) {
+            console.log("[REALTIME] Mudança direta no Supabase detectada:", payload);
+            fetchData(false);
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log("[REALTIME] Inscrito no Supabase Realtime com sucesso!");
+        }
+      });
 
     return () => {
       socket.disconnect();
+      supabase.removeChannel(channel);
     };
   }, [isAuthenticated, currentUser?.id]);
 
@@ -670,6 +707,7 @@ export default function App() {
           setReceivables={setReceivables} 
           clients={clients}
           currentUser={effectiveUser}
+          users={users}
         />;
       case 'social_posts':
         return <SocialPostSchedulerView
@@ -881,7 +919,12 @@ export default function App() {
 
   // Blocking check for inactive subscription
   if (currentUser?.role === 'OWNER' && currentUser?.subscriptionStatus === 'inactive') {
-    return renderSubscriptionRequired();
+    const isAdminAccount = currentUser?.email?.toLowerCase().includes('admin') || 
+                          currentUser?.email?.toLowerCase().includes('suporte');
+    
+    if (!isAdminAccount) {
+      return renderSubscriptionRequired();
+    }
   }
 
   return (

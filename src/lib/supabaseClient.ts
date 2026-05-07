@@ -45,7 +45,7 @@ if (supabaseUrl) {
 }
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('[Supabase] CRITICAL: SUPABASE_URL or SUPABASE_ANON_KEY (or SERVICE_ROLE_KEY) missing in environment variables.');
+  console.error('[Supabase] CRITICAL: SUPABASE_URL or SUPABASE_ANON_KEY (or SERVICE_ROLE_KEY) missing in environment variables. Realtime and direct DB sync will NOT work.');
 }
 
 // Implementação de storage customizada para Supabase que respeita consentimento
@@ -55,11 +55,20 @@ const customSupabaseStorage = {
   removeItem: (key: string) => storageService.removeItem(key),
 };
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    storage: customSupabaseStorage,
-    autoRefreshToken: true,
-    persistSession: true, // O storageService cuidará de bloquear a escrita se não houver consentimento
-    detectSessionInUrl: true
-  }
-});
+// Create a safe dummy client if keys are missing to avoid crashing the JS bundle
+export const supabase = (supabaseUrl && supabaseKey) 
+  ? createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        storage: customSupabaseStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    })
+  : ({
+      channel: () => ({ on: () => ({ subscribe: () => ({}) }), unsubscribe: () => {} }),
+      from: () => ({ select: () => ({ order: () => ({ limit: () => ({ data: [], error: null }) }) }), insert: () => ({}), update: () => ({}), delete: () => ({}) }),
+      auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }), getSession: () => Promise.resolve({ data: { session: null }, error: null }) },
+      removeChannel: () => {},
+      removeAllChannels: () => {}
+    } as any);

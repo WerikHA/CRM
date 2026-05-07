@@ -83,9 +83,18 @@ export default function DashboardView({ leads, clients, receivables, artOrders, 
   const isAdminOrOwner = isAdmin || isOwner;
 
   // Cálculos de métricas (Opção 2)
-  const totalRevenue = useMemo(() => 
-    receivables.reduce((acc, r) => acc + (Number(r.quantia) || 0), 0)
-  , [receivables]);
+  const totalRevenue = useMemo(() => {
+    const targetReceivables = isDesigner || isEditor
+      ? receivables.filter(r => r.designerId === currentUser.id)
+      : isPartner
+        ? receivables.filter(r => clients.find(c => c.id === r.clientId)?.partnerId === currentUser.id)
+        : receivables;
+
+    return targetReceivables.reduce((acc, r) => {
+      const value = (isDesigner || isEditor) ? (r.payoutAmount || 0) : (Number(r.quantia) || 0);
+      return acc + value;
+    }, 0);
+  }, [receivables, isDesigner, isEditor, isPartner, currentUser.id, clients]);
 
   const activeLeads = useMemo(() => 
     leads.filter(l => l.status !== 'converted' && l.status !== 'lost').length
