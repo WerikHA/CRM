@@ -565,10 +565,10 @@ async function startServer() {
     }
 
     // BLOCK access if subscription is inactive, UNLESS it's a checkout related route or user-notifications
-    const allowedForInactive = ["/api/create-checkout-session", "/api/user-notifications", "/api/sync"];
+    const allowedForInactive = ["/api/create-checkout-session", "/api/create-portal-session", "/api/user-notifications", "/api/sync"];
     const isAllowedForInactive = allowedForInactive.some(p => req.originalUrl.startsWith(p));
 
-    if (req.user?.subscriptionStatus === 'inactive' && !isAllowedForInactive && req.method !== 'GET') {
+    if (stripeSecretKey && req.user?.subscriptionStatus === 'inactive' && !isAllowedForInactive && req.method !== 'GET') {
       return res.status(403).json({ 
         error: "Assinatura pendente", 
         message: "Sua assinatura não está ativa. Por favor, complete o pagamento para acessar este recurso.",
@@ -1146,7 +1146,13 @@ async function startServer() {
       if (insertError) throw insertError;
       const user = keysToCamel(userRaw);
       await supabase.from('users').update({ owner_id: user.id }).eq('id', user.id);
-      const token = jwt.sign({ id: user.id, role: user.role, ownerId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ 
+        id: user.id, 
+        role: user.role, 
+        ownerId: user.id,
+        planId: user.planId || 'plan1',
+        subscriptionStatus: user.subscriptionStatus || 'active'
+      }, JWT_SECRET, { expiresIn: '7d' });
       const { password: _, ...userSafe } = user;
       res.json({ success: true, user: userSafe, token });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
