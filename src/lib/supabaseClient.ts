@@ -45,7 +45,10 @@ if (supabaseUrl) {
 }
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('[Supabase] CRITICAL: SUPABASE_URL or SUPABASE_ANON_KEY (or SERVICE_ROLE_KEY) missing in environment variables. Realtime and direct DB sync will NOT work.');
+  const missing = [];
+  if (!supabaseUrl) missing.push('SUPABASE_URL');
+  if (!supabaseKey) missing.push('SUPABASE_ANON_KEY/SERVICE_ROLE_KEY');
+  console.error(`[Supabase] CRITICAL: Missing environment variables: ${missing.join(', ')}. Realtime and direct DB sync will NOT work.`);
 }
 
 // Implementação de storage customizada para Supabase que respeita consentimento

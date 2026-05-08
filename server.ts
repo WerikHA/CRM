@@ -1,9 +1,9 @@
+import "dotenv/config";
 import express from "express";
 import compression from "compression";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import cron from "node-cron";
@@ -31,7 +31,7 @@ import { dbService, keysToCamel, keysToSnake } from "./src/services/dbService.ts
 import type { DbContext } from "./src/services/dbService.ts";
 import type { UserRole } from "./src/types.ts";
 
-dotenv.config();
+// Environment already loaded via 'import "dotenv/config"' at top of file
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 // Aceita qualquer chave que pareça uma chave secreta do Stripe (sk_ ou rk_)
