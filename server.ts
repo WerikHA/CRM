@@ -93,6 +93,12 @@ function writeChats(chats: any[]) {
     fs.writeFileSync(CHAT_DB_PATH, JSON.stringify(chats, null, 2));
 }
 
+const handleError = (res: express.Response, error: any, customMsg?: string) => {
+  console.error(`[ERROR] ${customMsg || 'API Error'}:`, error);
+  const message = (process.env.NODE_ENV === 'development') ? (error?.message || String(error)) : (customMsg || "Erro interno no servidor.");
+  res.status(500).json({ error: message });
+};
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
@@ -180,7 +186,7 @@ async function startServer() {
   // Rate Limiting global
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, 
-    limit: 5000, 
+    limit: 300, // Reduced from 5000 to 300 for general protection
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { error: "Muitas requisições, por favor tente novamente mais tarde." }
@@ -190,7 +196,7 @@ async function startServer() {
   // Rate Limiting específico para rotas sensíveis
   const authLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
-    limit: 30,
+    limit: 10, // Reduced from 30 to 10 for tighter security on auth
     message: { error: "Muitas tentativas de login. Tente novamente em uma hora." }
   });
   app.use("/api/login", authLimiter);
@@ -263,10 +269,21 @@ async function startServer() {
   const io = new Server(httpServer, {
     cors: { 
       origin: (origin, callback) => {
-        if (!origin || origin === APP_URL || origin.includes('localhost') || origin.includes('run.app') || origin.includes('amplifamarketing.com.br')) {
+        const allowedOrigins = [
+          APP_URL,
+          "https://crm.amplifamarketing.com.br",
+        ];
+        
+        // Exact matching or strictly defined development environments
+        if (
+          !origin || 
+          allowedOrigins.includes(origin) || 
+          /^https:\/\/.*\.run\.app$/.test(origin) || 
+          /^http:\/\/localhost(:\d+)?$/.test(origin)
+        ) {
           callback(null, true);
         } else {
-          callback(new Error("Not allowed by CORS"));
+          callback(new Error("Acesso CORS negado para esta origem."));
         }
       },
       methods: ["GET", "POST"],
@@ -773,9 +790,20 @@ async function startServer() {
     limits: { fileSize: 100 * 1024 * 1024 }, // Locked to 100MB as per security policy
     fileFilter: (req, file, cb) => {
       const allowedExtensions = ['.jpg', '.jpeg', '.png', '.pdf', '.docx', '.csv', '.xlsx', '.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.m4v', '.3gp', '.mpeg'];
+      const allowedMimeTypes = [
+        'image/jpeg', 'image/png', 'application/pdf', 
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 
+        'video/webm', 'video/x-flv', 'video/x-ms-wmv', 'video/3gpp', 'video/mpeg'
+      ];
+      
       const ext = path.extname(file.originalname).toLowerCase();
-      if (allowedExtensions.includes(ext)) cb(null, true);
-      else cb(new Error("Tipo de arquivo não permitido.") as any);
+      if (allowedExtensions.includes(ext) && allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Tipo de arquivo ou extensão não permitida.") as any);
+      }
     }
   });
 
@@ -1095,25 +1123,10 @@ async function startServer() {
       const user = keysToCamel(userRaw);
       let isMatch = false;
       
-      // Verifica se a senha armazenada parece um hash bcrypt ($2a$..., $2b$..., $2y$...)
-      const isStoredHashed = typeof user.password === 'string' && /^\$2[aby]\$\d+\$/.test(user.password.substring(0, 10));
-
-      if (isStoredHashed) {
-        // Se já é hash, usamos obrigatoriamente o bcrypt
-        try {
-          isMatch = await bcrypt.compare(password, user.password);
-        } catch (e) {
-          isMatch = false;
-        }
-      } else {
-        // Se ainda for texto puro (usuário antigo), comparamos e migramos na hora
-        if (password === user.password) {
-          isMatch = true;
-          console.info(`[AUTH] Migrando senha em texto puro para hash: ${user.email}`);
-          const saltRounds = 10;
-          const hashedPassword = await bcrypt.hash(password, saltRounds);
-          await supabase.from('users').update({ password: hashedPassword }).eq('id', user.id);
-        }
+      try {
+        isMatch = await bcrypt.compare(password, user.password);
+      } catch (e) {
+        isMatch = false;
       }
       
       if (!isMatch) return res.status(401).json({ error: "Credenciais inválidas" });
@@ -1138,7 +1151,7 @@ async function startServer() {
         subscriptionStatus: subscriptionStatus || 'active'
       };
       
-      const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '24h' });
       const { password: _, ...userSafe } = user;
       res.json({ success: true, user: userSafe, token });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -1202,7 +1215,7 @@ async function startServer() {
         ownerId: user.id,
         planId: user.planId || 'plan1',
         subscriptionStatus: user.subscriptionStatus || 'active'
-      }, JWT_SECRET, { expiresIn: '7d' });
+      }, JWT_SECRET, { expiresIn: '24h' });
       const { password: _, ...userSafe } = user;
       res.json({ success: true, user: userSafe, token });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -1791,7 +1804,24 @@ async function startServer() {
       app.post(`/api/${p}`, async (req, res) => {
         try {
           const context = getContext(req as AuthRequest);
-          const ticket = { ...req.body };
+          const ticketData = req.body || {};
+          
+          // Use allowlist for fields to prevent data injection
+          const ticket = {
+            subject: typeof ticketData.subject === 'string' ? ticketData.subject.substring(0, 200) : 'Sem Assunto',
+            description: typeof ticketData.description === 'string' ? ticketData.description.substring(0, 5000) : '',
+            sender_email: typeof (ticketData.email || ticketData.sender_email) === 'string' 
+              ? (ticketData.email || ticketData.sender_email).toLowerCase().trim().substring(0, 255) 
+              : '',
+            partnerId: (ticketData.partnerId && /^[0-9a-fA-F-]{36}$/.test(ticketData.partnerId)) ? ticketData.partnerId : 'system',
+            priority: 'normal',
+            status: 'open',
+            createdAt: new Date().toISOString()
+          };
+
+          if (!ticket.description || !ticket.sender_email) {
+            return res.status(400).json({ error: "E-mail e descrição são obrigatórios." });
+          }
           
           // If no ownerId in context (unauthenticated), try to find the owner from the partnerId or just default to a system owner
           let effectiveOwnerId = context?.ownerId;
@@ -1842,34 +1872,6 @@ async function startServer() {
   });
 
   supabaseCrud("user-notifications", "notifications");
-
-  app.post("/api/admin/sql", async (req, res) => {
-    try {
-      const context = getContext(req as AuthRequest);
-      if (!context || (context.userRole !== 'OWNER' && context.userRole !== 'ADMIN')) {
-        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem executar SQL." });
-      }
-
-      const { query } = req.body;
-      if (!query) return res.status(400).json({ error: "Query não fornecida." });
-
-      if (!pool) {
-        return res.status(500).json({ error: "Conexão direta com banco de dados (DATABASE_URL) não configurada." });
-      }
-
-      console.log(`[SQL EXEC] By ${context.userId}: ${query.substring(0, 100)}${query.length > 100 ? '...' : ''}`);
-      const result = await pool.query(query);
-      res.json({
-        command: result.command,
-        rowCount: result.rowCount,
-        rows: result.rows,
-        fields: result.fields?.map(f => ({ name: f.name, dataTypeID: f.dataTypeID }))
-      });
-    } catch (error: any) {
-      console.error("[SQL ERROR]", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
 
   // --- Catch-all API 404 ---
   app.all("/api/*", (req, res) => {
