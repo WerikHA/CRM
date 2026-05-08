@@ -69,6 +69,12 @@ const PLANS = {
   }
 };
 
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("[CRITICAL] JWT_SECRET is not defined in the environment.");
+  process.exit(1);
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -139,7 +145,19 @@ async function startServer() {
 
   // Helmet para cabeçalhos de segurança robustos
   app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://apis.google.com", "https://crm.amplifamarketing.com.br"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        imgSrc: ["'self'", "data:", "https://*.supabase.co", "https://*.facebook.com", "https://*.google.com"],
+        connectSrc: ["'self'", "https://*.supabase.co", "https://graph.facebook.com", "https://www.googleapis.com", "wss://*.amplifamarketing.com.br", "wss://seu-dominio.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'", "https://*.supabase.co"],
+        frameSrc: ["'self'", "https://*.facebook.com", "https://*.google.com"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
   }));
 
@@ -243,7 +261,17 @@ async function startServer() {
   });
 
   const io = new Server(httpServer, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
+    cors: { 
+      origin: (origin, callback) => {
+        if (!origin || origin === APP_URL || origin.includes('localhost') || origin.includes('run.app') || origin.includes('amplifamarketing.com.br')) {
+          callback(null, true);
+        } else {
+          callback(new Error("Not allowed by CORS"));
+        }
+      },
+      methods: ["GET", "POST"],
+      credentials: true
+    }
   });
 
   const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL }) : null;
@@ -485,8 +513,6 @@ async function startServer() {
     res.send(`window._env_ = ${JSON.stringify(config)};`);
   });
 
-  const JWT_SECRET = process.env.JWT_SECRET || "amplifica-crm-secure-token-2026";
-
   interface AuthRequest extends express.Request {
     user?: { 
       id: string; 
@@ -532,18 +558,6 @@ async function startServer() {
     );
     
     if (isPublic) return next();
-
-    // Allow GET access to specific orders for guests (DesignModificationForm)
-    const isPublicGet = req.method === 'GET' && (
-      req.path.includes('/art-orders') || 
-      req.path.includes('/video-orders') ||
-      req.path.includes('/users') ||
-      req.path.includes('/clients') ||
-      req.path.includes('/leads') ||
-      req.path.includes('/funnels')
-    );
-
-    if (isPublicGet) return next();
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -756,7 +770,7 @@ async function startServer() {
 
   const upload = multer({
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 * 1024 },
+    limits: { fileSize: 100 * 1024 * 1024 }, // Locked to 100MB as per security policy
     fileFilter: (req, file, cb) => {
       const allowedExtensions = ['.jpg', '.jpeg', '.png', '.pdf', '.docx', '.csv', '.xlsx', '.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.m4v', '.3gp', '.mpeg'];
       const ext = path.extname(file.originalname).toLowerCase();
@@ -1256,7 +1270,31 @@ async function startServer() {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   app.get("/api/whatsapp/status", (req, res) => res.json(whatsappService.getStatus(req.query.ownerId as string)));
+  app.get("/api/whatsapp/logs", (req, res) => {
+    try {
+      const logPath = path.join(process.cwd(), "logs", "whatsapp_interaction_logs.txt");
+      if (fs.existsSync(logPath)) {
+        const fullLogs = fs.readFileSync(logPath, "utf-8");
+        const ownerId = req.query.ownerId as string;
+        if (ownerId) {
+          const filtered = fullLogs.split("\n").filter(l => l.includes(`[Owner: ${ownerId}]`)).join("\n");
+          return res.send(filtered);
+        }
+        res.send(fullLogs);
+      } else {
+        res.send("");
+      }
+    } catch (err) { res.status(500).send(""); }
+  });
+  app.get("/api/n8n/logs", (req, res) => {
+    try {
+      const logPath = path.join(process.cwd(), "logs", "whatsapp_debug.txt");
+      if (fs.existsSync(logPath)) res.send(fs.readFileSync(logPath, "utf-8"));
+      else res.send("");
+    } catch (err) { res.status(500).send(""); }
+  });
   app.post("/api/whatsapp/logout", async (req, res) => { await whatsappService.logout(req.body.ownerId); res.json({ success: true }); });
+  app.post("/api/whatsapp/reload", async (req, res) => { await whatsappService.initSession(req.body.ownerId); res.json({ success: true }); });
   app.post("/api/whatsapp/send", async (req, res) => {
     const { ownerId, phone, message, poll, mediaBase64 } = req.body;
     try {

@@ -137,12 +137,30 @@ export class WhatsAppService extends EventEmitter {
       
       let version: any = [2, 3000, 1017531207];
       try {
-        this.debugLog(ownerId, "Buscando versão mais recente do Baileys...");
-        const { version: latestVersion, isLatest } = await fetchLatestBaileysVersion();
+        this.debugLog(
+          ownerId,
+          "Buscando versão mais recente do Baileys com timeout...",
+        );
+        // Add a 5s timeout to avoid getting stuck here
+        const latestVersionPromise = fetchLatestBaileysVersion();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout")), 8000),
+        );
+
+        const { version: latestVersion, isLatest }: any = await Promise.race([
+          latestVersionPromise,
+          timeoutPromise,
+        ]);
         version = latestVersion;
-        this.debugLog(ownerId, `Versão Baileys: ${version.join(".")} (Latest: ${isLatest})`);
+        this.debugLog(
+          ownerId,
+          `Versão Baileys: ${version.join(".")} (Latest: ${isLatest})`,
+        );
       } catch (err: any) {
-        this.debugLog(ownerId, `Erro ao buscar versão: ${err.message}. Usando fallback 2.3000.x`);
+        this.debugLog(
+          ownerId,
+          `Erro/Timeout ao buscar versão: ${err.message}. Usando fallback 2.3000.x`,
+        );
       }
 
       this.debugLog(ownerId, "Criando socket (makeWASocket)...");

@@ -10,38 +10,38 @@ services:
       - "3009:3009" # Porta configurada no ZimaOS para o CRM
     environment:
       # --- CONFIGURAÇÕES DA LANDING PAGE & MARCA ---
-      - VITE_COMPANY_NAME=Amplifica CRM # Nome que aparece na Landing Page e no Header
-      - VITE_PRIMARY_COLOR=#4f46e5    # Cor base da sua marca (Hex)
+      - VITE_COMPANY_NAME=${VITE_COMPANY_NAME:-Amplifica CRM}
+      - VITE_PRIMARY_COLOR=${VITE_PRIMARY_COLOR:-#4f46e5}
       
       # --- CONFIGURAÇÕES DO SERVIDOR ---
-      - NODE_ENV=production
-      - PORT=3009
-      - APP_URL=https://seu-dominio.com # Substitua pelo seu domínio HTTPS final
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${PORT:-3009}
+      - APP_URL=${APP_URL}
+      - JWT_SECRET=${JWT_SECRET}
 
       # --- CONEXÃO SUPABASE (Obrigatório) ---
-      # No ZimaOS, você cola estas chaves diretamente na interface de Variáveis de Ambiente
-      - SUPABASE_URL=https://wfdvszqfsvnrtdouuygy.supabase.co
-      - SUPABASE_ANON_KEY=sb_publishable_rjAkTZq7AlDqZ-ibucO0SA_k6UJy8l6
-      - SUPABASE_SERVICE_ROLE_KEY=SUA_SERVICE_ROLE_KEY_AQUI
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
 
       # --- INTELIGÊNCIA ARTIFICIAL ---
-      - GEMINI_API_KEY=SUA_GEMINI_KEY_AQUI
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
 
       # --- INTEGRAÇÃO GOOGLE ---
-      - GOOGLE_CLIENT_ID=SEU_GOOGLE_CLIENT_ID_AQUI
-      - GOOGLE_CLIENT_SECRET=SEU_GOOGLE_CLIENT_SECRET_AQUI
-      - GOOGLE_REDIRECT_URI=https://seu-dominio.com/api/google/callback
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
 
       # --- INTEGRAÇÃO FACEBOOK/INSTAGRAM ---
-      - FACEBOOK_APP_ID=SEU_FACEBOOK_APP_ID_AQUI
-      - FACEBOOK_APP_SECRET=SEU_FACEBOOK_APP_SECRET_AQUI
-      - FACEBOOK_REDIRECT_URI=https://seu-dominio.com/api/facebook/callback
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
+      - FACEBOOK_REDIRECT_URI=${FACEBOOK_REDIRECT_URI}
       
       # --- FRONTEND CONFIG (VITE) ---
-      - VITE_SUPABASE_URL=https://wfdvszqfsvnrtdouuygy.supabase.co
-      - VITE_SUPABASE_ANON_KEY=sb_publishable_rjAkTZq7AlDqZ-ibucO0SA_k6UJy8l6
-      - VITE_COMPANY_NAME=Amplifica CRM
-      - VITE_PRIMARY_COLOR=#4f46e5
+      - VITE_SUPABASE_URL=${SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - VITE_COMPANY_NAME=${VITE_COMPANY_NAME:-Amplifica CRM}
+      - VITE_PRIMARY_COLOR=${VITE_PRIMARY_COLOR:-#4f46e5}
 
     volumes:
       # Volumes persistentes para sessões do WhatsApp e logs
@@ -49,6 +49,9 @@ services:
       - ./whatsapp_polls.json:/app/whatsapp_polls.json
       - ./logs/whatsapp_interaction_logs.txt:/app/logs/whatsapp_interaction_logs.txt
       - ./logs/n8n_interaction_logs.txt:/app/logs/n8n_interaction_logs.txt
+    
+    env_file:
+      - .env
     
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3009/api/health"]
