@@ -1,12 +1,12 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "2.9.46",
+  "version": "2.9.49",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
     "start": "NODE_ENV=production tsx server.ts",
-    "build": "npm run clean && NODE_ENV=production vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"

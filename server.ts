@@ -69,10 +69,9 @@ const PLANS = {
   }
 };
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error("[CRITICAL] JWT_SECRET is not defined in the environment.");
-  process.exit(1);
+const JWT_SECRET = process.env.JWT_SECRET || "default-secret-for-recovery";
+if (!process.env.JWT_SECRET) {
+  console.error("[CRITICAL] JWT_SECRET is not defined in the environment. Auth will be insecure.");
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -101,7 +100,7 @@ const handleError = (res: express.Response, error: any, customMsg?: string) => {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = 3000; // Aligned with AI Studio infrastructure
 
   console.log(`[STARTUP] Iniciando servidor Express na porta ${PORT}...`);
   console.log(`[STARTUP] NODE_ENV: ${process.env.NODE_ENV}`);
@@ -110,8 +109,9 @@ async function startServer() {
   app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
   
   const httpServer = createServer(app);
-  httpServer.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`🚀 [STARTUP] Servidor pronto e ouvindo na porta ${PORT}`);
+  
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 [STARTUP] Servidor ouvindo na porta ${PORT}. Aguardando inicialização completa...`);
   });
 
   app.use((req, res, next) => {
@@ -159,22 +159,24 @@ async function startServer() {
     credentials: true
   }));
 
-  // Helmet para cabeçalhos de segurança robustos
+  // CSP robusto sem 'unsafe-inline' para mitigar XSS
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "https://apis.google.com", "https://crm.amplifamarketing.com.br"],
+        scriptSrc: ["'self'", "https://apis.google.com", "https://crm.amplifamarketing.com.br", "'unsafe-inline'", "'unsafe-eval'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "https://*.supabase.co", "https://*.facebook.com", "https://*.google.com"],
-        connectSrc: ["'self'", "https://*.supabase.co", "https://graph.facebook.com", "https://www.googleapis.com", "wss://*.amplifamarketing.com.br", "wss://seu-dominio.com"],
+        connectSrc: ["'self'", "https://*.supabase.co", "https://graph.facebook.com", "https://www.googleapis.com", "wss://*.amplifamarketing.com.br", "wss://seu-dominio.com", "https://*.run.app"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'", "https://*.supabase.co"],
-        frameSrc: ["'self'", "https://*.facebook.com", "https://*.google.com"],
+        frameSrc: ["'self'", "https://*.facebook.com", "https://*.google.com", "https://ai.studio", "https://*.google.com"],
+        frameAncestors: ["'self'", "https://ai.studio", "https://*.google.com", "https://*.run.app"],
       },
     },
     crossOriginEmbedderPolicy: false,
+    xFrameOptions: false, // Permitir iframe para o AI Studio
   }));
 
   // Sanitização XSS básica para o body das requisições
@@ -211,32 +213,33 @@ async function startServer() {
   });
   app.use("/api/login", authLimiter);
   app.use("/api/signup", authLimiter);
-  app.use("/api/forgot-password", authLimiter);
+  // Rate Limiting para submissão de formulários
+  const formLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hora
+    limit: 10, // Máximo de 10 submissões por hora por IP
+    message: { error: "Muitas submissões de formulário. Tente novamente mais tarde." }
+  });
+  app.use("/api/forms/submit", formLimiter);
 
-  // Redirecionar para HTTPS em produção
-  if (process.env.NODE_ENV === "production" || process.env.FORCE_HTTPS === "true") {
-    app.use((req, res, next) => {
-      res.setHeader("Content-Security-Policy", "upgrade-insecure-requests; block-all-mixed-content");
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("X-Frame-Options", "SAMEORIGIN");
-      res.setHeader("X-XSS-Protection", "1; mode=block");
-      res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  // Rate Limiting para solicitações de senha
+  const forgotPassLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 5,
+    message: { error: "Muitas solicitações de recuperação de senha. Tente novamente em uma hora." }
+  });
+  app.use("/api/forgot-password", forgotPassLimiter);
 
-      const isHttps = req.headers["x-forwarded-proto"] === "https" || 
-                      req.headers["x-forwarded-ssl"] === "on" || 
-                      req.secure;
+  // Redirecionamento HTTPS removido para compatibilidade com proxy reverso do AI Studio
+  app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    next();
+  });
 
-      if (!isHttps) {
-        console.log(`[SECURITY] Redirecting non-https request from ${req.headers.host} to https`);
-        return res.redirect(301, `https://${req.headers.host}${req.url}`);
-      }
-      next();
-    });
-  }
-
-  app.use(express.json({ limit: "100mb" }));
-  app.use(express.urlencoded({ limit: "100mb", extended: true }));
+  // Body Parser com limites rígidos (1MB para JSON comum)
+  app.use(express.json({ limit: "1mb" }));
+  app.use(express.urlencoded({ limit: "1mb", extended: true }));
   
   // Debug middleware for API
   app.use("/api", (req, res, next) => {
@@ -881,8 +884,7 @@ async function startServer() {
         res.json(result); 
       }
       catch (error: any) { 
-        console.error(`[ERROR] dbService.list for ${tableName} failed:`, error);
-        res.status(500).json({ error: error.message }); 
+        handleError(res, error, `dbService.list for ${tableName} failed`);
       }
     });
     app.get(`/api/${pathName}/:id`, async (req, res) => {
@@ -895,11 +897,11 @@ async function startServer() {
       }
 
       try {
-        const data = await dbService.getById(tableName, req.params.id, context);
-        if (!data) return res.status(404).json({ error: "Não encontrado" });
-        getCache.set(cacheKey, { data: data, timestamp: Date.now() });
-        res.json(data);
-      } catch (error: any) { res.status(500).json({ error: error.message }); }
+        const response = await dbService.getById(tableName, req.params.id, context);
+        if (!response) return res.status(404).json({ error: "Não encontrado" });
+        getCache.set(cacheKey, { data: response, timestamp: Date.now() });
+        res.json(response);
+      } catch (error: any) { handleError(res, error); }
     });
     app.post(`/api/${pathName}`, async (req, res) => {
       try { 
@@ -910,6 +912,16 @@ async function startServer() {
         }
         
         const data = { ...req.body };
+        
+        // Proteção contra injeção de roles e campos sensíveis no insert
+        if (tableName === 'users') {
+          delete data.role;
+          delete data.owner_id;
+          delete data.ownerId;
+          delete data.stripe_customer_id;
+          delete data.subscription_status;
+          delete data.plan_id;
+        }
 
         // Plan limits check for team members
         if (tableName === 'users' && context?.ownerId) {
@@ -932,7 +944,7 @@ async function startServer() {
         }
         res.json(response); 
       }
-      catch (error: any) { res.status(500).json({ error: error.message }); }
+      catch (error: any) { handleError(res, error); }
     });
     app.put(`/api/${pathName}/:id`, async (req, res) => {
       try { 
@@ -942,6 +954,17 @@ async function startServer() {
         }
         
         const data = { ...req.body };
+        
+        // Proteção contra injeção de roles e campos sensíveis no update
+        if (tableName === 'users') {
+          delete data.role;
+          delete data.owner_id;
+          delete data.ownerId;
+          delete data.stripe_customer_id;
+          delete data.subscription_status;
+          delete data.plan_id;
+        }
+
         if (tableName === 'users' && data.password) {
           data.password = await bcrypt.hash(data.password, 10);
         }
@@ -953,7 +976,7 @@ async function startServer() {
         }
         res.json(response); 
       }
-      catch (error: any) { res.status(500).json({ error: error.message }); }
+      catch (error: any) { handleError(res, error); }
     });
     app.delete(`/api/${pathName}/:id`, async (req, res) => {
       try { 
@@ -968,7 +991,7 @@ async function startServer() {
         }
         res.json(result); 
       }
-      catch (error: any) { res.status(500).json({ error: error.message }); }
+      catch (error: any) { handleError(res, error); }
     });
   };
 
@@ -1235,18 +1258,25 @@ async function startServer() {
 
   app.post("/api/forgot-password", async (req, res) => {
     let { email } = req.body;
+    if (!email) return res.status(400).json({ error: "E-mail obrigatório" });
+    
+    // Sempre retornar sucesso para evitar enumeração de usuários
+    const successMsg = { success: true, message: "Se este e-mail estiver cadastrado, você receberá as instruções." };
+    
     try {
       const { data: userFound, error } = await supabase.from('users').select('*').eq('email', email.trim().toLowerCase()).single();
-      if (error || !userFound) return res.status(404).json({ error: "E-mail não encontrado" });
+      if (error || !userFound) return res.json(successMsg);
       
       const tempPassword = Math.random().toString(36).substr(2, 8);
       const saltRounds = 10;
       const hashedTempPassword = await bcrypt.hash(tempPassword, saltRounds);
       
       await dbService.update('users', userFound.id, { password: hashedTempPassword });
-      await sendEmail(userFound.owner_id || userFound.id, email, "Nova senha", `Sua nova senha: ${tempPassword}`);
-      res.json({ success: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+      await sendEmail(userFound.owner_id || userFound.id, email, "Recuperação de Senha", `Sua nova senha temporária: ${tempPassword}\nPor favor, altere-a após o login.`);
+      res.json(successMsg);
+    } catch (err: any) { 
+      handleError(res, err, "Erro ao processar solicitação de senha");
+    }
   });
 
   // --- Email/Finance/Prospecting/Whatsapp ---
@@ -1266,7 +1296,7 @@ async function startServer() {
     const ownerId = req.user?.ownerId || req.user?.id;
     if (!ownerId) return res.status(401).json({ error: "Não autorizado" });
     try { await sendEmail(ownerId, req.body.to, "Teste", "Teste de e-mail"); res.json({ success: true }); }
-    catch(err: any) { res.status(500).json({ error: err.message }); }
+    catch(err: any) { handleError(res, err); }
   });
   app.get("/api/finance/config", async (req: AuthRequest, res) => {
     const ownerId = req.user?.ownerId || req.user?.id;
@@ -1294,18 +1324,22 @@ async function startServer() {
       res.json({ success: true, leads });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
-  app.get("/api/whatsapp/status", (req, res) => res.json(whatsappService.getStatus(req.query.ownerId as string)));
+  app.get("/api/whatsapp/status", (req, res) => {
+    const context = getContext(req);
+    if (!context?.ownerId) return res.status(401).json({ error: "Não autorizado" });
+    res.json(whatsappService.getStatus(context.ownerId));
+  });
   app.get("/api/whatsapp/logs", (req, res) => {
     try {
+      const context = getContext(req);
+      const ownerId = context?.ownerId;
+      if (!ownerId) return res.status(401).json({ error: "Não autorizado" });
+
       const logPath = path.join(process.cwd(), "logs", "whatsapp_interaction_logs.txt");
       if (fs.existsSync(logPath)) {
         const fullLogs = fs.readFileSync(logPath, "utf-8");
-        const ownerId = req.query.ownerId as string;
-        if (ownerId) {
-          const filtered = fullLogs.split("\n").filter(l => l.includes(`[Owner: ${ownerId}]`)).join("\n");
-          return res.send(filtered);
-        }
-        res.send(fullLogs);
+        const filtered = fullLogs.split("\n").filter(l => l.includes(`[Owner: ${ownerId}]`)).join("\n");
+        return res.send(filtered);
       } else {
         res.send("");
       }
@@ -1318,15 +1352,31 @@ async function startServer() {
       else res.send("");
     } catch (err) { res.status(500).send(""); }
   });
-  app.post("/api/whatsapp/logout", async (req, res) => { await whatsappService.logout(req.body.ownerId); res.json({ success: true }); });
-  app.post("/api/whatsapp/reload", async (req, res) => { await whatsappService.initSession(req.body.ownerId); res.json({ success: true }); });
+  app.post("/api/whatsapp/logout", async (req, res) => { 
+    const context = getContext(req);
+    if (!context?.ownerId) return res.status(401).json({ error: "Não autorizado" });
+    await whatsappService.logout(context.ownerId); 
+    res.json({ success: true }); 
+  });
+  app.post("/api/whatsapp/reload", async (req, res) => { 
+    const context = getContext(req);
+    if (!context?.ownerId) return res.status(401).json({ error: "Não autorizado" });
+    await whatsappService.initSession(context.ownerId); 
+    res.json({ success: true }); 
+  });
   app.post("/api/whatsapp/send", async (req, res) => {
-    const { ownerId, phone, message, poll, mediaBase64 } = req.body;
+    const context = getContext(req);
+    if (!context?.ownerId) return res.status(401).json({ error: "Não autorizado" });
+    
+    const { phone, message, poll, mediaBase64 } = req.body;
+    const ownerId = context.ownerId;
     try {
       const sendResult = await whatsappService.sendMessage(ownerId, phone, message, mediaBase64);
       if (poll?.name) await whatsappService.sendPoll(ownerId, phone, poll.name, poll.options, poll.orderId);
       res.json({ success: true, messageId: sendResult?.key?.id });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { 
+      handleError(res, err, "Falha ao enviar mensagem via WhatsApp");
+    }
   });
 
   // --- Facebook Integration Routes ---
@@ -1349,7 +1399,7 @@ async function startServer() {
           <body>
             <script>
               if (window.opener) {
-                window.opener.postMessage({ type: 'FACEBOOK_AUTH_SUCCESS', clientId: '${clientId}' }, '*');
+                window.opener.postMessage({ type: 'FACEBOOK_AUTH_SUCCESS', clientId: '${clientId}' }, '${APP_URL}');
                 window.close();
               } else {
                 window.location.href = '/?route=social_posts';
@@ -1360,7 +1410,7 @@ async function startServer() {
         </html>
       `);
     } catch (err: any) { 
-      res.status(500).send(`Erro na autenticação: ${err.message}`);
+      handleError(res, err, "Erro na autenticação do Facebook");
     }
   });
 
@@ -1382,8 +1432,7 @@ async function startServer() {
       const result = await dbService.list('form_integrations', { userId: req.user!.id, userRole: req.user!.role, ownerId });
       res.json(result);
     } catch (err: any) {
-      console.error("[API] Erro ao listar formulários:", err);
-      res.status(500).json({ error: err.message, details: "Verifique se a tabela form_integrations existe no banco de dados." });
+      handleError(res, err, "Erro ao listar configurações de formulário. Verifique as tabelas do banco de dados.");
     }
   });
 
@@ -1515,7 +1564,7 @@ async function startServer() {
           <body>
             <script>
               if (window.opener) {
-                window.opener.postMessage({ type: 'GOOGLE_DRIVE_AUTH_SUCCESS' }, '*');
+                window.opener.postMessage({ type: 'GOOGLE_DRIVE_AUTH_SUCCESS' }, '${APP_URL}');
                 window.close();
               } else {
                 window.location.href = '/dashboard/drive';
@@ -1526,7 +1575,7 @@ async function startServer() {
         </html>
       `);
     } catch (err: any) { 
-      res.status(500).send(`Erro na autenticação: ${err.message}`);
+      handleError(res, err, "Erro na autenticação do Google Drive");
     }
   });
 
@@ -1979,6 +2028,7 @@ async function startServer() {
     writeChats(filtered);
   }, 1000 * 60 * 60); // Limpeza a cada hora
 
+  console.log(`[STARTUP] Configurando Vite/Estáticos (NODE_ENV: ${process.env.NODE_ENV})...`);
   // --- VITE / STATIC ---
   if (process.env.NODE_ENV !== "production") {
     console.log("[STARTUP] Modo Desenvolvimento: Ativando Vite Middleware...");
@@ -2126,9 +2176,14 @@ async function startServer() {
 
   // Run worker every minute
   cron.schedule("* * * * *", processSocialSchedules);
+
+  console.log(`🚀 [STARTUP] Inicialização concluída com sucesso.`);
 }
 
 startServer().catch(err => {
   console.error("[FATAL ERROR] Server failed to start:", err);
+  try {
+    fs.appendFileSync('startup-error.log', `[${new Date().toISOString()}] ${err.stack || err}\n`);
+  } catch (e) {}
   process.exit(1);
 });

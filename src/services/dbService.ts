@@ -41,12 +41,7 @@ export const dbService = {
 
     // Special handling for GUESTS
     if ((context.userRole as any) === 'GUEST') {
-      if (tableName === 'users' || tableName === 'clients') {
-        // GUESTS can only see everything in these tables for now (simplification)
-        // In a real app, we'd filter by some shared token or ID
-        return keysToCamel((await supabase.from(tableName).select('*')).data);
-      }
-      throw new Error("Acesso negado para convidados nesta tabela.");
+      throw new Error("Acesso negado para convidados nesta operação de listagem.");
     }
 
     let query = supabase.from(tableName).select('*');
@@ -102,9 +97,12 @@ export const dbService = {
     
     let query = supabase.from(tableName).select('*').eq('id', id);
     
-    // GUESTS don't have an ownerId, so we skip that filter for them
-    if (context.ownerId && (context.userRole as any) !== 'GUEST') {
+    // Use the provided ownerId from context for all roles, including GUESTS
+    if (context.ownerId) {
       query = query.eq('owner_id', context.ownerId);
+    } else if ((context.userRole as any) === 'GUEST') {
+      // GUESTS must have an ownerId to access specific records in a multi-tenant system
+      throw new Error("Acesso negado: ownerId obrigatório para convidados.");
     }
 
     const { data, error } = await query.single();

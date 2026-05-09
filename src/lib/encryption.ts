@@ -1,6 +1,11 @@
 import CryptoJS from 'crypto-js';
 
-const ENCRYPTION_KEY = process.env.DB_ENCRYPTION_KEY || 'amplifica-crm-default-key-change-it-in-env';
+const ENCRYPTION_KEY = process.env.DB_ENCRYPTION_KEY;
+
+if (!ENCRYPTION_KEY) {
+  console.error("[CRITICAL] DB_ENCRYPTION_KEY is not defined in the environment. Encryption will fail.");
+  // process.exit(1); // Softened for debugging
+}
 
 export function encrypt(text: string): string {
   if (!text) return text;
