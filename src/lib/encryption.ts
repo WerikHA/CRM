@@ -4,7 +4,7 @@ const ENCRYPTION_KEY = process.env.DB_ENCRYPTION_KEY;
 
 if (!ENCRYPTION_KEY) {
   console.error("[CRITICAL] DB_ENCRYPTION_KEY is not defined in the environment. Encryption will fail.");
-  // process.exit(1); // Softened for debugging
+  process.exit(1);
 }
 
 export function encrypt(text: string): string {

@@ -69,9 +69,10 @@ const PLANS = {
   }
 };
 
-const JWT_SECRET = process.env.JWT_SECRET || "default-secret-for-recovery";
-if (!process.env.JWT_SECRET) {
-  console.error("[CRITICAL] JWT_SECRET is not defined in the environment. Auth will be insecure.");
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("[CRITICAL] JWT_SECRET is not defined in the environment. Exiting.");
+  process.exit(1);
 }
 
 const __filename = fileURLToPath(import.meta.url);
