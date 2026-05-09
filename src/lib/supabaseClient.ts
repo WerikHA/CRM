@@ -46,9 +46,14 @@ if (supabaseUrl) {
 
 if (!supabaseUrl || !supabaseKey) {
   const missing = [];
-  if (!supabaseUrl) missing.push('SUPABASE_URL');
-  if (!supabaseKey) missing.push('SUPABASE_ANON_KEY/SERVICE_ROLE_KEY');
-  console.error(`[Supabase] CRITICAL: Missing environment variables: ${missing.join(', ')}. Realtime and direct DB sync will NOT work.`);
+  if (!supabaseUrl) missing.push('SUPABASE_URL (ou VITE_SUPABASE_URL)');
+  if (!supabaseKey) missing.push('SUPABASE_ANON_KEY (ou VITE_SUPABASE_ANON_KEY) / SERVICE_ROLE_KEY');
+  
+  const isServer = typeof window === 'undefined';
+  const context = isServer ? '[SERVER]' : '[CLIENT]';
+  
+  console.error(`[Supabase] ${context} CRITICAL: Variáveis de ambiente ausentes: ${missing.join(', ')}.`);
+  console.log(`[Supabase] ${context} Verifique se as variáveis estão configuradas no menu "Settings > Environment Variables".`);
 }
 
 // Implementação de storage customizada para Supabase que respeita consentimento

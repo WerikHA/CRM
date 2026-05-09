@@ -1,61 +1,15 @@
+version: '3.8'
+
 services:
-  amplifica-crm:
-    # A recomendação é sempre usar uma tag específica de versão (ex: v1.0.0, v1.1.0)
-    # em vez de 'latest'. Assim você terá controle sobre quando atualizar o CRM.
-    # Usamos docker.io/ para evitar erros de mirror inválidos do ZimaOS (como 1panel.live)
-    image: docker.io/werikoliveira/amplifica-crm:2.9.44 
-    container_name: amplifica-crm
-    restart: unless-stopped
+  app:
+    build: .
     ports:
-      - "3009:3009" # Porta configurada no ZimaOS para o CRM
-    environment:
-      # --- CONFIGURAÇÕES DA LANDING PAGE & MARCA ---
-      - VITE_COMPANY_NAME=${VITE_COMPANY_NAME:-Amplifica CRM}
-      - VITE_PRIMARY_COLOR=${VITE_PRIMARY_COLOR:-#4f46e5}
-      
-      # --- CONFIGURAÇÕES DO SERVIDOR ---
-      - NODE_ENV=${NODE_ENV:-production}
-      - PORT=${PORT:-3009}
-      - APP_URL=${APP_URL}
-      - JWT_SECRET=${JWT_SECRET}
-
-      # --- CONEXÃO SUPABASE (Obrigatório) ---
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-
-      # --- INTELIGÊNCIA ARTIFICIAL ---
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-
-      # --- INTEGRAÇÃO GOOGLE ---
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
-
-      # --- INTEGRAÇÃO FACEBOOK/INSTAGRAM ---
-      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
-      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
-      - FACEBOOK_REDIRECT_URI=${FACEBOOK_REDIRECT_URI}
-      
-      # --- FRONTEND CONFIG (VITE) ---
-      - VITE_SUPABASE_URL=${SUPABASE_URL}
-      - VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - VITE_COMPANY_NAME=${VITE_COMPANY_NAME:-Amplifica CRM}
-      - VITE_PRIMARY_COLOR=${VITE_PRIMARY_COLOR:-#4f46e5}
-
-    volumes:
-      # Volumes persistentes para sessões do WhatsApp e logs
-      - ./whatsapp_auth_sessions:/app/whatsapp_auth_sessions
-      - ./whatsapp_polls.json:/app/whatsapp_polls.json
-      - ./logs/whatsapp_interaction_logs.txt:/app/logs/whatsapp_interaction_logs.txt
-      - ./logs/n8n_interaction_logs.txt:/app/logs/n8n_interaction_logs.txt
-    
+      - "3009:3000"
     env_file:
       - .env
-    
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3009/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    environment:
+      - NODE_ENV=production
+    restart: always
+
+  # Example of how they might run locally with a different port
+  # in accordance with their "3009:3009" comment, I'll map 3009 to 3000

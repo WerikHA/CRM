@@ -1,62 +1,38 @@
-# Stage 1: Build
-FROM node:20-slim AS builder
-
-# Install system dependencies for build
-RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+# Base image
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Copy package files and install ALL dependencies (including dev for build)
+# Install build dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
-# Copy source code
+# Copy source and build frontend
 COPY . .
-
-# Build the frontend
 RUN npm run build
 
-# Stage 2: Production
-FROM node:20-slim
-
-# Install system dependencies for runtime and native modules
-RUN apt-get update && apt-get install -y \
-    curl \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Playwright system dependencies
-RUN npx -y playwright install-deps
+# Final image
+FROM node:22-slim
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-
-# Install production dependencies (tsx is in dependencies so it will be included)
-RUN npm ci --omit=dev
-
-# Copy configuration and source code
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --from=builder /app/server.ts ./server.ts
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/db ./db
+# Copy built frontend assets
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/metadata.json ./metadata.json
 
-# Environment defaults
+# Copy server and necessary files
+COPY --from=builder /app/server.ts ./
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.env.example ./.env.example
+
+# Install only production dependencies
+RUN npm install --omit=dev && npm install -g tsx
+
+# Set production environment
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Expose port
 EXPOSE 3000
 
-# Start the application using tsx to handle .ts files
-CMD ["npm", "start"]
+CMD ["tsx", "server.ts"]

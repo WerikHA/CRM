@@ -101,7 +101,7 @@ const handleError = (res: express.Response, error: any, customMsg?: string) => {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000; // Aligned with AI Studio infrastructure
+  const PORT = 3009; // Aligned with AI Studio infrastructure
 
   console.log(`[STARTUP] Iniciando servidor Express na porta ${PORT}...`);
   console.log(`[STARTUP] NODE_ENV: ${process.env.NODE_ENV}`);
