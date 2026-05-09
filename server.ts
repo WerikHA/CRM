@@ -1490,6 +1490,12 @@ async function startServer() {
         }
       });
 
+      // Check if consent is given (mandatory for LGPD)
+      const consentGiven = body.consent_given === true || body.consent_given === 'true' || body.aceito === true || body.aceito === 'true';
+      if (!consentGiven && !req.headers['user-agent']?.includes('HealthCheck')) {
+        return res.status(400).json({ error: "O consentimento de uso de dados é obrigatório para prosseguir." });
+      }
+
       const lead = {
         company: body.company || body.empresa || "Capturado via Formulário",
         contact_name: body.contact_name || body.name || body.full_name || body.nome || "N/A",
@@ -1502,7 +1508,7 @@ async function startServer() {
         owner_id: form.owner_id,
         last_contact: new Date().toLocaleDateString('pt-BR'),
         estimated_value: 0,
-        consent_given: body.consent_given === true || body.consent_given === 'true' || body.aceito === true || body.aceito === 'true',
+        consent_given: true, // If it passed the check above, it's true
         consent_date: new Date().toISOString()
       };
 

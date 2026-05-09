@@ -755,6 +755,7 @@ function FormIntegrationsView() {
           email: "teste@exemplo.com",
           phone: "11999999999",
           message: "Esta é uma submissão de teste enviada do painel admin.",
+          consent_given: true,
         }),
       });
       if (res.ok)
@@ -801,6 +802,10 @@ function FormIntegrationsView() {
   .amplifica-field { margin-bottom: 15px; }
   .amplifica-label { display: block; font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 5px; text-transform: uppercase; }
   .amplifica-input { w-full: 100%; width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; box-sizing: border-box; }
+  .amplifica-checkbox-container { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 20px; cursor: pointer; }
+  .amplifica-checkbox { margin-top: 3px; }
+  .amplifica-checkbox-label { font-size: 11px; color: #64748b; line-height: 1.4; }
+  .amplifica-link { color: #4f46e5; text-decoration: underline; }
   .amplifica-submit { background: #4f46e5; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
   .amplifica-submit:hover { opacity: 0.9; }
 </style>
@@ -820,6 +825,15 @@ function FormIntegrationsView() {
     </div>`,
       )
       .join("")}
+    
+    <div class="amplifica-checkbox-container">
+      <input type="checkbox" name="consent_given" id="consent_${id}" class="amplifica-checkbox" required>
+      <label for="consent_${id}" class="amplifica-checkbox-label">
+        Concordo com o uso dos meus dados para fins de contato comercial conforme a 
+        <a href="${baseUrl}/privacy" target="_blank" class="amplifica-link">Política de Privacidade</a>.
+      </label>
+    </div>
+
     <button type="submit" class="amplifica-submit">ENVIAR AGORA</button>
   </form>
 </div>
@@ -833,10 +847,19 @@ function FormIntegrationsView() {
       .map(
         (f: any) => `
     <div>
-      <input type="${f.type === "textarea" ? "text" : f.type}" name="${f.name}" placeholder="${f.label}" required style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%;">
+      <input type="${f.type === "textarea" ? "text" : f.type}" name="${f.name}" placeholder="${f.label}" ${f.required ? "required" : ""} style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%;">
     </div>`,
       )
       .join("")}
+    
+    <div style="display: flex; gap: 8px; align-items: flex-start; margin-top: 4px;">
+      <input type="checkbox" name="consent_given" id="consent_js_${id}" required style="margin-top: 3px;">
+      <label for="consent_js_${id}" style="font-size: 11px; color: #666; line-height: 1.3;">
+        Concordo com o tratamento dos meus dados conforme a 
+        <a href="${baseUrl}/privacy" target="_blank" style="color: #4f46e5;">Política de Privacidade</a>.
+      </label>
+    </div>
+
     <button type="submit" style="background: #4f46e5; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer;">CAPTURAR LEAD</button>
   </form>
   <div id="amplifica-msg-${id}" style="display: none; padding: 10px; text-align: center; color: green; font-weight: bold;"></div>
@@ -846,16 +869,28 @@ function FormIntegrationsView() {
 document.getElementById('amplifica-form-${id}').addEventListener('submit', function(e) {
   e.preventDefault();
   const form = e.target;
+  const consent = form.querySelector('input[name="consent_given"]');
+  
+  if (!consent.checked) {
+    alert('Você precisa aceitar os termos de privacidade para continuar.');
+    return;
+  }
+
   const btn = form.querySelector('button');
   const msg = document.getElementById('amplifica-msg-${id}');
   
   btn.disabled = true;
   btn.innerText = 'Enviando...';
   
+  const formData = new FormData(form);
+  const data = Object.fromEntries(formData);
+  // Ensure boolean for consent
+  data.consent_given = consent.checked;
+
   fetch("${submitUrl}", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify(Object.fromEntries(new FormData(form)))
+    body: JSON.stringify(data)
   })
   .then(res => res.json())
   .then(res => {
@@ -867,6 +902,7 @@ document.getElementById('amplifica-form-${id}').addEventListener('submit', funct
     }
   })
   .catch(err => {
+    console.error('Erro na submissão:', err);
     alert('Erro ao enviar. Tente novamente.');
     btn.disabled = false;
     btn.innerText = 'Tentar Novamente';
