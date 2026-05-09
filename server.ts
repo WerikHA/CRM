@@ -138,7 +138,17 @@ async function startServer() {
   // CORS configurado para ser mais flexível, permitindo o domínio oficial e previews
   app.use(cors({
     origin: (origin, callback) => {
-      if (!origin || origin === APP_URL || origin.includes('localhost') || origin.includes('run.app') || origin.includes('amplifamarketing.com.br')) {
+      const allowedOrigins = [
+        APP_URL,
+        "https://crm.amplifamarketing.com.br",
+      ];
+      
+      if (
+        !origin || 
+        allowedOrigins.includes(origin) || 
+        /^https:\/\/.*\.run\.app$/.test(origin) || 
+        /^http:\/\/localhost(:\d+)?$/.test(origin)
+      ) {
         callback(null, true);
       } else {
         callback(null, false);
@@ -524,6 +534,8 @@ async function startServer() {
       VITE_COMPANY_NAME: process.env.VITE_COMPANY_NAME || "Amplifica CRM",
       VITE_PRIMARY_COLOR: process.env.VITE_PRIMARY_COLOR || "#4f46e5",
       VITE_SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+      // Nota: A chave anon é exposta para uso do Supabase Client no frontend.
+      // É MANDATÓRIO garantir que todas as tabelas tenham políticas de RLS ativas.
       VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
     };
     res.type("application/javascript");
