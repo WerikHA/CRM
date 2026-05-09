@@ -56,42 +56,46 @@ export default function PrivacyPolicy({ onBack, agencyName, primaryColor }: Priv
               
               <section>
                 <h2 className="text-xl font-bold text-slate-900 uppercase tracking-tight mb-4 flex items-center gap-3">
-                   <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600"><Lock size={18} /></div>
-                   1. INTEGRAÇÃO COM SERVIÇOS DO GOOGLE (API OAUTH)
+                   <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600"><Shield size={18} /></div>
+                   1. COMPROMISSO COM A LGPD
                 </h2>
                 <div className="pl-12 space-y-4">
                   <p>
-                    O Amplifica CRM permite que você conecte sua conta do Google para facilitar o fluxo de trabalho. Ao utilizar esta integração, nossa plataforma acessará arquivos do seu Google Drive estritamente para as finalidades permitidas por você.
-                  </p>
-                  <p>
-                    <strong>Dados acessados:</strong> Apenas arquivos que você selecionar ou pastas específicas necessárias para o funcionamento do agendamento e gestão de arquivos dentro do CRM.
-                  </p>
-                  <p>
-                    <strong>Finalidade:</strong> Permitir que o usuário visualize, selecione e anexe documentos e mídias do seu próprio Google Drive diretamente dentro da plataforma Amplifica CRM para fins de organização e agendamento.
-                  </p>
-                  <p>
-                    <strong>Armazenamento de Credenciais:</strong> Não armazenamos sua senha do Google. Utilizamos tokens de acesso OAuth seguros e criptografados para manter a conexão ativa. Você pode revogar este acesso a qualquer momento nas configurações do sistema ou na sua Conta Google.
+                    O {agencyName} está em total conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018). Tratamos seus dados com transparência, segurança e respeito aos seus direitos como titular.
                   </p>
                 </div>
               </section>
 
               <section>
                 <h2 className="text-xl font-bold text-slate-900 uppercase tracking-tight mb-4 flex items-center gap-3">
+                   <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600"><Lock size={18} /></div>
+                   2. CATEGORIAS DE DADOS TRATADOS
+                </h2>
+                <div className="pl-12 space-y-4">
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li><strong>Dados de Registro (Owner/Usuário):</strong> Nome, e-mail, senha (criptografada) e preferências do sistema. Finalidade: Execução do contrato e gestão de conta.</li>
+                    <li><strong>Dados de Leads e Clientes:</strong> Nome, e-mail, telefone, histórico de interações e notas. Estes dados são inseridos por você ou via formulários públicos. Finalidade: Gestão comercial e CRM.</li>
+                    <li><strong>Integrações (Google e Meta):</strong> Tokens de acesso, metadados de arquivos e conteúdos de posts. Finalidade: Viabilizar as funcionalidades de agendamento e armazenamento.</li>
+                    <li><strong>Dados Financeiros:</strong> Informações de faturamento e pagamentos processados via Stripe. O CRM não armazena dados de cartão de crédito.</li>
+                    <li><strong>Comunicações WhatsApp:</strong> Números de telefone e histórico de mensagens para fins de suporte e automação.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-xl font-bold text-slate-900 uppercase tracking-tight mb-4 flex items-center gap-3">
                    <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600"><Eye size={18} /></div>
-                   2. POLÍTICA DE USO LIMITADO (GOOGLE API DISCLOSURE)
+                   3. INTEGRAÇÃO COM SERVIÇOS DO GOOGLEE META
                 </h2>
                 <div className="pl-12 space-y-4">
                   <p>
-                    O uso e a transferência de informações recebidas das APIs do Google para qualquer outro aplicativo pelo Amplifica CRM seguirão a Política de Dados do Usuário dos Serviços de API do Google, incluindo os requisitos de Uso Limitado.
+                    O Amplifica CRM permite conectar contas do Google e Meta seguindo as políticas de "Uso Limitado". 
                   </p>
                   <p>
-                    <strong>Não comercialização:</strong> Sob nenhuma hipótese os dados acessados via Google Drive serão vendidos a terceiros ou utilizados para fins publicitários.
+                    <strong>Dados acessados:</strong> Apenas o necessário para as funções que você ativar (ex: selecionar mídia no Drive ou publicar no Instagram).
                   </p>
                   <p>
-                    <strong>Uso restrito:</strong> O acesso aos dados é restrito à execução das funcionalidades solicitadas pelo usuário (visualizar/importar arquivos). Não utilizamos esses dados para treinar modelos de inteligência artificial ou perfis de marketing.
-                  </p>
-                  <p>
-                    <strong>Compartilhamento:</strong> Não compartilhamos o conteúdo do seu Google Drive com outros serviços, exceto quando estritamente necessário para fornecer as funcionalidades que você ativou conscientemente.
+                    <strong>Não comercialização:</strong> Dados de APIs de terceiros NUNCA são vendidos ou usados para fins publicitários externos.
                   </p>
                 </div>
               </section>
@@ -99,19 +103,40 @@ export default function PrivacyPolicy({ onBack, agencyName, primaryColor }: Priv
               <section>
                 <h2 className="text-xl font-bold text-slate-900 uppercase tracking-tight mb-4 flex items-center gap-3">
                    <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600"><RefreshCw size={18} /></div>
-                   3. REVOGAÇÃO DE ACESSO
+                   4. SEUS DIREITOS (ART. 18 LGPD)
+                </h2>
+                <div className="pl-12 space-y-4">
+                  <p>Como titular de dados, você tem direito a:</p>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>Confirmar a existência de tratamento e acessar seus dados;</li>
+                    <li>Solicitar a portabilidade dos dados para outro fornecedor;</li>
+                    <li>Revogar o consentimento e solicitar a exclusão de dados;</li>
+                    <li>Obter informações sobre o compartilhamento de dados.</li>
+                  </ul>
+                  <p>Para exercer seus direitos, utilize as ferramentas no painel de configurações ou entre em contato com nosso DPO.</p>
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-xl font-bold text-slate-900 uppercase tracking-tight mb-4 flex items-center gap-3">
+                   <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600"><Lock size={18} /></div>
+                   5. ENCARREGADO DE DADOS (DPO)
                 </h2>
                 <div className="pl-12 space-y-4">
                   <p>
-                    A qualquer momento, o usuário poderá desconectar sua conta Google do Amplifica CRM através do menu de "Configurações de Integrações". Além disso, o acesso pode ser removido diretamente na página de segurança da sua Conta Google em: <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1">myaccount.google.com/permissions <ExternalLink size={12} /></a>. Ao desconectar, todos os tokens de acesso relacionados serão excluídos permanentemente de nossos servidores.
+                    Dúvidas sobre como tratamos seus dados pessoais? Entre em contato com nosso Encarregado (DPO):
                   </p>
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                    <p className="font-bold text-indigo-600">E-mail: privacidade@amplifamarketing.com.br</p>
+                    <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-black">Resposta em até 2 dias úteis</p>
+                  </div>
                 </div>
               </section>
 
               <section className="pt-8 border-t border-slate-100">
                 <p className="text-xs text-slate-400 font-bold uppercase tracking-widest leading-loose">
                   Este documento é parte integrante das diretrizes de segurança da {agencyName}. <br />
-                  Última atualização: 29 de Abril de 2026.
+                  Versão LGPD 1.0 - Última atualização: 09 de Maio de 2026.
                 </p>
               </section>
             </div>

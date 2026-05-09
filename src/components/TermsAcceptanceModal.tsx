@@ -21,7 +21,9 @@ export default function TermsAcceptanceModal({ currentUser, onAccept, onReject, 
     try {
       setIsAccepting(true);
       const updatedUser = await api.updateUser(currentUser.id, {
-        acceptedTerms: true
+        acceptedTerms: true,
+        termsAcceptedAt: new Date().toISOString(),
+        termsVersion: '1.0'
       });
       toast.success('Termos aceitos com sucesso!');
       onAccept(updatedUser);

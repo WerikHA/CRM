@@ -80,9 +80,24 @@ export class WhatsAppService extends EventEmitter {
 
   private logInteraction(ownerId: string, message: string) {
     try {
-      const logPath = path.join(process.cwd(), "logs", "whatsapp_interaction_logs.txt");
+      const logDir = path.join(process.cwd(), "logs");
+      if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+      
+      const logPath = path.join(logDir, "whatsapp_interaction_logs.txt");
+      
+      // Basic Log Rotation: Check if file > 5MB
+      if (fs.existsSync(logPath)) {
+        const stats = fs.statSync(logPath);
+        if (stats.size > 5 * 1024 * 1024) {
+          const archivePath = path.join(logDir, `whatsapp_interaction_logs_${Date.now()}.txt`);
+          fs.renameSync(logPath, archivePath);
+        }
+      }
+
       const timestamp = new Date().toLocaleString("pt-BR");
-      const logLine = `[${timestamp}][Owner: ${ownerId}] ${message}\n`;
+      // Anonymize sensitive info in logs if message contains something like phone numbers or tokens
+      const anonymizedMessage = message.replace(/\d{10,}/g, '[PHONE/ID]').replace(/eyJ[a-zA-Z0-9._-]+/g, '[TOKEN]');
+      const logLine = `[${timestamp}][Owner: ${ownerId}] ${anonymizedMessage}\n`;
       fs.appendFileSync(logPath, logLine);
     } catch (err) {
       console.error("[WHATSAPP] Erro ao gravar log:", err);

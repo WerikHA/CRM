@@ -101,7 +101,7 @@ const handleError = (res: express.Response, error: any, customMsg?: string) => {
 
 async function startServer() {
   const app = express();
-  const PORT = 3009; // Aligned with AI Studio infrastructure
+  const PORT = 3000; // Aligned with AI Studio infrastructure
 
   console.log(`[STARTUP] Iniciando servidor Express na porta ${PORT}...`);
   console.log(`[STARTUP] NODE_ENV: ${process.env.NODE_ENV}`);
@@ -1237,6 +1237,8 @@ async function startServer() {
         password: hashedPassword, 
         role: 'OWNER',
         acceptedTerms: finalAcceptedTerms,
+        termsAcceptedAt: finalAcceptedTerms ? new Date().toISOString() : null,
+        termsVersion: '1.0',
         stripeCustomerId,
         planId,
         subscriptionStatus
@@ -1468,7 +1470,7 @@ async function startServer() {
   app.post("/api/forms/submit/:formId", async (req, res) => {
     const { formId } = req.params;
     const body = req.body;
-    console.log(`[FORM] Submissão recebida para form ${formId}:`, body);
+    console.log(`[FORM] Submissão recebida para form ${formId}`); // Anonymized: removed body from logs
 
     try {
       // 1. Fetch form config
@@ -1499,10 +1501,12 @@ async function startServer() {
         status: 'prospect',
         owner_id: form.owner_id,
         last_contact: new Date().toLocaleDateString('pt-BR'),
-        estimated_value: 0
+        estimated_value: 0,
+        consent_given: body.consent_given === true || body.consent_given === 'true' || body.aceito === true || body.aceito === 'true',
+        consent_date: new Date().toISOString()
       };
 
-      console.log(`[FORM] Criando lead para form ${form.name}:`, lead);
+      console.log(`[FORM] Criando lead para form ${form.name} (Owner: ${form.owner_id})`); // Anonymized: removed lead object
       const newLead = await dbService.insert('leads', lead, { userId: lead.owner_id, userRole: 'OWNER', ownerId: lead.owner_id });
       if (form.owner_id) {
         emitDataChange(form.owner_id, 'leads', 'insert', newLead);
@@ -1601,6 +1605,87 @@ async function startServer() {
       await facebookService.disconnectAll(ownerId);
       res.json({ success: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // --- LGPD Data Portability & Rights ---
+  app.get("/api/auth/my-data", async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const ownerId = req.user!.ownerId || userId;
+
+      // Collect all data related to the user and their business
+      const [
+        { data: profile },
+        { data: clients },
+        { data: leads },
+        { data: tasks },
+        { data: orders },
+        { data: videos },
+        { data: receivables }
+      ] = await Promise.all([
+        supabase.from('users').select('*').eq('id', userId).single(),
+        supabase.from('clients').select('*').eq('owner_id', ownerId),
+        supabase.from('leads').select('*').eq('owner_id', ownerId),
+        supabase.from('demand_tasks').select('*').eq('owner_id', ownerId),
+        supabase.from('art_orders').select('*').eq('owner_id', ownerId),
+        supabase.from('video_orders').select('*').eq('owner_id', ownerId),
+        supabase.from('receivables').select('*').eq('owner_id', ownerId)
+      ]);
+
+      const exportData = {
+        generatedAt: new Date().toISOString(),
+        profile: profile ? { ...profile, password: '[REDACTED]' } : null,
+        businessData: {
+          clients,
+          leads,
+          tasks,
+          orders,
+          videos,
+          receivables
+        }
+      };
+
+      // Auditoria da exportação
+      await supabase.from('privacy_audit_logs').insert({
+        user_id: userId,
+        action: 'data_export',
+        details: { IP: req.ip, userAgent: req.get('user-agent') }
+      });
+
+      res.json(exportData);
+    } catch (err: any) {
+      console.error("[LGPD] Erro ao exportar dados:", err);
+      res.status(500).json({ error: "Erro ao processar sua solicitação de portabilidade de dados." });
+    }
+  });
+
+  // --- LGPD Data Retention Job (Runs every Sunday at 3 AM) ---
+  cron.schedule('0 3 * * 0', async () => {
+    console.log("[CRON] Iniciando limpeza de dados conforme política de retenção (LGPD)...");
+    try {
+      // 1. Delete inactive leads older than 2 years (730 days)
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setDate(twoYearsAgo.getDate() - 730);
+      
+      const { count: leadsDeleted } = await supabase
+        .from('leads')
+        .delete()
+        .lt('created_at', twoYearsAgo.toISOString())
+        .eq('status', 'lost'); // Only delete those explicitly marked as lost/archived
+        
+      // 2. Delete old activity logs (> 1 year)
+      const oneYearAgo = new Date();
+      oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+      
+      const { count: logsDeleted } = await supabase
+        .from('activity_logs')
+        .delete()
+        .lt('created_at', oneYearAgo.toISOString());
+
+      console.log(`[CRON] Limpeza LGPD concluída. Leads removidos: ${leadsDeleted || 0}, Logs removidos: ${logsDeleted || 0}`);
+    } catch (err) {
+      console.error("[CRON] Erro na limpeza de dados LGPD:", err);
+    }
   });
 
   app.delete("/api/auth/account", async (req: AuthRequest, res) => {

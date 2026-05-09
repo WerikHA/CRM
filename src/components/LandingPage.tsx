@@ -539,10 +539,16 @@ export default function LandingPage({ onLogin, onSignup, onPrivacy, onTerms, age
               </ul>
             </div>
           </div>
-          <div className="pt-12 border-t border-slate-100 text-center flex flex-col md:flex-row justify-between items-center gap-6">
-            <p className="text-slate-400 text-xs font-black uppercase tracking-widest">
-              © 2026 {agencyName}. Todos os direitos reservados.
-            </p>
+          <div className="pt-12 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div className="text-center md:text-left">
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">
+                © 2026 {agencyName}. Todos os direitos reservados.
+              </p>
+              <p className="text-slate-300 text-[9px] font-bold uppercase tracking-widest leading-relaxed">
+                Encarregado de Dados (DPO): <span className="text-indigo-400">privacidade@amplifamarketing.com.br</span> <br />
+                Conformidade LGPD Versão 1.0
+              </p>
+            </div>
             <div className="flex gap-6">
                <Globe className="text-slate-300 hover:text-indigo-600 transition-colors cursor-pointer" size={20} />
                <Target className="text-slate-300 hover:text-indigo-600 transition-colors cursor-pointer" size={20} />

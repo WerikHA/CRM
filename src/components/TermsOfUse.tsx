@@ -184,11 +184,14 @@ export default function TermsOfUse({ onBack, agencyName, primaryColor }: TermsOf
               <section>
                 <h2 className="text-xl font-bold text-slate-900 uppercase tracking-tight mb-4 flex items-center gap-3">
                    <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600"><Key size={18} /></div>
-                   10. CONTATO
+                   10. ENCARREGADO DE DADOS (DPO) E CONTATO
                 </h2>
                 <div className="pl-12 space-y-4">
                   <p>
-                    Para questões relacionadas aos termos, entre em contato através do e-mail: Werikoliveiramarketing@gmail.com
+                    Para questões relacionadas aos termos ou privacidade (LGPD), entre em contato com nosso Encarregado através do e-mail: <strong>privacidade@amplifamarketing.com.br</strong>
+                  </p>
+                  <p>
+                    Para questões comerciais ou suporte técnico: <strong>Werikoliveiramarketing@gmail.com</strong>
                   </p>
                 </div>
               </section>
@@ -196,7 +199,8 @@ export default function TermsOfUse({ onBack, agencyName, primaryColor }: TermsOf
               <section className="pt-8 border-t border-slate-100">
                 <p className="text-xs text-slate-400 font-bold uppercase tracking-widest leading-loose">
                   Este documento regula o uso da plataforma {agencyName}. <br />
-                  Última atualização: Abril de 2026.
+                  Versão: 1.0 (LGPD Compliant) <br />
+                  Última atualização: 09 de Maio de 2026.
                 </p>
               </section>
             </div>

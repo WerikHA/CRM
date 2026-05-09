@@ -19,6 +19,8 @@ export interface User {
   acceptedTerms?: boolean;
   planId?: string;
   subscriptionStatus?: string;
+  termsAcceptedAt?: string;
+  termsVersion?: string;
 }
 
 export type LeadStatus = 'prospect' | 'negotiation' | 'converted' | 'lost';
@@ -39,6 +41,8 @@ export interface Lead {
   status: LeadStatus;
   estimatedValue: number;
   lastContact: string; // dd/mm/aaaa
+  consentGiven?: boolean;
+  consentDate?: string;
 }
 
 export interface ClientBranding {
