@@ -4,6 +4,7 @@ import compression from "compression";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import crypto from 'crypto';
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import cron from "node-cron";
@@ -314,143 +315,115 @@ async function startServer() {
       try {
         console.log("[STARTUP] Verificando schema do banco de dados...");
         
-        const migrationPromise = pool.query(`
-          DO $$ 
-          BEGIN
-              -- 1. Check/Add ui_preferences to users
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'ui_preferences') THEN
-                  RAISE NOTICE 'Adicionando ui_preferences em users...';
-                  ALTER TABLE public.users ADD COLUMN ui_preferences JSONB DEFAULT '{}'::jsonb;
-              END IF;
+        // Split migrations into individual calls for better reliability
+        const runMigration = async (sql: string, description: string) => {
+          try {
+            await pool.query(sql);
+            console.log(`[MIGRATION SUCCESS] ${description}`);
+          } catch (err: any) {
+            console.warn(`[MIGRATION WARNING] ${description} falhou ou já executada:`, err.message);
+          }
+        };
 
-              -- Add accepted_terms to users
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'accepted_terms') THEN
-                  RAISE NOTICE 'Adicionando accepted_terms em users...';
-                  ALTER TABLE public.users ADD COLUMN accepted_terms BOOLEAN DEFAULT FALSE;
-              END IF;
+        await runMigration(`
+          ALTER TABLE public.users ADD COLUMN IF NOT EXISTS ui_preferences JSONB DEFAULT '{}'::jsonb;
+        `, "Add ui_preferences to users");
 
-              -- 6. Check/Add plan_id and stripe info to users
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'plan_id') THEN
-                  RAISE NOTICE 'Adicionando plan_id em users...';
-                  ALTER TABLE public.users ADD COLUMN plan_id TEXT DEFAULT 'plan1'; -- Default to plan1 for new owners
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'stripe_customer_id') THEN
-                  RAISE NOTICE 'Adicionando stripe_customer_id em users...';
-                  ALTER TABLE public.users ADD COLUMN stripe_customer_id TEXT;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'subscription_status') THEN
-                  RAISE NOTICE 'Adicionando subscription_status em users...';
-                  ALTER TABLE public.users ADD COLUMN subscription_status TEXT DEFAULT 'active'; 
-              END IF;
+        await runMigration(`
+          ALTER TABLE public.users ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN DEFAULT FALSE;
+        `, "Add accepted_terms to users");
 
-              -- 2. Check/Add rejection_audio_url to video_orders
-              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'video_orders') THEN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'video_orders' AND column_name = 'rejection_audio_url') THEN
-                      RAISE NOTICE 'Adicionando rejection_audio_url em video_orders...';
-                      ALTER TABLE public.video_orders ADD COLUMN rejection_audio_url TEXT;
-                  END IF;
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'video_orders' AND column_name = 'demand_id') THEN
-                      RAISE NOTICE 'Adicionando demand_id em video_orders...';
-                      ALTER TABLE public.video_orders ADD COLUMN demand_id UUID;
-                  END IF;
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'video_orders' AND column_name = 'rejection_notes') THEN
-                      RAISE NOTICE 'Adicionando rejection_notes em video_orders...';
-                      ALTER TABLE public.video_orders ADD COLUMN rejection_notes TEXT;
-                  END IF;
+        await runMigration(`
+          ALTER TABLE public.users ADD COLUMN IF NOT EXISTS plan_id TEXT DEFAULT 'plan1';
+        `, "Add plan_id to users");
+
+        await runMigration(`
+          ALTER TABLE public.users ADD COLUMN IF NOT EXISTS api_key TEXT UNIQUE;
+        `, "Add api_key to users");
+
+        await runMigration(`
+          ALTER TABLE public.users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+        `, "Add stripe_customer_id to users");
+
+        await runMigration(`
+          ALTER TABLE public.users ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'active';
+        `, "Add subscription_status to users");
+
+        await runMigration(`
+          DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'video_orders') THEN
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'video_orders' AND column_name = 'rejection_audio_url') THEN
+                ALTER TABLE public.video_orders ADD COLUMN rejection_audio_url TEXT;
               END IF;
-
-              -- 3. Check/Create support_tickets
-              IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'support_tickets') THEN
-                  RAISE NOTICE 'Criando tabela support_tickets...';
-                  CREATE TABLE public.support_tickets (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    client_id UUID REFERENCES public.clients(id) ON DELETE CASCADE,
-                    partner_id UUID REFERENCES public.partners(id) ON DELETE CASCADE,
-                    subject TEXT,
-                    description TEXT,
-                    response TEXT,
-                    priority TEXT DEFAULT 'normal',
-                    status TEXT DEFAULT 'open',
-                    owner_id UUID REFERENCES public.users(id),
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                  );
-              ELSE
-                  -- Ensure columns exist in support_tickets
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'support_tickets' AND column_name = 'partner_id') THEN
-                      ALTER TABLE public.support_tickets ADD COLUMN partner_id UUID REFERENCES public.partners(id) ON DELETE CASCADE;
-                  END IF;
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'support_tickets' AND column_name = 'description') THEN
-                      ALTER TABLE public.support_tickets ADD COLUMN description TEXT;
-                  END IF;
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'support_tickets' AND column_name = 'response') THEN
-                      ALTER TABLE public.support_tickets ADD COLUMN response TEXT;
-                  END IF;
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'video_orders' AND column_name = 'demand_id') THEN
+                ALTER TABLE public.video_orders ADD COLUMN demand_id UUID;
               END IF;
-
-              -- 3. Check/Add is_read to notifications and fix column name
-              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notifications') THEN
-                  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'read') THEN
-                      RAISE NOTICE 'Renomeando read para is_read em notifications...';
-                      ALTER TABLE public.notifications RENAME COLUMN read TO is_read;
-                  END IF;
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'is_read') THEN
-                      ALTER TABLE public.notifications ADD COLUMN is_read BOOLEAN DEFAULT false;
-                  END IF;
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'video_orders' AND column_name = 'rejection_notes') THEN
+                ALTER TABLE public.video_orders ADD COLUMN rejection_notes TEXT;
               END IF;
-
-              -- 4. Check/Create system_configs
-              IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'system_configs') THEN
-                  RAISE NOTICE 'Criando tabela system_configs...';
-                  CREATE TABLE public.system_configs (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    owner_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-                    config_key TEXT NOT NULL,
-                    config_value JSONB,
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(owner_id, config_key)
-                  );
-              END IF;
-
-              -- 5. Check/Create form_integrations
-              IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'form_integrations') THEN
-                  RAISE NOTICE 'Criando tabela form_integrations...';
-                  CREATE TABLE public.form_integrations (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    owner_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-                    name TEXT NOT NULL,
-                    fields JSONB DEFAULT '[]'::jsonb,
-                    success_message TEXT,
-                    redirect_url TEXT,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                  );
-              END IF;
-
-              -- 6. Enable Realtime for major tables
-              BEGIN
-                  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-                      ALTER PUBLICATION supabase_realtime ADD TABLE public.leads;
-                      ALTER PUBLICATION supabase_realtime ADD TABLE public.clients;
-                      ALTER PUBLICATION supabase_realtime ADD TABLE public.art_orders;
-                      ALTER PUBLICATION supabase_realtime ADD TABLE public.video_orders;
-                      ALTER PUBLICATION supabase_realtime ADD TABLE public.receivables;
-                      ALTER PUBLICATION supabase_realtime ADD TABLE public.demand_tasks;
-                      ALTER PUBLICATION supabase_realtime ADD TABLE public.support_tickets;
-                      ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
-                  END IF;
-              EXCEPTION WHEN OTHERS THEN
-                  RAISE NOTICE 'Skipping publication update: %', SQLERRM;
-              END;
-
-              -- 7. Reload PostgREST schema cache
+            END IF;
           END $$;
-        `);
+        `, "Update video_orders columns");
 
-        await Promise.race([
-          migrationPromise,
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Database migration timeout")), 15000))
-        ]).catch(err => console.warn("[STARTUP] Alerta Mãos-à-obra: Migração demorando mais que o esperado ou falhou:", err.message));
-        
-        console.log("[STARTUP] Hotpatch de schema concluída.");
+        await runMigration(`
+          CREATE TABLE IF NOT EXISTS public.support_tickets (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            client_id UUID REFERENCES public.clients(id) ON DELETE CASCADE,
+            partner_id UUID REFERENCES public.partners(id) ON DELETE CASCADE,
+            subject TEXT,
+            description TEXT,
+            response TEXT,
+            priority TEXT DEFAULT 'normal',
+            status TEXT DEFAULT 'open',
+            owner_id UUID REFERENCES public.users(id),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `, "Create support_tickets table");
+
+        await runMigration(`
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'support_tickets' AND column_name = 'partner_id') THEN
+              ALTER TABLE public.support_tickets ADD COLUMN partner_id UUID REFERENCES public.partners(id) ON DELETE CASCADE;
+            END IF;
+          END $$;
+        `, "Add partner_id to support_tickets");
+
+        await runMigration(`
+          CREATE TABLE IF NOT EXISTS public.agency_kpis (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            owner_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+            period_date DATE DEFAULT CURRENT_DATE,
+            total_active_monthly_value DECIMAL(12, 2) DEFAULT 0,
+            total_leads_count INTEGER DEFAULT 0,
+            total_active_clients_count INTEGER DEFAULT 0,
+            avg_art_completion_percent INTEGER DEFAULT 0,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `, "Create agency_kpis table");
+
+        await runMigration(`
+          CREATE INDEX IF NOT EXISTS idx_agency_kpis_owner_date ON public.agency_kpis(owner_id, period_date);
+        `, "Create agency_kpis index");
+
+        await runMigration(`
+          DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+              BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.leads; EXCEPTION WHEN OTHERS THEN NULL; END;
+              BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.clients; EXCEPTION WHEN OTHERS THEN NULL; END;
+              BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.art_orders; EXCEPTION WHEN OTHERS THEN NULL; END;
+              BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.video_orders; EXCEPTION WHEN OTHERS THEN NULL; END;
+              BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.receivables; EXCEPTION WHEN OTHERS THEN NULL; END;
+              BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.demand_tasks; EXCEPTION WHEN OTHERS THEN NULL; END;
+              BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.support_tickets; EXCEPTION WHEN OTHERS THEN NULL; END;
+              BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications; EXCEPTION WHEN OTHERS THEN NULL; END;
+              BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.agency_kpis; EXCEPTION WHEN OTHERS THEN NULL; END;
+            END IF;
+          END $$;
+        `, "Enable Realtime for tables");
+
+        // Force reload schema cache for PostgREST
+        await pool.query("NOTIFY pgrst, 'reload schema';");
+        console.log("[STARTUP] PostgREST schema reload signal sent.");
 
         // Migration: Hash existing plain-text passwords
         try {
@@ -534,14 +507,22 @@ async function startServer() {
 
   // --- Runtime Env Config ---
   app.get("/env-config.js", (req, res) => {
+    // Collect all possible variants of Supabase variables
     const config = {
       VITE_COMPANY_NAME: process.env.VITE_COMPANY_NAME || "Amplifica CRM",
       VITE_PRIMARY_COLOR: process.env.VITE_PRIMARY_COLOR || "#4f46e5",
-      VITE_SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-      // Nota: A chave anon é exposta para uso do Supabase Client no frontend.
-      // É MANDATÓRIO garantir que todas as tabelas tenham políticas de RLS ativas.
-      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
+      VITE_SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "",
+      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "",
+      // Backup keys for the client-side getEnv utility
+      SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "",
+      SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "",
     };
+    
+    // Log for debugging (server-side only)
+    if (!config.VITE_SUPABASE_URL || !config.VITE_SUPABASE_ANON_KEY) {
+      console.warn("[STARTUP] Alerta: Enviando env-config.js com chaves Supabase vazias!");
+    }
+    
     res.type("application/javascript");
     res.send(`window._env_ = ${JSON.stringify(config)};`);
   });
@@ -578,7 +559,8 @@ async function startServer() {
       "/api/support-tickets", 
       "/api/create-anonymous-checkout", 
       "/api/stripe-webhook",
-      "/api/public/stats"
+      "/api/public/stats",
+      "/api/external/leads"
     ];
     
     // Check if path is public - handle both originalUrl and relative path
@@ -1017,7 +999,8 @@ async function startServer() {
 
       const [
         leads, clients, receivables, artOrders, partners, 
-        usersRaw, partnerRequests, tickets, videoOrders, demandTasks, notifications
+        usersRaw, partnerRequests, tickets, videoOrders, demandTasks, notifications,
+        agencyKpis
       ] = await Promise.all([
         safeList('leads'),
         safeList('clients'),
@@ -1029,7 +1012,8 @@ async function startServer() {
         safeList('support_tickets'),
         safeList('video_orders'),
         safeList('demand_tasks'),
-        safeList('notifications')
+        safeList('notifications'),
+        safeList('agency_kpis')
       ]);
 
       const results = {
@@ -1038,7 +1022,7 @@ async function startServer() {
           const { password, ...safeUser } = u;
           return safeUser;
         }),
-        partnerRequests, tickets, videoOrders, demandTasks, notifications
+        partnerRequests, tickets, videoOrders, demandTasks, notifications, agencyKpis
       };
 
       res.json(results);
@@ -1144,6 +1128,190 @@ async function startServer() {
       }
       res.json(updatedTask);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // --- AGENCY KPIs ---
+  app.get("/api/agency-kpis", async (req: AuthRequest, res) => {
+    try {
+      const context = getContext(req);
+      if (!context) return res.status(401).json({ error: "Não autorizado" });
+      const kpis = await dbService.list('agency_kpis', context);
+      res.json(kpis);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/agency-kpis", async (req: AuthRequest, res) => {
+    try {
+      const context = getContext(req);
+      if (!context) return res.status(401).json({ error: "Não autorizado" });
+      const kpi = await dbService.insert('agency_kpis', req.body, context);
+      if (context?.ownerId) {
+        emitDataChange(context.ownerId, 'agency_kpis', 'insert', kpi);
+      }
+      res.json(kpi);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/external/leads", async (req, res) => {
+    try {
+      const apiKey = req.headers["x-api-key"] as string;
+      if (!apiKey) return res.status(401).json({ error: "X-API-Key header is missing" });
+
+      const { data: user, error: userErr } = await supabase
+        .from('users')
+        .select('id, owner_id')
+        .eq('api_key', apiKey)
+        .single();
+
+      if (userErr || !user) return res.status(401).json({ error: "Invalid API Key" });
+
+      const context = {
+        userId: user.id,
+        userRole: 'OWNER' as any, // External API behaves as owner
+        ownerId: user.owner_id || user.id
+      };
+
+      const body = req.body;
+      const leadData = {
+        company: body.company || "Capturado via API Externa",
+        contact_name: body.contact_name || body.name || "Sem Nome",
+        email: body.email || "sem@email.com",
+        phone: body.phone || "",
+        source: body.source || "API Externa",
+        notes: body.notes || "",
+        status: body.status || "prospect",
+        owner_id: context.ownerId,
+        last_contact: new Date().toLocaleDateString('pt-BR'),
+        estimated_value: Number(body.estimated_value) || 0,
+        consent_given: body.consent_given === true || body.consent_given === 'true',
+        consent_date: body.consent_given ? new Date().toISOString() : null
+      };
+
+      const lead = await dbService.insert('leads', leadData, context);
+      
+      // Notify via socket
+      emitDataChange(context.ownerId, 'leads', 'insert', lead);
+
+      res.status(201).json(lead);
+    } catch (err: any) {
+      console.error("[EXTERNAL API] Error creating lead:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- INTELlIGENT WEBHOOKS FOR LEADS ---
+  // GET support for testing/validation of Webhooks on standard platforms
+  app.get(["/api/webhooks/leads", "/api/webhooks/leads/:apiKey"], async (req, res) => {
+    res.json({ 
+      status: "active", 
+      message: "Webhook receptor de leads está online e aguardando requisições POST.",
+      documentation: "Envie um POST contendo sua chave de api via header 'X-API-Key', query param '?apiKey=...', ou no path '/api/webhooks/leads/SUA_CHAVE_AQUI'"
+    });
+  });
+
+  app.post(["/api/webhooks/leads", "/api/webhooks/leads/:apiKey"], async (req, res) => {
+    try {
+      // 1. Resolve API Key from Header, Query, or Path parameter
+      const apiKey = (req.headers["x-api-key"] as string) || 
+                     (req.query.apiKey as string) || 
+                     (req.query.api_key as string) || 
+                     (req.query.key as string) || 
+                     req.params.apiKey;
+
+      if (!apiKey) {
+        return res.status(401).json({ 
+          success: false, 
+          error: "API Key não fornecida. Passe via X-API-Key header, query param (?apiKey=...), ou path (/api/webhooks/leads/SUA_CHAVE)" 
+        });
+      }
+
+      // 2. Fetch User associated with this API key
+      const { data: user, error: userErr } = await supabase
+        .from('users')
+        .select('id, owner_id')
+        .eq('api_key', apiKey)
+        .single();
+
+      if (userErr || !user) {
+        return res.status(401).json({ success: false, error: "Chave de API inválida" });
+      }
+
+      const context = {
+        userId: user.id,
+        userRole: 'OWNER' as any,
+        ownerId: user.owner_id || user.id
+      };
+
+      const body = req.body || {};
+
+      // 3. Intelligent Field Mapping for French, English, Portuguese webhooks
+      const rawCompany = body.company || body.empresa || body.title || body.organizacao;
+      const rawName = body.name || body.nome || body.contact_name || body.contato;
+      
+      const company = rawCompany || (rawName ? `Lead: ${rawName}` : "Capturado via Webhook");
+      const contactName = rawName || "Sem Nome";
+      const email = body.email || body.mail || body.e_mail || (Array.isArray(body.emails) ? body.emails[0] : "") || "sem@email.com";
+      const phone = body.phone || body.telefone || body.tel || body.whatsapp || body.celular || body.phone_number || "";
+      const notes = body.notes || body.mensagem || body.obs || body.observacoes || body.descricao || body.comments || "";
+      const source = body.source || body.origem || body.lead_source || "Webhook Automático";
+      const status = body.status || "prospect";
+      const estimatedValue = Number(body.estimated_value || body.valor || body.value || body.valor_estimado) || 0;
+
+      const leadData = {
+        company,
+        contact_name: contactName,
+        email,
+        phone,
+        source,
+        notes,
+        status,
+        owner_id: context.ownerId,
+        last_contact: new Date().toLocaleDateString('pt-BR'),
+        estimated_value: estimatedValue,
+        consent_given: body.consent_given === true || body.consent_given === 'true' || !!body.consent_given,
+        consent_date: new Date().toISOString()
+      };
+
+      const lead = await dbService.insert('leads', leadData, context);
+      
+      // Notify CRM via Websocket
+      emitDataChange(context.ownerId, 'leads', 'insert', lead);
+
+      res.status(201).json({
+        success: true,
+        message: "Lead inserido no Kanban com sucesso!",
+        lead: {
+          id: lead.id,
+          company: lead.company,
+          contact_name: lead.contact_name,
+          status: lead.status
+        }
+      });
+    } catch (err: any) {
+      console.error("[WEBHOOK EXCEL] Erro ao processar lead:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/users/generate-api-key", authMiddleware as any, async (req: AuthRequest, res) => {
+    try {
+      const context = getContext(req);
+      if (!context) return res.status(401).json({ error: "Não autorizado" });
+
+      const newKey = `amp_${crypto.randomUUID().replace(/-/g, '')}`;
+      
+      const { data, error } = await supabase
+        .from('users')
+        .update({ api_key: newKey })
+        .eq('id', context.userId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json({ apiKey: newKey });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // --- Authentication ---
@@ -2155,7 +2323,18 @@ async function startServer() {
 
         const indexPath = path.join(distPath, "index.html");
         if (fs.existsSync(indexPath)) {
-          res.sendFile(indexPath);
+          // Serve index.html with injected environment variables for the client
+          let html = fs.readFileSync(indexPath, 'utf-8');
+          const envVars = {
+            VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
+            VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
+            APP_URL: APP_URL
+          };
+          
+          const scriptInject = `<script>window._env_ = ${JSON.stringify(envVars)};</script>`;
+          html = html.replace('<head>', `<head>${scriptInject}`);
+          
+          res.send(html);
         } else {
           res.status(404).send("Aplicação não encontrada (Build faltando).");
         }
