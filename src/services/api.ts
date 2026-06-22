@@ -1,4 +1,4 @@
-import { Lead, Client, Receivable, ArtOrder, Partner, User, SupportTicket, VideoOrder, ClientDocument } from '../types';
+import { Lead, Client, Receivable, ArtOrder, Partner, User, SupportTicket, VideoOrder, ClientDocument, AgencyKPI } from '../types';
 import { storageService } from '../lib/storage';
 
 const API_BASE = '/api';
@@ -331,6 +331,14 @@ export const api = {
   },
   async deleteCampaign(id: string): Promise<void> {
     return request(`/prospecting/campaigns/${id}`, 'DELETE');
+  },
+
+  // AGENCY KPIs
+  async getAgencyKPIs(): Promise<AgencyKPI[]> {
+    return request('/agency-kpis', 'GET');
+  },
+  async createAgencyKPI(kpi: Partial<AgencyKPI>): Promise<AgencyKPI> {
+    return request('/agency-kpis', 'POST', kpi);
   },
 
   async login(email: string, password: string): Promise<{ success: boolean; user: User; token: string }> {

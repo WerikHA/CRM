@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Search, Plus, Filter, MoreHorizontal, Mail, LayoutGrid, List, ChevronRight, Info, Trash2 } from 'lucide-react';
+import { Search, Plus, Filter, MoreHorizontal, Mail, LayoutGrid, List, ChevronRight, Info, Trash2, Key, Eye, EyeOff, Copy, CheckCircle, Zap, Code } from 'lucide-react';
 import { cn, notifyError } from '../lib/utils';
-import { Lead, LeadStatus, Client } from '../types';
+import { Lead, LeadStatus, Client, User } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../services/api';
+import { storageService } from '../lib/storage';
+import { toast } from './ui/Toast';
 import { 
   DndContext, 
   DragOverlay, 
@@ -38,6 +40,8 @@ interface LeadsViewProps {
   leads: Lead[];
   setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
   setClients: React.Dispatch<React.SetStateAction<Client[]>>;
+  currentUser?: User;
+  setCurrentUser?: (u: User) => void;
 }
 
 interface KanbanCardProps {
@@ -189,8 +193,8 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, onDeleteLead
   );
 };
 
-export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProps) {
-  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban');
+export default function LeadsView({ leads, setLeads, setClients, currentUser, setCurrentUser }: LeadsViewProps) {
+  const [viewMode, setViewMode] = useState<'table' | 'kanban' | 'api'>('kanban');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   
@@ -409,6 +413,7 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
                 "p-1.5 rounded-lg transition-all",
                 viewMode === 'table' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-inner" : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400"
               )}
+              title="Visualização em Lista"
             >
               <List size={18} />
             </button>
@@ -418,9 +423,23 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
                 "p-1.5 rounded-lg transition-all",
                 viewMode === 'kanban' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-inner" : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400"
               )}
+              title="Visualização em Kanban"
             >
               <LayoutGrid size={18} />
             </button>
+            {currentUser && (currentUser.role === 'OWNER' || currentUser.role === 'ADMIN') && (
+              <button 
+                onClick={() => setViewMode('api')}
+                className={cn(
+                  "p-1.5 rounded-lg transition-all flex items-center gap-1",
+                  viewMode === 'api' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-inner" : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400"
+                )}
+                title="Configuração de API de Entrada"
+              >
+                <Key size={18} />
+                <span className="text-xs font-semibold px-1 hidden md:inline">API</span>
+              </button>
+            )}
           </div>
           <button 
             onClick={handleAddLead}
@@ -433,18 +452,22 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
       </div>
 
       {/* Search Bar */}
-      <div className="relative group">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
-        <input 
-          type="text" 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Buscar leads por nome, empresa ou e-mail..." 
-          className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm text-gray-900 dark:text-gray-100"
-        />
-      </div>
+      {viewMode !== 'api' && (
+        <div className="relative group">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+          <input 
+            type="text" 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar leads por nome, empresa ou e-mail..." 
+            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm text-gray-900 dark:text-gray-100"
+          />
+        </div>
+      )}
 
-      {viewMode === 'table' ? (
+      {viewMode === 'api' ? (
+        <LeadAPISettingsView currentUser={currentUser} setCurrentUser={setCurrentUser} />
+      ) : viewMode === 'table' ? (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-colors">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -671,3 +694,269 @@ export default function LeadsView({ leads, setLeads, setClients }: LeadsViewProp
     </div>
   );
 }
+
+interface LeadAPISettingsViewProps {
+  currentUser?: User;
+  setCurrentUser?: (u: User) => void;
+}
+
+const LeadAPISettingsView: React.FC<LeadAPISettingsViewProps> = ({ currentUser, setCurrentUser }) => {
+  const [loading, setLoading] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const fetchWithAuth = async (url: string, options: any = {}) => {
+    const token = storageService.getItem("agency_token");
+    const headers = {
+      ...options.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    return fetch(url, { ...options, headers });
+  };
+
+  const generateApiKey = async () => {
+    if (!setCurrentUser || !currentUser) return;
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/users/generate-api-key", { method: "POST" });
+      const data = await res.json();
+      if (data.apiKey) {
+        setCurrentUser({ ...currentUser, apiKey: data.apiKey });
+        toast.success("Chave de API gerada com sucesso!");
+      } else {
+        toast.error("Erro ao gerar chave de API");
+      }
+    } catch (err) {
+      toast.error("Erro ao gerar chave de API");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast.success("Copiado com sucesso!");
+  };
+
+  if (!currentUser) return null;
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl animate-pulse">
+            <Key size={20} />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">API Individual de Leads</h2>
+            <p className="text-xs text-gray-500">Cada usuário possui sua própria chave de API para integrar com formulários, chatbots ou IA externa.</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Sua Chave de API Pessoal (X-API-Key)</label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 bg-white dark:bg-gray-950 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-850 font-mono text-xs overflow-hidden whitespace-nowrap text-ellipsis text-gray-900 dark:text-gray-100">
+                {currentUser.apiKey ? (showKey ? currentUser.apiKey : "••••••••••••••••••••••••••••••••") : "Nenhuma chave gerada"}
+              </div>
+              <button 
+                onClick={() => setShowKey(!showKey)}
+                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-550 transition-colors"
+                title={showKey ? "Ocultar" : "Mostrar"}
+              >
+                {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+              <button 
+                onClick={() => currentUser.apiKey && copyToClipboard(currentUser.apiKey)}
+                disabled={!currentUser.apiKey}
+                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-550 transition-colors disabled:opacity-30"
+                title="Copiar Código"
+              >
+                {copied ? <CheckCircle size={18} className="text-emerald-500" /> : <Copy size={18} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center bg-indigo-50/50 dark:bg-indigo-500/5 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-500/10">
+            <div className="flex gap-3">
+              <Zap className="text-indigo-500 shrink-0 animate-bounce" size={20} />
+              <div>
+                <p className="text-xs font-bold text-indigo-900 dark:text-indigo-300">Integração do Funil</p>
+                <p className="text-[10px] text-indigo-700/70 dark:text-indigo-400/70">Novo Lead enviado para este endpoint cai diretamente na lista ou visualização em Kanban.</p>
+              </div>
+            </div>
+            <button 
+              onClick={generateApiKey}
+              disabled={loading}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+            >
+              {currentUser.apiKey ? "Rotacionar Chave" : "Gerar Minha Chave"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl">
+            <Zap size={20} />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Link de Webhook Inteligente (Recomendado)</h2>
+        </div>
+
+        <div className="space-y-6">
+          <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+            Use esta URL diretamente no <strong>Elementor, Zapier, Make, Typeform, RD Station</strong> ou qualquer formulário e chatbot. 
+            Este endpoint é inteligente: ele aceita dados em português e inglês e mapeia automaticamente os campos para criar o lead.
+          </p>
+
+          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 space-y-4">
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5">Escolha o formato do Webhook:</label>
+              <div className="space-y-2.5">
+                {/* Formato 1 */}
+                <div className="bg-white dark:bg-gray-950 p-3 rounded-xl border border-gray-200 dark:border-gray-850 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="overflow-hidden">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-650 dark:text-indigo-400 rounded mr-2 inline-block mb-1 md:mb-0">Path Param</span>
+                    <code className="text-[11px] font-mono text-gray-700 dark:text-gray-300 break-all">
+                      {window.location.origin}/api/webhooks/leads/{currentUser.apiKey || "SUA_CHAVE"}
+                    </code>
+                  </div>
+                  <button 
+                    onClick={() => currentUser.apiKey && copyToClipboard(`${window.location.origin}/api/webhooks/leads/${currentUser.apiKey}`)}
+                    disabled={!currentUser.apiKey}
+                    className="shrink-0 flex items-center justify-center gap-1 px-3 py-1.5 text-[11px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border border-gray-200 dark:border-gray-700 disabled:opacity-30"
+                  >
+                    <Copy size={12} /> Copiar URL
+                  </button>
+                </div>
+
+                {/* Formato 2 */}
+                <div className="bg-white dark:bg-gray-950 p-3 rounded-xl border border-gray-200 dark:border-gray-850 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="overflow-hidden">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-650 dark:text-emerald-400 rounded mr-2 inline-block mb-1 md:mb-0">Query Param</span>
+                    <code className="text-[11px] font-mono text-gray-700 dark:text-gray-300 break-all">
+                      {window.location.origin}/api/webhooks/leads?apiKey={currentUser.apiKey || "SUA_CHAVE"}
+                    </code>
+                  </div>
+                  <button 
+                    onClick={() => currentUser.apiKey && copyToClipboard(`${window.location.origin}/api/webhooks/leads?apiKey=${currentUser.apiKey}`)}
+                    disabled={!currentUser.apiKey}
+                    className="shrink-0 flex items-center justify-center gap-1 px-3 py-1.5 text-[11px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border border-gray-200 dark:border-gray-700 disabled:opacity-30"
+                  >
+                    <Copy size={12} /> Copiar URL
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+              Mapeamento Inteligente de Campos
+            </h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              O webhook traduz dinamicamente qualquer payload que você enviar. Envie as chaves como quiser (em português ou inglês):
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-gray-50 dark:bg-gray-950 p-3.5 rounded-2xl border border-gray-100 dark:border-gray-850">
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Empresa / Título</span>
+                <p className="text-[10px] text-gray-400 mt-1">Busca por: <code className="text-indigo-500 font-semibold font-mono">company</code>, <code className="text-indigo-500 font-semibold font-mono">empresa</code>, <code className="text-indigo-500 font-semibold font-mono">title</code>, <code className="text-indigo-500 font-semibold font-mono">organizacao</code></p>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-950 p-3.5 rounded-2xl border border-gray-100 dark:border-gray-850">
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Nome do Contato</span>
+                <p className="text-[10px] text-gray-400 mt-1">Busca por: <code className="text-indigo-500 font-semibold font-mono">name</code>, <code className="text-indigo-500 font-semibold font-mono">nome</code>, <code className="text-indigo-500 font-semibold font-mono">contact_name</code>, <code className="text-indigo-500 font-semibold font-mono">contato</code></p>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-950 p-3.5 rounded-2xl border border-gray-100 dark:border-gray-850">
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Celular / Telefone</span>
+                <p className="text-[10px] text-gray-400 mt-1">Busca por: <code className="text-indigo-500 font-semibold font-mono">phone</code>, <code className="text-indigo-500 font-semibold font-mono">telefone</code>, <code className="text-indigo-500 font-semibold font-mono">whatsapp</code>, <code className="text-indigo-500 font-semibold font-mono">celular</code></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl">
+            <Code size={20} />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Documentação das Rotas de Leads</h2>
+        </div>
+
+        <div className="space-y-8">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+              Cabeçalho de Autenticação
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Todas as requisições devem incluir o header <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-indigo-600 dark:text-indigo-400 font-mono">X-API-Key</code> com sua chave privada gerada acima.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold rounded uppercase">POST</span>
+              <code className="text-xs font-mono text-gray-700 dark:text-gray-300">{window.location.origin}/api/external/leads</code>
+            </div>
+            
+            <p className="text-xs text-gray-500 dark:text-gray-400">Insere o lead em nosso CRM de forma síncrona. Os web sockets do sistema carregarão o card no Kanban automaticamente para você e todos os seus colegas.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Opções do Corpo (JSON)</h4>
+                <div className="bg-gray-950 rounded-2xl p-4 overflow-x-auto">
+                  <pre className="text-[10px] text-gray-300 font-mono leading-relaxed">
+{`{
+  "company": "Empresa S.A",  // Obrigatório (Será o título do Card)
+  "name": "Nome do Lead",    // Opcional (Nome do Contato)
+  "contact_name": "Nome",    // Opcional (Alternativa para "name")
+  "email": "lead@email.com", // Opcional
+  "phone": "11988887777",    // Opcional
+  "notes": "Notas ou Bio",   // Opcional
+  "estimated_value": 1500,   // Opcional (Valor Estimado)
+  "source": "Make / Zapier", // Opcional (Origem do Lead)
+  "status": "prospect"       // Opcional: 'prospect' | 'negotiation' | 'converted' | 'lost'
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Exemplo com cURL</h4>
+                <div className="bg-gray-950 rounded-2xl p-4 overflow-x-auto">
+                  <pre className="text-[10px] text-gray-300 font-mono leading-relaxed">
+{`curl -X POST "${window.location.origin}/api/external/leads" \\
+-H "X-API-Key: ${currentUser.apiKey || 'SUA_CHAVE_AQUI'}" \\
+-H "Content-Type: application/json" \\
+-d '{
+  "company": "Amplifica Digital",
+  "name": "Guilherme Santos",
+  "email": "gui@amplifica.com.br",
+  "phone": "11999998888",
+  "estimated_value": 2500,
+  "source": "Site Institucional"
+}'`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-indigo-50/20 dark:bg-indigo-500/5 rounded-2xl border border-indigo-100/50 dark:border-indigo-500/10">
+              <p className="text-[10px] text-indigo-800 dark:text-indigo-300 leading-relaxed">
+                <strong>💡 Dica:</strong> No seu chatbot de WhatsApp preferido ou formulário Contact-Form-7 / Elementor, basta disparar um Webhook para a URL acima, inserindo o Header <code className="font-mono">X-API-Key</code> e mapeando o JSON. Seus leads cairão no CRM em tempo real!
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+

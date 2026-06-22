@@ -54,6 +54,13 @@ if (!supabaseUrl || !supabaseKey) {
   
   console.error(`[Supabase] ${context} CRITICAL: Variáveis de ambiente ausentes: ${missing.join(', ')}.`);
   console.log(`[Supabase] ${context} Verifique se as variáveis estão configuradas no menu "Settings > Environment Variables".`);
+  
+  if (!isServer) {
+    console.log(`[Supabase] [CLIENT] window._env_ status:`, (window as any)._env_ ? 'Ready' : 'Not found');
+    if ((window as any)._env_) {
+      console.log(`[Supabase] [CLIENT] window._env_ keys:`, Object.keys((window as any)._env_));
+    }
+  }
 }
 
 // Implementação de storage customizada para Supabase que respeita consentimento

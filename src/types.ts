@@ -21,6 +21,7 @@ export interface User {
   subscriptionStatus?: string;
   termsAcceptedAt?: string;
   termsVersion?: string;
+  apiKey?: string;
 }
 
 export type LeadStatus = 'prospect' | 'negotiation' | 'converted' | 'lost';
@@ -257,6 +258,17 @@ export interface FormIntegration {
   redirectUrl?: string;
   ownerId: string;
   createdAt: string;
+}
+
+export interface AgencyKPI {
+  id?: string;
+  ownerId: string;
+  periodDate: string;
+  totalActiveMonthlyValue: number;
+  totalLeadsCount: number;
+  totalActiveClientsCount: number;
+  avgArtCompletionPercent: number;
+  createdAt?: string;
 }
 
 export interface Notification {

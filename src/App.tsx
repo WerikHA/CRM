@@ -24,7 +24,8 @@ import {
   Target,
   Activity,
   Bell,
-  Database
+  Database,
+  BarChart3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -69,11 +70,12 @@ import TermsOfUse from './components/TermsOfUse';
 import CheckoutSuccess from './components/CheckoutSuccess';
 import CheckoutError from './components/CheckoutError';
 
-type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'recordings' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'drive' | 'personalization' | 'social_posts' | 'checkout_success' | 'checkout_error';
+type ViewType = 'dashboard' | 'leads' | 'clients' | 'finance' | 'design' | 'videos' | 'recordings' | 'partners' | 'demands' | 'tickets' | 'admin' | 'prospecting' | 'productivity' | 'drive' | 'personalization' | 'social_posts' | 'checkout_success' | 'checkout_error' | 'agency_kpis';
 
 import { api } from './services/api';
-import { VideoOrder, SupportTicket, DemandTask } from './types';
+import { VideoOrder, SupportTicket, DemandTask, AgencyKPI } from './types';
 import ProductivityView from './components/ProductivityView';
+import AgencyKPIsView from './components/AgencyKPIsView';
 import ErrorNotifier from './components/ErrorNotifier';
 import { ToastContainer, toast } from './components/ui/Toast';
 import CookieConsent from './components/CookieConsent';
@@ -100,6 +102,7 @@ const VIEW_LABELS: Record<ViewType, string> = {
   social_posts: 'Agendamento de Posts',
   checkout_success: 'Pagamento Confirmado',
   checkout_error: 'Erro no Pagamento',
+  agency_kpis: 'KPIs da Agência',
   admin: 'Configurações'
 };
 
@@ -393,6 +396,7 @@ export default function App() {
   const [partners, setPartners] = useState<Partner[]>(INITIAL_PARTNERS_LIST);
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>(INITIAL_INTEGRATIONS);
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [agencyKPIs, setAgencyKPIs] = useState<AgencyKPI[]>([]);
   const [holidays] = useState([{ date: '21/04/2026', name: 'Tiradentes' }]);
 
   useEffect(() => {
@@ -545,6 +549,7 @@ export default function App() {
       setVideoOrders(data.videoOrders || []);
       setDemandTasks(data.demandTasks || []);
       setUsers(data.users || []);
+      setAgencyKPIs(data.agencyKpis || []);
       
       if (currentUser && data.users && data.users.length > 0) {
         const freshSelf = data.users.find((u: any) => u.id === currentUser.id);
@@ -639,6 +644,7 @@ export default function App() {
     
     return [
       { id: 'dashboard', label: 'Painel', icon: LineChart, roles: ['ADMIN', 'DESIGNER', 'PARTNER', 'EDITOR', 'OWNER'] },
+      { id: 'agency_kpis', label: 'KPIs da Agência', icon: BarChart3, roles: ['ADMIN', 'OWNER'] },
       { id: 'leads', label: 'Leads', icon: TrendingUp, roles: ['ADMIN', 'OWNER'] },
       { id: 'clients', label: 'Clientes', icon: Users, roles: ['ADMIN', 'PARTNER', 'OWNER'] },
       { id: 'finance', label: 'Financeiro', icon: DollarSign, roles: ['ADMIN', 'DESIGNER', 'EDITOR', 'OWNER'] },
@@ -692,6 +698,8 @@ export default function App() {
           leads={leads} 
           setLeads={setLeads} 
           setClients={setClients}
+          currentUser={effectiveUser}
+          setCurrentUser={setCurrentUser}
         />;
       case 'clients': 
         return <ClientsView 
@@ -751,6 +759,14 @@ export default function App() {
         />;
       case 'prospecting':
         return <ProspectingView />;
+      case 'agency_kpis':
+        return <AgencyKPIsView 
+          leads={leads} 
+          clients={clients} 
+          artOrders={artOrders} 
+          currentUser={effectiveUser} 
+          agencyKPIs={agencyKPIs}
+        />;
       case 'videos':
         return <VideoWorkflowView 
           videoOrders={videoOrders}

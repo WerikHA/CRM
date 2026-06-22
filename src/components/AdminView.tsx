@@ -61,6 +61,167 @@ const fetchWithAuth = async (url: string, options: any = {}) => {
   return fetch(url, { ...options, headers });
 };
 
+function APISettingsView({ currentUser, setCurrentUser }: { currentUser: User; setCurrentUser: (u: User) => void }) {
+  const [loading, setLoading] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const generateApiKey = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/users/generate-api-key", { method: "POST" });
+      const data = await res.json();
+      if (data.apiKey) {
+        setCurrentUser({ ...currentUser, apiKey: data.apiKey });
+        toast.success("Chave de API gerada com sucesso!");
+      }
+    } catch (err) {
+      toast.error("Erro ao gerar chave de API");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast.success("Copiado!");
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">
+            <Key size={20} />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">API de Automação</h2>
+            <p className="text-xs text-gray-500">Conecte IA e ferramentas externas ao seu CRM.</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700/50">
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Sua Chave de API (X-API-Key)</label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 bg-white dark:bg-gray-900 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 font-mono text-sm overflow-hidden whitespace-nowrap text-ellipsis">
+                {currentUser.apiKey ? (showKey ? currentUser.apiKey : "••••••••••••••••••••••••••••••••") : "Nenhuma chave gerada"}
+              </div>
+              <button 
+                onClick={() => setShowKey(!showKey)}
+                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-500 transition-colors"
+                title={showKey ? "Ocultar" : "Mostrar"}
+              >
+                {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+              <button 
+                onClick={() => currentUser.apiKey && copyToClipboard(currentUser.apiKey)}
+                disabled={!currentUser.apiKey}
+                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-500 transition-colors disabled:opacity-30"
+                title="Copiar"
+              >
+                {copied ? <CheckCircle size={18} className="text-emerald-500" /> : <Copy size={18} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center bg-indigo-50 dark:bg-indigo-500/5 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-500/20">
+            <div className="flex gap-3">
+              <Zap className="text-indigo-500 shrink-0" size={20} />
+              <div>
+                <p className="text-xs font-bold text-indigo-900 dark:text-indigo-300">Automação Externa</p>
+                <p className="text-[10px] text-indigo-700/70 dark:text-indigo-400/70">Use esta chave para cadastrar leads via IA (Make.com, Zapier, Python, etc).</p>
+              </div>
+            </div>
+            <button 
+              onClick={generateApiKey}
+              disabled={loading}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+            >
+              {currentUser.apiKey ? "Rotacionar Chave" : "Gerar Chave"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl">
+            <Code size={20} />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Documentação Completa da API</h2>
+        </div>
+
+        <div className="space-y-8">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+              Autenticação
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Todas as requisições devem incluir o header <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-indigo-600 font-mono">X-API-Key</code> com sua chave privada gerada acima.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold rounded uppercase">POST</span>
+              <code className="text-xs font-mono text-gray-700 dark:text-gray-300">/api/external/leads</code>
+            </div>
+            
+            <p className="text-xs text-gray-500">Cria um novo lead no CRM associado à sua conta. Ideal para automações de prospecção com IA.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Corpo da Requisição (JSON)</h4>
+                <div className="bg-gray-900 rounded-2xl p-4 overflow-x-auto">
+                  <pre className="text-[10px] text-gray-300 font-mono leading-relaxed">
+{`{
+  "name": "Nome do Lead",    // Obrigatório
+  "email": "lead@email.com", // Obrigatório
+  "phone": "11988887777",
+  "company": "Empresa S.A",
+  "notes": "Bio ou resumo da IA",
+  "estimated_value": 1500.00,
+  "source": "IA Prospector",
+  "consent_given": true      // LGPD Check
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Exemplo cURL</h4>
+                <div className="bg-gray-900 rounded-2xl p-4 overflow-x-auto">
+                  <pre className="text-[10px] text-gray-300 font-mono leading-relaxed">
+{`curl -X POST "${window.location.origin}/api/external/leads" \\
+-H "X-API-Key: ${currentUser.apiKey || 'SUA_CHAVE'}" \\
+-H "Content-Type: application/json" \\
+-d '{
+  "name": "João Silva",
+  "email": "joao@exemplo.com",
+  "company": "Tech Inovação",
+  "source": "AI Automation"
+}'`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-amber-50 dark:bg-amber-500/5 rounded-2xl border border-amber-100 dark:border-amber-500/20">
+              <p className="text-[10px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                <strong>Dica de Integração:</strong> No Make.com (Integromat) ou Zapier, use o módulo "HTTP Request". Configure o método como POST, a URL acima, adicione o Header <code className="font-mono">X-API-Key</code> e mapeie os campos do seu formulário ou saída da IA para o corpo JSON.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Componente Interno para Gestão do QR do WhatsApp Cloud
 function N8nLogs({ isAdmin }: { isAdmin: boolean }) {
   const [logs, setLogs] = useState<string>("");
@@ -1855,6 +2016,7 @@ export default function AdminView({
     | "network"
     | "email"
     | "revoke"
+    | "api"
   >(canManageSystem ? "subscription" : "personalizacao");
   const [isTeamChatOpen, setIsTeamChatOpen] = useState(false);
 
@@ -2267,6 +2429,19 @@ export default function AdminView({
                 <Link size={18} /> Integrações
               </button>
             )}
+            {canManageSystem && (
+              <button
+                onClick={() => setActiveSubTab("api")}
+                className={cn(
+                  "w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm text-left transition-all",
+                  activeSubTab === "api"
+                    ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 shadow-sm"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors",
+                )}
+              >
+                <Key size={18} /> Chave de API
+              </button>
+            )}
             <button
               onClick={() => setActiveSubTab("users")}
               className={cn(
@@ -2279,7 +2454,7 @@ export default function AdminView({
               <Shield size={18} />{" "}
               {canManageSystem ? "Gestão de Usuários" : "Membros da Equipe"}
             </button>
-            {isAdmin && (
+            {canManageSystem && (
               <button
                 onClick={() => setActiveSubTab("database")}
                 className={cn(
@@ -2292,7 +2467,7 @@ export default function AdminView({
                 <Database size={18} /> Banco de Dados
               </button>
             )}
-            {isAdmin && (
+            {canManageSystem && (
               <button
                 onClick={() => setActiveSubTab("sql")}
                 className={cn(
@@ -2332,7 +2507,7 @@ export default function AdminView({
                 </button>
               </>
             )}
-            {isAdmin && (
+            {canManageSystem && (
               <button
                 onClick={() => setActiveSubTab("logs")}
                 className={cn(
@@ -2345,7 +2520,7 @@ export default function AdminView({
                 <Terminal size={18} /> Central de Logs
               </button>
             )}
-            {isAdmin && (
+            {canManageSystem && (
               <button
                 onClick={() => setActiveSubTab("privacidade")}
                 className={cn(
@@ -2369,7 +2544,7 @@ export default function AdminView({
             >
               <Shield size={18} /> Revogar ou Excluir
             </button>
-            {isAdmin && (
+            {canManageSystem && (
               <button
                 onClick={() => setActiveSubTab("network")}
                 className={cn(
@@ -2382,7 +2557,7 @@ export default function AdminView({
                 <Globe size={18} /> Rede & Acesso
               </button>
             )}
-            {isAdmin && (
+            {canManageSystem && (
               <button
                 onClick={() => setActiveSubTab("email")}
                 className={cn(
@@ -2401,6 +2576,9 @@ export default function AdminView({
           <div className="lg:col-span-2 space-y-6">
             {activeSubTab === "subscription" && (
               <SubscriptionView currentUser={currentUser} />
+            )}
+            {activeSubTab === "api" && (
+              <APISettingsView currentUser={currentUser} setCurrentUser={setCurrentUser} />
             )}
             {activeSubTab === "integrations" && (
               <div className="space-y-6">
